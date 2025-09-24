@@ -1,0 +1,42 @@
+# 3. De Anatomie van een V2 Plugin
+
+Dit document beschrijft de gedetailleerde structuur en de technische keuzes achter de plugins in de S1mpleTrader V2 architectuur.
+
+### 3.1. Fundamentele Mappenstructuur
+
+De basisstructuur van een plugin is een zelfstandige Python package. Deze structuur is ontworpen om uitbreidbaar te zijn voor complexe plugins, inclusief degenen die een persistente staat vereisen.
+
+plugins/[plugin_naam]/
+├── plugin_manifest.yaml  # De ID-kaart (wie ben ik?)
+├── worker.py             # De Logica (wat doe ik?)
+├── schema.py             # Het Contract (wat heb ik nodig?)
+└── state.json            # (Optioneel) Het Geheugen (wat was mijn vorige staat?)
+
+
+De `state.json` is optioneel en wordt alleen gebruikt door 'stateful' plugins (zoals een Grid Trading manager). De `StrategyOrchestrator` is verantwoordelijk voor het aanroepen van `load_state()` en `save_state()` op de worker, maar de worker zelf beheert de inhoud van dit bestand.
+
+### 3.2. Formaat Keuzes: `YAML` vs. `JSON`
+
+De keuze voor een dataformaat hangt af van de primaire gebruiker: een mens of een machine. We hanteren daarom een hybride model.
+
+* **`YAML` voor Menselijke Configuratie:**
+    * **Toepassing:** `plugin_manifest.yaml` en alle door de gebruiker geschreven `run_config.yaml`-bestanden.
+    * **Waarom:** De superieure leesbaarheid en de mogelijkheid om commentaar toe te voegen zijn essentieel voor ontwikkelaars en strategen die deze bestanden handmatig schrijven en onderhouden.
+
+* **`JSON` voor Machine-Data:**
+    * **Toepassing:** Alle machine-gegenereerde data-uitwisseling, zoals API-responses, `state.json`-bestanden, en gelogde context (`result_context.json`).
+    * **Waarom:** De strikte syntax en universele portabiliteit maken `JSON` de betrouwbare standaard voor communicatie tussen systemen (bv. tussen de Python backend en een TypeScript frontend) en voor het opslaan van gestructureerde data.
+
+### 3.3. Het Manifest als Zelfbeschrijvend Contract
+
+Het `plugin_manifest.yaml` is de kern van de "plugin discovery". Het stelt de `AbstractPluginFactory` in staat om een plugin te begrijpen zonder de code te hoeven inspecteren.
+
+* **Velden:**
+    * `name`: Unieke, machine-leesbare naam (bv. `market_structure_detector`).
+    * `version`: Semantische versie (bv. "1.0.1").
+    * `type`: Cruciale categorie-aanduiding die de fase in de orchestrator bepaalt (bv. `structural_context`).
+    * `entry_class`: De klassenaam in `worker.py` (bv. `MarketStructureDetector`).
+    * `schema_path`: Het pad naar het schema-bestand (bv. `schema.py`).
+    * `params_class`: De Pydantic-klasse voor de parameters (bv. `MarketStructureParams`).
+    * `stateful`: `true` / `false`.
+    * `dependencies`: Een lijst van andere plugin `name`'s die in een eerdere fase moeten zijn uitgevoerd.

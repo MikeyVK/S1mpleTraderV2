@@ -1,0 +1,3 @@
+name: liquidity_target_exit
+type: trade_constructor
+...
