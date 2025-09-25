@@ -1,2 +1,11 @@
+# locales/en.yaml
+
+# This file contains user-facing text for the application.
+# For the MVP, we use English keys that map to English text.
+
 app:
   start: "S1mpleTrader is starting..."
+
+plugin_registry:
+  scan_start: "Scanning for plugins in path: '{path}'..."
+  scan_complete: "Scan complete. Found and registered {count} valid plugins."

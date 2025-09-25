@@ -1,7 +1,7 @@
 # config/platform.yaml
 # De minimale, fundamentele configuratie voor S1mpleTrader V2.
 
-language: 'nl'
+language: 'en'
 plugins_root_path: 'plugins'
 
 data:
@@ -9,3 +9,9 @@ data:
 
 portfolio:
   initial_capital: 10000.0
+
+logging:
+  profile: 'analysis'
+  profiles:
+    developer: ['WARNING', 'ERROR', 'CRITICAL']
+    analysis: ['DEBUG', 'INFO', 'MATCH', 'FILTER', 'TRADE', 'RESULT', 'WARNING', 'ERROR', 'CRITICAL']

@@ -9,8 +9,11 @@ This is the foundational contract for the entire application's configuration.
     - Defines the schema for global, platform-wide settings.
 """
 
-from typing import Literal
+# --- Sub-models ---
+
+from typing import Dict, List, Literal
 from pydantic import BaseModel, Field
+from backend.core.enums import LogLevel
 
 class DataConfig(BaseModel):
     """Defines the structure for the 'data' section."""
@@ -19,6 +22,13 @@ class DataConfig(BaseModel):
 class PortfolioConfig(BaseModel):
     """Defines the structure for the 'portfolio' section."""
     initial_capital: float = 10000.0
+
+class LoggingConfig(BaseModel):
+    """Defines the structure for the 'logging' section."""
+    profile: Literal['developer', 'analysis'] = 'analysis'
+    profiles: Dict[str, List[LogLevel]] # Gebruikt de LogLevel Enum
+
+# --- Main model ---
 
 class PlatformConfig(BaseModel):
     """
