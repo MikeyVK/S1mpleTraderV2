@@ -1,1 +1,11 @@
-# Placeholder for config/platform.yaml
+# config/platform.yaml
+# De minimale, fundamentele configuratie voor S1mpleTrader V2.
+
+language: 'nl'
+plugins_root_path: 'plugins'
+
+data:
+  source_dir: 'source_data'
+
+portfolio:
+  initial_capital: 10000.0
