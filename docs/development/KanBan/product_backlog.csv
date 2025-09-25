@@ -1,0 +1,38 @@
+Release;Fase;User Story;Type
+1;FRAMEWORK FOUNDATION;[Config] Definieer Pydantic-model voor platform.yaml;BE
+1;FRAMEWORK FOUNDATION;[Config] Definieer Pydantic-model voor plugin_manifest.yaml;BE
+1;FRAMEWORK FOUNDATION;[Config] Definieer Pydantic-model voor een basis run_blueprint.yaml;BE
+1;FRAMEWORK FOUNDATION;[Assembly] Bouw MVP van PluginRegistry die plugins kan ontdekken en manifesten valideert;BE
+1;FRAMEWORK FOUNDATION;[Assembly] Bouw MVP van WorkerBuilder die een enkele plugin kan instantiëren;BE
+1;FRAMEWORK FOUNDATION;[Core] Definieer de Pydantic-modellen voor kern-DTO's (Signal, Trade, ClosedTrade);BE
+1;FRAMEWORK FOUNDATION;[Core] Bouw MVP van Portfolio die één trade tegelijk kan managen en PnL bijhoudt;BE
+1;FRAMEWORK FOUNDATION;[Environments] Bouw MVP van BacktestEnvironment die een CSV kan inlezen en een gesimuleerde klok heeft;BE
+1;FRAMEWORK FOUNDATION;[Orchestrator] Bouw 'walking skeleton' van StrategyOrchestrator die de 6 fasen sequentieel doorloopt (zonder echte plugin-executie);BE
+1;FRAMEWORK FOUNDATION;[Logging] Zet een basis logging-systeem op dat naar een gestructureerd run.log.json schrijft;BE
+1;FRAMEWORK FOUNDATION;[Resilience] Implementeer basis try...except error handling in de Orchestrator zodat een falende plugin de run niet crasht;BE
+1;PLUGIN DEVELOPMENT;[DEV] Ontwikkel één simpele ContextWorker-plugin als proof-of-concept (bv. EMA);DEV
+1;PLUGIN DEVELOPMENT;[DEV] Ontwikkel één simpele SignalGenerator-plugin als proof-of-concept;DEV
+1;PLUGIN DEVELOPMENT;[DEV] Schrijf een unit test voor de proof-of-concept plugins;DEV
+1;STRATEGY BUILDER;[UI] Toon de door de PluginRegistry ontdekte plugins in de UI;UI
+1;STRATEGY BUILDER;[UI] Maak een basis UI om een run_blueprint.yaml te kunnen opslaan;UI
+1;BACKTESTING & ANALYSIS;[UI] Start een enkele backtest-run vanuit de UI met een opgeslagen blueprint;UI
+1;BACKTESTING & ANALYSIS;[UI] Toon de lijst van ClosedTrade DTO's uit het BacktestResult in een simpele tabel;UI
+2;FRAMEWORK FOUNDATION;[Assembly] Implementeer parallelle executie in ContextPipelineRunner;BE
+2;FRAMEWORK FOUNDATION;[Logging] Voeg Correlation ID toe aan DTO's en logging voor end-to-end tracing;BE
+2;BACKTESTING & ANALYSIS;[UI] Een optimalisatie-run opzetten;UI
+2;BACKTESTING & ANALYSIS;[UI] Te optimaliseren parameters en ranges definiëren;UI
+2;BACKTESTING & ANALYSIS;[UI] Interactieve tabel voor optimization-resultaten (sorteren, filteren);UI
+2;BACKTESTING & ANALYSIS;[UI] Een varianten-test opzetten om kandidaten te vergelijken;UI
+2;BACKTESTING & ANALYSIS;[UI] Vergelijkende resultaten tonen (equity curves, heatmap);UI
+2;BACKTESTING & ANALYSIS;[UI] "Trade Explorer": diepgaande visuele analyse van enkele trades met context;UI
+3;FRAMEWORK FOUNDATION;[Core] Breid Portfolio uit om meerdere, parallelle posities per asset te beheren;BE
+3;FRAMEWORK FOUNDATION;[Resilience] Implementeer state.json.journal voor stateful plugins;BE
+3;PAPER TRADING;[UI] Strategie selecteren voor paper trading;UI
+3;PAPER TRADING;[UI] Paper trading sessie starten/stoppen;UI
+3;PAPER TRADING;[UI] Real-time PnL en open posities bekijken;UI
+3;PAPER TRADING;[BE] PaperTradeEnvironment implementeren;BE
+3;LIVE MONITORING;[UI] Dashboard voor live-portfolio monitoring;UI
+3;LIVE MONITORING;[UI] Live PnL, open posities en alerts tonen;UI
+3;LIVE MONITORING;[UI] Noodstop-knop;UI
+3;LIVE MONITORING;[BE] LiveEnvironment & run_supervisor.py implementeren;BE
+3;LIVE MONITORING;[BE] Resilience-strategieën implementeren (heartbeat, reconciliation);BE
