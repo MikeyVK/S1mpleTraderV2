@@ -1,0 +1,45 @@
+# requirements.txt
+
+# --- Data & Analysis ---
+# Kernbibliotheken voor dataverwerking en analyse.
+pandas
+numpy
+scipy
+pyarrow
+openpyxl
+
+# --- Configuration ---
+# Voor het inlezen van YAML-configuratiebestanden.
+PyYAML
+
+# --- Web & API Server ---
+# Benodigdheden voor de web-interface en de API.
+fastapi
+uvicorn[standard]
+python-multipart
+Jinja2
+
+# --- User Interface (CLI) ---
+# Tools voor de command-line interface.
+tqdm
+rich
+prompt-toolkit
+
+# --- Code Quality & Contracts ---
+# Voor het afdwingen van code-stijl en datavalidatie.
+pylint
+pydantic
+
+# --- Testing ---
+# Framework en tools voor het schrijven en uitvoeren van tests.
+pytest
+pytest-mock
+
+# --- Visualization ---
+# Voor het genereren van grafieken en visuele rapportages.
+plotly
+
+# --- Documentation Generation ---
+# Tools voor het genereren van de projectdocumentatie.
+sphinx
+sphinx-rtd-theme

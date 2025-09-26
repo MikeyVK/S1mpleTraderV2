@@ -11,7 +11,7 @@ This schema acts as the contract for what makes a plugin discoverable and valid.
 """
 
 from typing import List, Literal, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 class PluginManifest(BaseModel):
     """
@@ -42,3 +42,5 @@ class PluginManifest(BaseModel):
 
     # Visualisatie-contract: welke Pydantic-klasse definieert de context en het render-recept?
     context_schema_class: Optional[str] = None
+
+    provides: List[str] = Field(default_factory=list)
