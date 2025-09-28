@@ -86,7 +86,7 @@ Ik zal me strikt houden aan de volgende standaarden bij het schrijven van code:
 ## 6. Snelle Referentie: Kernterminologie
 
 * **Assembly Team**: De backend-componenten (`PluginRegistry`, `WorkerBuilder`, `ContextPipelineRunner`) die de technische orkestratie van plugins verzorgen.
-* **Blueprint**: Een `YAML`-bestand (`run_blueprint.yaml`) dat een complete strategie-configuratie beschrijft.
+* **Run**: Een `YAML`-bestand (`run_schema.yaml`) dat een complete strategie-configuratie beschrijft.
 * **DTO (Data Transfer Object)**: Een Pydantic-model (`Signal`, `Trade`) dat als strikt contract dient voor data-uitwisseling.
 * **ExecutionEnvironment**: De backend-laag die de "wereld" definieert waarin een strategie draait (`Backtest`, `Paper`, `Live`).
 * **StrategyOrchestrator**: De "regisseur" in de Service-laag die de 6-fasen trechter uitvoert voor één enkele run.

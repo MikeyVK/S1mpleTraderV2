@@ -42,6 +42,19 @@ Elk van deze secties representeert een "werkruimte" binnen de applicatie, met ee
         * **Voorbeeld:** Als de `schema.py` van een EMA-plugin `length: int = Field(default=20, gt=1)` definieert, genereert de UI een numeriek inputveld, vooraf ingevuld met "20", met een validatieregel die afdwingt dat de waarde groter dan 1 moet zijn. Foutieve input wordt onmogelijk gemaakt.
 * **Backend Interactie:** De UI haalt de plugins op via de `PluginQueryService`. Bij het opslaan stuurt de UI een `JSON`-representatie van de samengestelde strategie naar de `BlueprintEditorService`, die het als een `YAML`-bestand wegschrijft in de `config/runs/` map.
 
+* **Hint naar frontend implementatie:**
++----------------------------------------------------------------------+
+| Fase 1: Regime Context (Selecteer de "Weerman" plugins)              |
+| +-----------------+   +-----------------+                            |
+| | ADXContext      |   | VolatilityContext | ...                      |
+| +-----------------+   +-----------------+                            |
++----------------------------------------------------------------------+
+| Fase 2: Structurele Context (Selecteer de "Cartograaf" plugins)    |
+| +----------------------+   +-------------------------+               |
+| | MarketStructure      |   | SupportResistanceFinder | ...           |
+| +----------------------+   +-------------------------+               |
++----------------------------------------------------------------------+
+
 ### **Werkruimte 3: BACKTESTING & ANALYSIS**
 
 * **User Goal:** Het rigoureus testen van strategieën onder verschillende condities en het diepgaand analyseren van de resultaten om inzichten te verkrijgen.

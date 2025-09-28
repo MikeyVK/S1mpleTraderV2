@@ -10,8 +10,9 @@ This schema acts as the contract for what makes a plugin discoverable and valid.
     - Enforces the presence of critical fields for the PluginRegistry.
 """
 
-from typing import List, Literal, Optional
+from typing import List, Optional
 from pydantic import BaseModel, Field
+from backend.core.enums import PipelinePhase
 
 class PluginManifest(BaseModel):
     """
@@ -22,14 +23,7 @@ class PluginManifest(BaseModel):
     name: str
     version: str
     description: str
-    type: Literal[
-        'regime_filter',
-        'structural_context',
-        'signal_generator',
-        'signal_refiner',
-        'trade_constructor',
-        'portfolio_overlay'
-    ]
+    type: PipelinePhase
 
     # === Code Contract (Verplicht) ===
     entry_class: str

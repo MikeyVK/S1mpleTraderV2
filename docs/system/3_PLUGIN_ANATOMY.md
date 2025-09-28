@@ -43,12 +43,14 @@ Dit manifest is een contract dat de volgende cruciale informatie vastlegt:
 
 * **`name`**: De unieke, machine-leesbare naam van de plugin (bv. `market_structure_detector`).
 * **`version`**: Semantische versie (bv. "1.0.1") om dependency management mogelijk te maken.
-* **`type`**: De belangrijkste categorie-aanduiding. Dit veld bepaalt in welke van de 6 fasen van de `StrategyOrchestrator` de plugin thuishoort. Mogelijke waarden zijn:
-    * `regime_filter`
+* **`type`**: De belangrijkste categorie-aanduiding. Dit veld bepaalt in welke van de workflow-fasen van de `StrategyOrchestrator` de plugin thuishoort. Mogelijke waarden zijn:
+    * `regime_context`
     * `structural_context`
     * `signal_generator`
     * `signal_refiner`
-    * `trade_constructor`
+    * `execution_planner`
+    * `exit_planner`
+    * `size_planner`
     * `portfolio_overlay`
 * **`entry_class`**: De exacte naam van de hoofdklasse in het `worker.py` bestand (bv. `MarketStructureDetector`).
 * **`schema_path`**: Het pad naar het Python-bestand dat het Pydantic-schema bevat (meestal `schema.py`).

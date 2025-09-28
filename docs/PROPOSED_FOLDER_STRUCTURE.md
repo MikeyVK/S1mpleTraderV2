@@ -71,7 +71,7 @@ S1mpleTrader_V2/
 │   │   └── schemas/
 │   │       ├── init.py
 │   │       ├── app_schema.py
-│   │       └── blueprint_schema.py
+│   │       └── run_schema.py
 │   │
 │   ├── assembly/
 │   │   ├── init.py

@@ -15,7 +15,7 @@ from typing import Dict, List, Literal
 from pydantic import BaseModel, Field
 from backend.core.enums import LogLevel
 
-class DataConfig(BaseModel):
+class PlatformDataConfig(BaseModel):
     """Defines the structure for the 'data' section."""
     source_dir: str = "source_data"
 
@@ -38,5 +38,5 @@ class PlatformConfig(BaseModel):
     language: Literal['en', 'nl'] = 'nl'
     plugins_root_path: str = "plugins" # De enige verantwoordelijkheid t.o.v. plugins
 
-    data: DataConfig = Field(default_factory=DataConfig)
+    data: PlatformDataConfig = Field(default_factory=PlatformDataConfig)
     portfolio: PortfolioConfig = Field(default_factory=PortfolioConfig)

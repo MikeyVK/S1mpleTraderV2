@@ -1,6 +1,6 @@
-# backend/config/schemas/blueprint_schema.py
+# backend/config/schemas/run_schema.py
 """
-Contains Pydantic models that define the structure of a run_blueprint.yaml file.
+Contains Pydantic models that define the structure of a run_schema.yaml file.
 This schema defines how a user composes a strategy from available plugins.
 
 @layer: Backend (Config)
@@ -12,21 +12,20 @@ This schema defines how a user composes a strategy from available plugins.
 """
 
 from typing import List, Dict, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, RootModel
+from backend.core.enums import PipelinePhase
 
-class DataConfig(BaseModel):
+class RunDataConfig(BaseModel):
     """Defines the data settings specific to this run."""
     trading_pair: str
     timeframe: str
 
-class TaskboardConfig(BaseModel):
-    """Defines which plugins are assigned to each phase of the 6-phase funnel."""
-    regime_filter: List[str] = Field(default_factory=list)
-    structural_context: List[str] = Field(default_factory=list)
-    signal_generator: List[str] = Field(default_factory=list)
-    signal_refiner: List[str] = Field(default_factory=list)
-    trade_constructor: List[str] = Field(default_factory=list)
-    portfolio_overlay: List[str] = Field(default_factory=list)
+class TaskboardConfig(RootModel[Dict[PipelinePhase, List[str]]]):
+    """
+    Defines which plugins are assigned to each phase.
+    This is a flexible dictionary where keys must be valid PipelinePhase members.
+    By inheriting from RootModel, this class instance acts directly as a dictionary.
+    """
 
 class WorkerDefinition(BaseModel):
     """
@@ -39,6 +38,6 @@ class RunBlueprint(BaseModel):
     """
     The main Pydantic model that validates a complete run_blueprint.yaml file.
     """
-    data: DataConfig
+    data: RunDataConfig
     taskboard: TaskboardConfig
     workforce: Dict[str, WorkerDefinition] = Field(default_factory=dict)

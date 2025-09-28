@@ -20,3 +20,12 @@ class LogLevel(str, Enum):
     POLICY = "POLICY"
     RESULT = "RESULT"
     TRADE = "TRADE"
+
+class PipelinePhase(str, Enum):
+    """Defines the valid phases of the 6-phase strategy funnel."""
+    REGIME_FILTER = "regime_filter"
+    STRUCTURAL_CONTEXT = "structural_context"
+    SIGNAL_GENERATOR = "signal_generator"
+    SIGNAL_REFINER = "signal_refiner"
+    TRADE_CONSTRUCTOR = "trade_constructor"
+    PORTFOLIO_OVERLAY = "portfolio_overlay"

@@ -3,6 +3,7 @@
 # --- Data & Analysis ---
 # Kernbibliotheken voor dataverwerking en analyse.
 pandas
+pandas-stubs
 numpy
 scipy
 pyarrow
