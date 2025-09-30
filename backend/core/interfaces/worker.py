@@ -2,64 +2,107 @@
 """
 Contains the behavioral contracts (Protocols) for all plugin worker types.
 
+These interfaces are the "constitution" for the S1mpleTrader plugin
+ecosystem, ensuring that any component created by a developer will correctly
+integrate with the StrategyEngine.
+
 @layer: Backend (Core Interfaces)
 @dependencies: [typing, pandas, backend.dtos]
 @responsibilities:
     - Defines the structural contracts for all types of plugin workers.
+    - Enforces the logical data flow of the 9-fase strategy pipeline.
 """
 from __future__ import annotations
 
-from typing import (Any, List, Optional, Protocol,
-                    TYPE_CHECKING)
+from typing import (Any, List, Optional, Protocol, TYPE_CHECKING, runtime_checkable)
 import pandas as pd
 
+# Use TYPE_CHECKING to prevent circular imports at runtime
+# while still providing type hints for static analysis.
 if TYPE_CHECKING:
     from backend.dtos import (Signal, EntrySignal, RiskDefinedSignal,
-                              TradePlan, TradingContext)
+                              TradePlan, RoutedTradePlan, CriticalEvent,
+                              TradingContext)
 
-# --- Base Contract for All Workers ---
+# --- Base Contracts ---
 
-class BaseWorkerProtocol(Protocol):
+@runtime_checkable
+class BaseWorker(Protocol):
     """The base behavioral contract for any plugin worker."""
+
     def process(self, *args: Any, **kwargs: Any) -> Any:
         """The main entry point method for the worker's logic."""
         ...
 
-# --- Specific Worker Contracts ---
+@runtime_checkable
+class ContextWorker(BaseWorker, Protocol):
+    """
+    A contract for a data enrichment worker (Fase 1 & 2).
 
-class ContextWorker(BaseWorkerProtocol):
-    """A protocol defining the contract for a data enrichment worker (Fase 1 & 2)."""
+    ContextWorkers are responsible for adding analytical data (e.g., indicators,
+    market regime classifications) to the main DataFrame.
+    """
+
     def process(self, df: pd.DataFrame, context: 'TradingContext') -> pd.DataFrame:
         ...
 
-class SignalGenerator(BaseWorkerProtocol):
-    """A protocol defining the contract for a signal generation worker (Fase 3)."""
+@runtime_checkable
+class StrategyWorker(BaseWorker, Protocol):
+    """A base contract for any worker operating within the main DTO pipeline."""
+    ...
+
+# --- Specific Strategy Worker Contracts (The Pipeline) ---
+
+@runtime_checkable
+class SignalGenerator(StrategyWorker, Protocol):
+    """Fase 3: A contract for a worker that generates trading opportunities."""
+
     def process(self, context: 'TradingContext') -> List['Signal']:
         ...
 
-class SignalRefiner(BaseWorkerProtocol):
-    """A protocol defining the contract for a signal refinement worker (Fase 4)."""
+@runtime_checkable
+class SignalRefiner(StrategyWorker, Protocol):
+    """Fase 4: A contract for a worker that filters raw signals."""
+
     def process(self, signal: 'Signal', context: 'TradingContext') -> Optional['Signal']:
         ...
 
-class EntryPlanner(BaseWorkerProtocol):
-    """A protocol defining the contract for an entry planning worker (Fase 5a)."""
+@runtime_checkable
+class EntryPlanner(StrategyWorker, Protocol):
+    """Fase 5: A contract for a worker that defines the entry tactic."""
+
     def process(self, signal: 'Signal', context: 'TradingContext') -> Optional['EntrySignal']:
         ...
 
-class ExitPlanner(BaseWorkerProtocol):
-    """A protocol defining the contract for an exit planning worker (Fase 5b)."""
-    def process(self, signal: 'EntrySignal',
+@runtime_checkable
+class ExitPlanner(StrategyWorker, Protocol):
+    """Fase 6: A contract for a worker that defines risk parameters (SL/TP)."""
+
+    def process(self, entry_signal: 'EntrySignal',
                 context: 'TradingContext') -> Optional['RiskDefinedSignal']:
         ...
 
-class SizePlanner(BaseWorkerProtocol):
-    """A protocol defining the contract for a size planning worker (Fase 5c)."""
-    def process(self, signal: 'RiskDefinedSignal',
+@runtime_checkable
+class SizePlanner(StrategyWorker, Protocol):
+    """Fase 7: A contract for a worker that calculates position size."""
+
+    def process(self, risk_defined_signal: 'RiskDefinedSignal',
                 context: 'TradingContext') -> Optional['TradePlan']:
         ...
 
-class PortfolioOverlay(BaseWorkerProtocol):
-    """A protocol defining the contract for a portfolio overlay worker (Fase 6)."""
-    def process(self, trade_plan: 'TradePlan', context: 'TradingContext') -> Optional['TradePlan']:
+@runtime_checkable
+class OrderRouter(StrategyWorker, Protocol):
+    """Fase 8: A contract for a worker that translates a TradePlan into execution tactics."""
+
+    def process(self, trade_plan: 'TradePlan',
+                context: 'TradingContext') -> Optional['RoutedTradePlan']:
+        ...
+
+@runtime_checkable
+class CriticalEventDetector(StrategyWorker, Protocol):
+    """
+    Fase 9: A contract for a worker that scans the final context to detect systemic events.
+    """
+    def process(self, routed_trade_plans: List['RoutedTradePlan'],
+                context: 'TradingContext') -> List['CriticalEvent']:
         ...

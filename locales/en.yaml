@@ -9,3 +9,13 @@ app:
 plugin_registry:
   scan_start: "Scanning for plugins in path: '{path}'..."
   scan_complete: "Scan complete. Found and registered {count} valid plugins."
+
+loader:
+  loading_from: "Loading data from {filename}..."
+  load_success: "Data successfully loaded and prepared."
+
+plugin_registry:
+  scan_complete: "Scan complete. Found and registered {count} valid plugins."
+
+worker_builder:
+  build_success: "Successfully built worker '{name}'."

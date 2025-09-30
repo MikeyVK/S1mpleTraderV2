@@ -13,6 +13,10 @@ __all__ = [
     "EntrySignal",
     "RiskDefinedSignal",
     "TradePlan",
+    "RoutedTradePlan",
+    "CriticalEvent",
+    "ExecutionDirective",
+    "EngineCycleResult",
     "ClosedTrade",
     "TradingContext",
     "BacktestResult",
@@ -22,6 +26,10 @@ from .signal import Signal
 from .entry_signal import EntrySignal
 from .risk_defined_signal import RiskDefinedSignal
 from .trade_plan import TradePlan
+from .routed_trade_plan import RoutedTradePlan
+from .critical_event import CriticalEvent
+from .execution_directive import ExecutionDirective
+from .engine_cycle_result import EngineCycleResult
 from .closed_trade import ClosedTrade
-from .trading_context import TradingContext
 from .backtest_result import BacktestResult
+from .trading_context import TradingContext

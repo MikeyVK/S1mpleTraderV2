@@ -9,6 +9,7 @@ data:
 
 portfolio:
   initial_capital: 10000.0
+  fees_pct: 0.001
 
 logging:
   profile: 'analysis'

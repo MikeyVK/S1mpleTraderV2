@@ -9,13 +9,13 @@ and its sub-components.
     - Defines the abstract contracts for the operational "world".
 """
 from __future__ import annotations
-
 from abc import ABC, abstractmethod
 from typing import Generator, Tuple, TYPE_CHECKING
 import pandas as pd
 
+# --- CORRECTIE: Importeer de ExecutionHandler interface HIER ---
 if TYPE_CHECKING:
-    from backend.dtos import TradePlan
+    from backend.core.interfaces.execution import ExecutionHandler
 
 class DataSource(ABC):
     """Abstract contract for any component that provides market data."""
@@ -30,15 +30,6 @@ class Clock(ABC):
     def tick(self) -> Generator[Tuple[pd.Timestamp, pd.Series], None, None]:
         """Yields the next moment in time (timestamp and data row)."""
         ...
-
-class ExecutionHandler(ABC):
-    """Abstract contract for any component that executes trades."""
-    @abstractmethod
-    def execute_trade(self, trade: TradePlan):
-        """Processes a trade DTO for execution."""
-        ...
-
-# --- Het Hoofdcontract voor de Environment ---
 
 class BaseEnvironment(ABC):
     """
@@ -59,6 +50,6 @@ class BaseEnvironment(ABC):
 
     @property
     @abstractmethod
-    def handler(self) -> ExecutionHandler:
+    def handler(self) -> "ExecutionHandler":
         """The execution handler for this environment."""
         ...

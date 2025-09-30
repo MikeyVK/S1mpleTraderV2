@@ -1,0 +1,92 @@
+# Bijlage C: Het Minimum Viable Product (MVP)
+
+Dit document beschrijft de scope en de componenten van het Minimum Viable Product (MVP) voor S1mpleTrader V2. Het doel van dit MVP is om de kleinst mogelijke, end-to-end werkende versie van de applicatie te realiseren, gebaseerd op de verfijnde architectuur.
+
++-----------------------------------------------------------------+
+|                  GEBRUIKER (Via Command Line)                   |
++-----------------------------------------------------------------+
+                         |
+                         v
++------------------------+----------------------------------------+
+|             SERVICE LAAG (De "Manager" van de run)              |
+|                                                                 |
+|  +-----------------------------------------------------------+  |
+|  |  StrategyOperator (De enige, centrale orkestrator)        |  |
+|  +-----------------------------------------------------------+  |
+|                                                                 |
++-----------------------------------------------------------------+
+                         | (Roept Backend aan)
+                         v
++------------------------+----------------------------------------+
+|                     BACKEND LAAG (De "Motor")                   |
+|                                                                 |
+|  - StrategyEngine                  - AssemblyTeam               |
+|  - BacktestEnvironment             - Portfolio                  |
+|  - "Walking Skeleton" Plugins      - Alle DTO's & Interfaces    |
+|                                                                 |
++-----------------------------------------------------------------+
+
+---
+## C.1. Definitie van het MVP: De Eenzame Specialist
+
+Het MVP, ook wel "The Walking Skeleton" genoemd, is gedefinieerd als:
+
+> Een **StrategyOperator** die in staat is om **één enkele strategie**, end-to-end, in een **backtest-omgeving** uit te voeren en de resultaten te rapporteren via de **command-line**.
+
+We focussen ons volledig op de kern-workflow van één enkele "specialist" (`StrategyOperator`). Componenten voor het beheren van een volledig portfolio (`PortfolioSupervisor`) en voor geavanceerde analyses (Meta Workflows) worden bewust uitgesteld naar latere releases. Dit stelt ons in staat om de fundamentele datastroom en de interactie tussen de kerncomponenten te valideren.
+
+---
+## C.2. Componenten van het MVP
+
+Om het MVP te realiseren, maken we gebruik van de reeds voltooide Backend-laag en bouwen we de "lijm" in de Service-laag om alles met elkaar te verbinden.
+
+### C.2.1. Bestaande Componenten (De Fundering)
+
+De volledige Backend-laag is in essentie voltooid en getest. Deze herbruikbare "motor" vormt de basis van het MVP:
+
+* **De Motor (`StrategyEngine`):** De 9-fasen pijplijn die de kernlogica van een strategie uitvoert, is geïmplementeerd en getest.
+    * *→ Zie Hoofdstuk 4: De Quant Workflow & Orkestratie*
+* **De Boekhouder (`Portfolio`):** Het "domme" grootboek dat de financiële staat beheert en `ExecutionDirectives` verwerkt, is robuust en getest.
+    * *→ Zie Hoofdstuk 2: Architectuur & Componenten*
+* **De Wereld (`BacktestEnvironment`):** De omgeving voor het uitvoeren van een strategie tegen historische data uit een CSV-bestand is operationeel.
+    * *→ Zie Hoofdstuk 2: Architectuur & Componenten*
+* **De Bouwploeg (`AssemblyTeam`):** De specialisten voor het ontdekken (`PluginRegistry`), bouwen (`WorkerBuilder`) en voorbereiden (`ContextBuilder`) van plugins zijn functioneel.
+    * *→ Zie Hoofdstuk 4: De Quant Workflow & Orkestratie*
+* **De Contracten (DTO's & Interfaces):** De volledige set van data-contracten die de communicatie tussen alle componenten regelt, is scherp gedefinieerd.
+    * *→ Zie Hoofdstuk 3: De Anatomie van een V2 Plugin*
+
+### C.2.2. Te Bouwen Componenten (De Lijm & Brandstof)
+
+De volgende componenten moeten worden gebouwd om het MVP te voltooien:
+
+* **`StrategyOperator` (Service Laag):** De centrale orkestrator voor een enkele run. Dit wordt de "manager" die de Backend-componenten aanstuurt op basis van een `run_blueprint.yaml`.
+    * *→ Zie Hoofdstuk 2: Architectuur & Componenten*
+* **"Walking Skeleton" Plugin Set:** Een minimale set van functionerende plugins om de `StrategyEngine` van een daadwerkelijke, zij het simpele, logica te voorzien.
+    * *→ Zie Hoofdstuk 3: De Anatomie van een V2 Plugin*
+* **CLI Entrypoint (`run_backtest_cli.py`):** De "startknop" waarmee de gebruiker vanaf de command-line een backtest kan initiëren door een configuratiebestand mee te geven.
+    * *→ Zie Hoofdstuk 7: Ontwikkelstrategie & Tooling*
+* **`TickReporter` & `ResultReporter`:** Simpele rapportage-specialisten die, aangestuurd door de `StrategyOperator`, de voortgang en het eindresultaat van de backtest kunnen presenteren (bv. naar de console en een CSV-bestand).
+
+---
+## C.3. Sample Backlog voor het MVP
+
+Hieronder volgt een backlog met de concrete taken die nodig zijn om het MVP te realiseren.
+
+| Fase | User Story | Type |
+| :--- | :--- | :--- |
+| **SERVICE LAAG** | [BE] Bouw de `StrategyOperator` klasse in de `services` map. | `BE` |
+| | [BE] Implementeer de `run()` methode die een `AppConfig` ontvangt. | `BE` |
+| | [BE] Implementeer de logica voor het opzetten van de `BacktestEnvironment`. | `BE` |
+| | [BE] Implementeer de logica voor het aanroepen van het `AssemblyTeam` om de `StrategyEngine` te bouwen. | `BE` |
+| | [BE] Implementeer de `engine.run()` loop en de verwerking van het `EngineCycleResult`. | `BE` |
+| | [BE] Implementeer de aanroep van de `ExecutionHandler` voor elke `ExecutionDirective`. | `BE` |
+| **PLUGIN DEVELOPMENT** | [DEV] Ontwikkel een simpele `EMADetector` plugin (type: `structural_context`). | `DEV` |
+| | [DEV] Ontwikkel een simpele `CrossOverSignal` plugin (type: `signal_generator`). | `DEV` |
+| | [DEV] Ontwikkel een "pass-through" `FixedRiskExitPlanner` (type: `exit_planner`). | `DEV` |
+| | [DEV] Schrijf de bijbehorende unit tests voor de "Walking Skeleton" plugins. | `DEV` |
+| **FRONTEND (CLI)** | [BE] Implementeer de `run_backtest_cli.py` om een `run_blueprint.yaml` in te lezen. | `BE` |
+| | [BE] Implementeer de aanroep van de `StrategyOperator` vanuit de CLI. | `BE` |
+| **RAPPORTAGE** | [BE] Bouw een simpele `ConsoleTickReporter` die P&L per tick print. | `BE` |
+| | [BE] Bouw een `CsvResultReporter` die de `ClosedTrades` naar een bestand schrijft. | `BE` |
+| | [BE] Integreer de aanroep van de reporters in de `StrategyOperator`. | `BE` |
+| **END-TO-END TEST** | [TEST] Schrijf een integratietest die de `run_backtest_cli` aanroept met een echte `run.yaml` en de output valideert. | `TEST` |

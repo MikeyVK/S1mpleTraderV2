@@ -5,15 +5,15 @@ Contains the Portfolio class, which manages the financial state of a backtest.
 @layer: Backend
 @dependencies:
     - backend.core.interfaces.portfolio: Implements the Tradable protocol.
-    - backend.dtos: Uses TradePlan and ClosedTrade DTOs.
+    - backend.dtos: Uses ExecutionDirective and ClosedTrade DTOs.
 @responsibilities:
     - Manages the account balance based on a starting capital.
-    - Executes fully-formed TradePlan objects without strategic validation.
+    - Executes fully-formed ExecutionDirective objects without strategic validation.
     - Holds the state for multiple active trades.
     - Maintains a list of all closed trades as ClosedTrade DTOs.
 @inputs:
     - `initial_capital` (float) and `fees_pct` (float) on initialization.
-    - `TradePlan` DTOs to be executed.
+    - `ExecutionDirective` DTOs to be executed.
 @outputs:
     - A list of `ClosedTrade` DTOs.
 """
@@ -22,7 +22,7 @@ from uuid import UUID
 import pandas as pd
 
 from backend.core.interfaces.portfolio import Tradable
-from backend.dtos.trade_plan import TradePlan
+from backend.dtos.execution_directive import ExecutionDirective
 from backend.dtos.closed_trade import ClosedTrade
 from backend.utils.app_logger import LogEnricher
 from backend.core.context_recorder import ContextRecorder
@@ -34,7 +34,7 @@ class Portfolio(Tradable):
 
     This class acts as a stateful ledger. Its primary responsibility is to
     maintain the financial state of the simulation by executing pre-calculated
-    TradePlan objects and updating the balance. It is a concrete implementation
+    ExecutionDirective objects and updating the balance. It is a concrete implementation
     of the Tradable protocol, capable of managing multiple concurrent trades.
     """
 
@@ -84,46 +84,47 @@ class Portfolio(Tradable):
         """Returns the dictionary of active trades."""
         return self.active_trades
 
-    def open_trade(self, trade_plan: TradePlan):
+    def open_trade(self, execution_directive: ExecutionDirective):
         """
-        Opens a new trade based on a pre-calculated TradePlan object.
+        Opens a new trade based on a pre-calculated ExecutionDirective object.
         """
         for trade in self._active_trades.values():
-            if trade['asset'] == trade_plan.asset:
+            if trade['asset'] == execution_directive.asset:
                 self.logger.error(
                     "Attempted to open a trade on an asset with an existing position.",
-                    values={'asset': trade_plan.asset}
+                    values={'asset': execution_directive.asset}
                 )
                 return
 
-        if trade_plan.position_value_eur > self._balance:
+        if execution_directive.position_value_quote > self._balance:
             self.logger.error(
                 "Insufficient capital to open trade.",
-                values={'required': trade_plan.position_value_eur, 'available': self._balance}
+                values={'required': execution_directive.position_value_quote,
+                        'available': self._balance}
             )
             return
 
         # Sla ALLE benodigde data op, inclusief correlation_id en signal_type
-        self._active_trades[trade_plan.correlation_id] = {
-            "correlation_id": trade_plan.correlation_id,
-            "signal_type": trade_plan.signal_type,
-            "entry_time": trade_plan.entry_time,
-            "asset": trade_plan.asset,
-            "direction": trade_plan.direction,
-            "entry_price": trade_plan.entry_price,
-            "sl_price": trade_plan.sl_price,
-            "tp_price": trade_plan.tp_price,
-            "position_size_asset": trade_plan.position_size_asset,
-            "position_value_eur": trade_plan.position_value_eur,
+        self._active_trades[execution_directive.correlation_id] = {
+            "correlation_id": execution_directive.correlation_id,
+            "signal_type": execution_directive.signal_type,
+            "entry_time": execution_directive.entry_time,
+            "asset": execution_directive.asset,
+            "direction": execution_directive.direction,
+            "entry_price": execution_directive.entry_price,
+            "sl_price": execution_directive.sl_price,
+            "tp_price": execution_directive.tp_price,
+            "position_size_asset": execution_directive.position_size_asset,
+            "position_value_eur": execution_directive.position_value_quote,
         }
 
         self.logger.trade(
             'portfolio.open_trade',
             values={
-                'direction': trade_plan.direction.upper(),
-                'price': f"{trade_plan.entry_price:,.2f}",
-                'sl': f"{trade_plan.sl_price:,.2f}",
-                'tp': f"{trade_plan.tp_price:,.2f}" if trade_plan.tp_price else "N/A"
+                'direction': execution_directive.direction.upper(),
+                'price': f"{execution_directive.entry_price:,.2f}",
+                'sl': f"{execution_directive.sl_price:,.2f}",
+                'tp': f"{execution_directive.tp_price:,.2f}"if execution_directive.tp_price else "N/A"
             }
         )
 
@@ -200,9 +201,9 @@ class Portfolio(Tradable):
             exit_price=exit_price,
             sl_price=trade_to_close['sl_price'],
             tp_price=trade_to_close['tp_price'],
-            position_value_eur=trade_to_close['position_value_eur'],
+            position_value_quote=trade_to_close['position_value_eur'],
             position_size_asset=trade_to_close['position_size_asset'],
-            pnl_eur=net_pnl,
+            pnl_quote=net_pnl,
         )
         self._closed_trades.append(closed_trade)
 
@@ -211,7 +212,7 @@ class Portfolio(Tradable):
             values={
                 'direction': closed_trade.direction.upper(),
                 'price': f"{closed_trade.exit_price:,.2f}",
-                'pnl': f"{closed_trade.pnl_eur:,.2f}",
-                'result': "WIN" if closed_trade.pnl_eur > 0 else "LOSS"
+                'pnl': f"{closed_trade.pnl_quote:,.2f}",
+                'result': "WIN" if closed_trade.pnl_quote > 0 else "LOSS"
             }
         )

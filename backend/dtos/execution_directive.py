@@ -1,49 +1,73 @@
 # backend/dtos/execution_directive.py
 """
-Contains the DTOs that represent the final, executable output of the
-StrategyEngine. An ExecutionDirective is a command for the ExecutionHandler.
+Contains the DTO for a final, flattened execution instruction.
 
 @layer: Backend (DTO)
+@dependencies: [pydantic, pandas, uuid]
+@responsibilities:
+    - Defines the flat, universal contract for an instruction sent to the
+      ExecutionHandler.
 """
-from typing import Literal, Union
-from pydantic import BaseModel, Field
+import uuid
+from typing import Literal, Optional, Dict, Any
+from pydantic import BaseModel, ConfigDict
 import pandas as pd
 
-from .trade_plan import TradePlan
-
-
-# --- Base Directive ---
-
-class BaseDirective(BaseModel):
-    """A base model for all execution directives."""
-    pass
-
-
-# --- Concrete Directive Types ---
-
-class SingleTradeDirective(BaseDirective):
+class ExecutionDirective(BaseModel):
     """
-    The most common directive: execute a single, complete trade plan.
-    This is the direct output for most strategies.
-    """
-    directive_type: Literal['single_trade']
-    trade_plan: TradePlan
+    A flat, final, and universal instruction for the ExecutionHandler.
 
+    This DTO is a flattened representation of a RoutedTradePlan and contains
+    all necessary information to execute, manage, and track a trade. It serves
+    as the definitive, simple contract between the StrategyEngine's output and
+    the execution layer.
 
-class CancelAllDirective(BaseDirective):
+    Attributes:
+        correlation_id (uuid.UUID): The unique ID from the source Signal.
+        signal_type (str): The name of the logic that generated the original signal.
+        asset (str): The asset to be traded.
+        direction (Literal['long', 'short']): The direction of the trade.
+        entry_price (float): The calculated entry price for the trade.
+        sl_price (float): The absolute stop-loss price.
+        tp_price (Optional[float]): The absolute take-profit price, if any.
+        position_value_quote (float): The total value of the position in the quote currency.
+        position_size_asset (float): The size of the position in the base asset.
+        order_type (Literal['market', 'limit']): The fundamental order type.
+        limit_price (Optional[float]): The price for a limit order.
+        time_in_force (Literal['GTC', 'IOC', 'FOK']): How long the order remains valid.
+        post_only (bool): Flag to ensure the order is a "maker" order.
+        execution_strategy (Optional[Literal['twap']]): Label for an algorithmic strategy.
+        strategy_params (Optional[Dict[str, Any]]): Parameters for the algorithmic strategy.
+        preferred_exchange (Optional[str]): A hint for the ExecutionHandler.
+        entry_time (pd.Timestamp): From the original signal.
     """
-    A directive to cancel all open orders for a specific asset
-    (useful for live trading).
-    """
-    directive_type: Literal['cancel_all']
+    # Traceability & Identity
+    correlation_id: uuid.UUID
+    signal_type: str
+
+    # Core Trade Parameters
     asset: str
+    direction: Literal['long', 'short']
+    entry_price: float
+    sl_price: float
+    tp_price: Optional[float]
 
+    # Sizing
+    position_value_quote: float
+    position_size_asset: float
 
-# --- Discriminated Union ---
-# This type allows a variable to be one of the specified directive types.
-# The 'directive_type' field is used by Pydantic to automatically determine
-# which model to use for validation.
-ExecutionDirective = Union[
-    SingleTradeDirective,
-    CancelAllDirective
-]
+    # Tactical Execution Instructions
+    order_type: Literal['market', 'limit']
+    limit_price: Optional[float] = None
+    time_in_force: Literal['GTC', 'IOC', 'FOK'] = 'GTC'
+    post_only: bool = False
+    execution_strategy: Optional[Literal['twap']] = None
+    strategy_params: Optional[Dict[str, Any]] = None
+    preferred_exchange: Optional[str] = None
+
+    # Timestamps
+    entry_time: pd.Timestamp
+
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True
+    )

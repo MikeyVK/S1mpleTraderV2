@@ -9,4 +9,3 @@ Docstring for live_environment.py.
 
 class LiveTradeEnvironment:
     """Docstring for LiveTradeEnvironment."""
-    pass

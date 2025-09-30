@@ -10,7 +10,7 @@ Contains the data class for a signal enriched with an entry tactic.
 """
 import uuid
 from pydantic import BaseModel, ConfigDict
-import pandas as pd
+from .signal import Signal
 
 class EntrySignal(BaseModel):
     """Represents a signal with a concrete entry tactic.
@@ -21,17 +21,11 @@ class EntrySignal(BaseModel):
 
     Attributes:
         correlation_id (uuid.UUID): The unique ID inherited from the source Signal.
-        entry_time (pd.Timestamp): The timestamp of the original signal.
-        asset (str): The asset to be traded.
-        direction (str): The direction of the trade ('long' or 'short').
-        signal_type (str): The name of the original signal generator.
+        signal: the original Signal DTO.
         entry_price (float): The calculated entry price for the trade.
     """
     correlation_id: uuid.UUID
-    entry_time: pd.Timestamp
-    asset: str
-    direction: str
-    signal_type: str
+    signal: Signal
     entry_price: float
 
     model_config = ConfigDict(

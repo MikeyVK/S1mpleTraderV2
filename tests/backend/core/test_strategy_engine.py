@@ -1,65 +1,79 @@
 # tests/backend/core/test_strategy_engine.py
 """Unit tests for the StrategyEngine."""
 
-import pandas as pd
 import uuid
+import pandas as pd
 from pytest_mock import MockerFixture
 
-# Importeer alle DTOs en Interfaces die we nodig hebben
-from backend.dtos import (Signal, EntrySignal, RiskDefinedSignal,
-                          TradePlan, TradingContext)
+from backend.dtos import (
+    Signal, EntrySignal, RiskDefinedSignal, TradePlan, RoutedTradePlan,
+    TradingContext, EngineCycleResult, ExecutionDirective, CriticalEvent
+)
 from backend.core.interfaces import Clock
-# De motor wordt nu vanuit de backend geïmporteerd
 from backend.core.strategy_engine import StrategyEngine
+from backend.core.directive_flattener import DirectiveFlattener
 
-
-def test_strategy_engine_yields_correct_trade_plan(mocker: MockerFixture):
+def test_strategy_engine_yields_correct_result(mocker: MockerFixture):
     """
-    Tests that the StrategyEngine correctly processes the DTO pipeline and
-    yields a final, approved TradePlan.
+    Tests that the StrategyEngine correctly processes the full 9-phase pipeline
+    and yields a final, complete EngineCycleResult.
     """
-    # Arrange (De Voorbereiding)
-
-    # 1. Maak de "stuntman" voor de Clock aan.
+    # --- Arrange (De Voorbereiding) ---
     mock_clock = mocker.MagicMock(spec=Clock)
     test_time = pd.Timestamp("2023-01-01 10:00:00", tz='UTC')
     mock_clock.tick.return_value = [(test_time, pd.Series())]
-
-    # 2. Maak de "nep-gereedschappen" (de plugins) en hun "scripts".
     corr_id = uuid.uuid4()
-    signal_dto = Signal(correlation_id=corr_id, timestamp=test_time, asset="BTC/EUR", direction="long", signal_type="test_signal")
-    entry_signal_dto = EntrySignal(correlation_id=corr_id, entry_time=test_time, asset="BTC/EUR", direction="long", signal_type="test_signal", entry_price=100.0)
-    risk_defined_dto = RiskDefinedSignal(**entry_signal_dto.model_dump(), sl_price=95.0)
-    final_trade_plan = TradePlan(**risk_defined_dto.model_dump(), position_size_asset=1.0, position_value_eur=10000.0)
 
+    # 1. Bouw de volledige, geneste DTO-keten op
+    signal_dto = Signal(correlation_id=corr_id, timestamp=test_time, asset="BTC/EUR", direction="long", signal_type="test_signal")
+    entry_signal_dto = EntrySignal(correlation_id=corr_id, signal=signal_dto, entry_price=100.0)
+    risk_defined_dto = RiskDefinedSignal(correlation_id=corr_id, entry_signal=entry_signal_dto, sl_price=95.0, tp_price=110.0)
+    trade_plan_dto = TradePlan(correlation_id=corr_id, risk_defined_signal=risk_defined_dto, position_value_quote=10000.0, position_size_asset=1.0)
+    routed_plan_dto = RoutedTradePlan(correlation_id=corr_id, trade_plan=trade_plan_dto, order_type='limit', limit_price=100.0)
+    
+    expected_directive = DirectiveFlattener().flatten(routed_plan_dto)
+
+    # 2. Mocks voor elke worker, nu geconfigureerd voor de .process() methode
+    # --- DE FIX: Gebruik overal .process in de mocks ---
     mock_signal_generator = mocker.MagicMock(process=mocker.Mock(return_value=[signal_dto]))
+    mock_signal_refiner = mocker.MagicMock(process=mocker.Mock(return_value=signal_dto))
     mock_entry_planner = mocker.MagicMock(process=mocker.Mock(return_value=entry_signal_dto))
     mock_exit_planner = mocker.MagicMock(process=mocker.Mock(return_value=risk_defined_dto))
-    mock_size_planner = mocker.MagicMock(process=mocker.Mock(return_value=final_trade_plan))
-    mock_portfolio_overlay = mocker.MagicMock(process=mocker.Mock(return_value=final_trade_plan))
+    mock_size_planner = mocker.MagicMock(process=mocker.Mock(return_value=trade_plan_dto))
+    mock_order_router = mocker.MagicMock(process=mocker.Mock(return_value=routed_plan_dto))
+    mock_event_detector = mocker.MagicMock(process=mocker.Mock(return_value=[]))
 
-    # 3. Stel de kant-en-klare "gereedschapskist" samen.
     active_workers = {
         'signal_generator': [mock_signal_generator],
-        'signal_refiner': [],
+        'signal_refiner': [mock_signal_refiner],
         'entry_planner': mock_entry_planner,
         'exit_planner': mock_exit_planner,
         'size_planner': mock_size_planner,
-        'portfolio_overlay': [mock_portfolio_overlay]
+        'order_router': [mock_order_router],
+        'critical_event_detector': [mock_event_detector]
     }
 
-    # Act (De Actie)
+    # --- Act (De Actie) ---
     engine = StrategyEngine(active_workers=active_workers)
-    generated_plans = list(engine.run(
+    cycle_results = list(engine.run(
         trading_context=mocker.MagicMock(spec=TradingContext),
         clock=mock_clock
     ))
 
-    # Assert (De Controle)
-    assert len(generated_plans) == 1
-    assert generated_plans[0] == final_trade_plan
+    # --- Assert (De Controle) ---
+    assert len(cycle_results) == 1
+    result = cycle_results[0]
+    
+    assert isinstance(result, EngineCycleResult)
+    assert len(result.execution_directives) == 1
+    assert len(result.critical_events) == 0
+    assert result.execution_directives[0] == expected_directive
+
+    # Valideer dat de correcte methodes zijn aangeroepen
     mock_signal_generator.process.assert_called_once()
+    mock_signal_refiner.process.assert_called_once_with(signal_dto, mocker.ANY)
     mock_entry_planner.process.assert_called_once_with(signal_dto, mocker.ANY)
     mock_exit_planner.process.assert_called_once_with(entry_signal_dto, mocker.ANY)
     mock_size_planner.process.assert_called_once_with(risk_defined_dto, mocker.ANY)
-    mock_portfolio_overlay.process.assert_called_once_with(final_trade_plan, mocker.ANY)
+    mock_order_router.process.assert_called_once_with(trade_plan_dto, mocker.ANY)
+    mock_event_detector.process.assert_called_once()

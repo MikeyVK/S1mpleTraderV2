@@ -22,6 +22,7 @@ class PlatformDataConfig(BaseModel):
 class PortfolioConfig(BaseModel):
     """Defines the structure for the 'portfolio' section."""
     initial_capital: float = 10000.0
+    fees_pct: float = 0.001
 
 class LoggingConfig(BaseModel):
     """Defines the structure for the 'logging' section."""

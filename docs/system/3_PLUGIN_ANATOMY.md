@@ -57,3 +57,18 @@ Dit manifest is een contract dat de volgende cruciale informatie vastlegt:
 * **`params_class`**: De exacte naam van de Pydantic-klasse in het `schema.py` bestand (bv. `MarketStructureParams`).
 * **`stateful`**: Een boolean (`true` / `false`) die aangeeft of de plugin een `state.json`-bestand gebruikt.
 * **`dependencies`**: Een lijst van datavelden die de plugin verwacht als input. Voor een `ContextWorker` is dit een lijst van kolomnamen (bv. `['high', 'low', 'close']`) die aanwezig moeten zijn in de DataFrame. De `AbstractPluginFactory` valideert hierop voordat de plugin wordt uitgevoerd.
+
+## 3.4. De Worker & het BaseWorker Raamwerk
+
+De `worker.py` bevat de daadwerkelijke logica. Om de ontwikkeling te versnellen en de consistentie te borgen, biedt de architectuur een set aan basisklassen in `backend/core/base_worker.py`.
+
+* **Doel:** Het automatiseren van de complexe, geneste DTO-creatie en het doorgeven van de `correlation_id`.
+* **Voorbeeld (`BaseEntryPlanner`):**
+    ```python
+    class MyEntryPlanner(BaseEntryPlanner):
+        def _process(self, input_dto: Signal, correlation_id: UUID, context: TradingContext) -> Optional[Dict[str, Any]]:
+            # Developer focust alleen op de logica
+            entry_price = ... # bereken de entry prijs
+            return {"entry_price": entry_price}
+    ```
+De `BaseEntryPlanner` handelt automatisch de creatie van de `EntrySignal` DTO af, nest de oorspronkelijke `Signal` erin, en zorgt dat de `correlation_id` correct wordt doorgegeven. Dit maakt de plugin-code extreem schoon en gefocust.

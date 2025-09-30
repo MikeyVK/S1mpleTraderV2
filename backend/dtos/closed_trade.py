@@ -33,9 +33,9 @@ class ClosedTrade(BaseModel):
         exit_price (float): The actual exit price.
         sl_price (float): The original stop-loss price from the TradePlan.
         tp_price (Optional[float]): The original take-profit price, if any.
-        position_value_eur (float): The initial value of the position.
+        position_value_quote (float): The initial value of the position.
         position_size_asset (float): The size of the position.
-        pnl_eur (float): The net profit or loss of the trade in EUR, after fees.
+        pnl_quote (float): The net profit or loss of the trade, after fees.
     """
     correlation_id: uuid.UUID
     entry_time: pd.Timestamp
@@ -47,9 +47,9 @@ class ClosedTrade(BaseModel):
     exit_price: float
     sl_price: float
     tp_price: Optional[float] = None
-    position_value_eur: float
+    position_value_quote: float
     position_size_asset: float
-    pnl_eur: float
+    pnl_quote: float
 
     model_config = ConfigDict(
         arbitrary_types_allowed=True

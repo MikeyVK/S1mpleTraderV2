@@ -9,6 +9,7 @@ Contains the data class for a raw, unfiltered signal event.
       by a SignalGenerator plugin.
 """
 import uuid
+from typing import Literal
 from pydantic import BaseModel, Field, ConfigDict
 import pandas as pd
 
@@ -35,7 +36,7 @@ class Signal(BaseModel):
     correlation_id: uuid.UUID = Field(default_factory=uuid.uuid4)
     timestamp: pd.Timestamp
     asset: str
-    direction: str
+    direction: Literal['long', 'short']
     signal_type: str
 
     model_config = ConfigDict(

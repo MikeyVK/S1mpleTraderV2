@@ -9,7 +9,7 @@ from typing import Protocol, List, Dict, Any, runtime_checkable
 from uuid import UUID
 import pandas as pd
 
-from backend.dtos.trade_plan import TradePlan
+from backend.dtos.execution_directive import ExecutionDirective
 from backend.dtos.closed_trade import ClosedTrade
 
 @runtime_checkable
@@ -41,7 +41,7 @@ class Tradable(Protocol):
         """A list of all closed trades."""
         ...
 
-    def open_trade(self, trade_plan: TradePlan) -> None:
+    def open_trade(self, execution_directive: ExecutionDirective) -> None:
         """
         Receives a complete trade plan and processes it to open a new
         position, updating the internal state.

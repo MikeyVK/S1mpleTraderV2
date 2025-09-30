@@ -17,25 +17,26 @@ from typing import Generator, Tuple
 import pandas as pd
 
 from backend.config.schemas.app_schema import AppConfig
-from backend.core.interfaces import (BaseEnvironment, Clock, DataSource,
-                                     ExecutionHandler, Tradable)
+# --- CORRECTIE: Importeer de JUISTE, GECENTRALISEERDE interfaces ---
+from backend.core.interfaces import BaseEnvironment, Clock, DataSource, Tradable
+from backend.core.interfaces.execution import ExecutionHandler
 from backend.data.loader import DataLoader
-from backend.dtos.trade_plan import TradePlan
 from backend.utils.app_logger import LogEnricher
+# --- CORRECTIE: Importeer de CONCRETE handler ---
+from backend.core.execution import BacktestExecutionHandler
 
 
 # --- Sub-component Implementations ---
-
 class CSVDataSource(DataSource):
     """A data source that loads market data from a CSV file."""
 
-    def __init__(self, app_config: AppConfig, logger: LogEnricher):
+    def __init__(self, source_dir: str, trading_pair: str, timeframe: str, logger: LogEnricher):
         self._logger = logger
-        # Pad naar data wordt afgeleid uit de AppConfig
-        source_dir = Path(app_config.data.source_dir)
-        pair_filename = app_config.data.trading_pair.replace('/', '_')
-        filename = f"{pair_filename}_{app_config.data.timeframe}.csv"
-        file_path = source_dir / filename
+        base_path = Path(source_dir)
+        pair_filename = trading_pair.replace('/', '_')
+        filename = f"{pair_filename}_{timeframe}.csv"
+        file_path = base_path / filename
+
         self._data_loader = DataLoader(str(file_path), self._logger)
         self._data: pd.DataFrame = pd.DataFrame()
 
@@ -44,7 +45,6 @@ class CSVDataSource(DataSource):
         if self._data.empty:
             self._data = self._data_loader.load()
         return self._data
-
 
 class SimulatedClock(Clock):
     """A clock that simulates the passage of time by iterating over a DataFrame."""
@@ -58,46 +58,32 @@ class SimulatedClock(Clock):
             assert isinstance(timestamp, pd.Timestamp)
             yield timestamp, row
 
-
-class BacktestExecutionHandler(ExecutionHandler):
-    """An execution handler that simulates trades against a Tradable object."""
-
-    def __init__(self, tradable: Tradable):
-        self._tradable = tradable
-
-    def execute_trade(self, trade: TradePlan):
-        """Passes the trade plan to the tradable object for simulated execution."""
-        self._tradable.open_trade(trade)
-
-
 # --- Main Environment Class ---
-
 class BacktestEnvironment(BaseEnvironment):
     """
     The concrete implementation of a BaseEnvironment for running backtests.
     """
-
     def __init__(self, app_config: AppConfig, tradable: Tradable):
         """Initializes the environment and constructs its sub-components."""
         self._logger = LogEnricher(logging.getLogger(__name__))
 
-        # Bouw de gespecialiseerde componenten voor een backtest.
-        self._source = CSVDataSource(app_config, self._logger)
-        # De Clock heeft de data van de Source nodig.
+        self._source = CSVDataSource(
+            source_dir=app_config.platform.data.source_dir,
+            trading_pair=app_config.run.data.trading_pair,
+            timeframe=app_config.run.data.timeframe,
+            logger=self._logger
+        )
         self._clock = SimulatedClock(self._source.get_data())
-        self._handler = BacktestExecutionHandler(tradable)
+        self._handler = BacktestExecutionHandler(tradable, self._logger)
 
     @property
     def source(self) -> DataSource:
-        """The data source for this environment."""
         return self._source
 
     @property
     def clock(self) -> Clock:
-        """The clock that controls time in this environment."""
         return self._clock
 
     @property
     def handler(self) -> ExecutionHandler:
-        """The execution handler for this environment."""
         return self._handler

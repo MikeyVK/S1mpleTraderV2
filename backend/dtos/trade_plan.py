@@ -3,45 +3,33 @@
 Contains the data class for a complete, executable trade plan.
 
 @layer: Backend (DTO)
-@dependencies: [pydantic, pandas, uuid]
+@dependencies: [pydantic, uuid, .risk_defined_signal]
 @responsibilities:
     - Defines the standardized data structure for a fully planned trade, ready
-      for execution.
+      for the OrderRouter.
 """
 import uuid
-from typing import Optional
 from pydantic import BaseModel, ConfigDict
-import pandas as pd
+from .risk_defined_signal import RiskDefinedSignal
 
 class TradePlan(BaseModel):
-    """Represents a complete, executable plan for a single trade.
+    """
+    Represents a complete strategic plan for a single trade.
 
-    This DTO is created by a SizePlanner (Fase 5c). It enriches a
-    RiskDefinedSignal with the final position size and value, calculated
-    based on portfolio risk rules. It is the final, concrete plan before
-    being sent to the PortfolioOverlay (Fase 6) for a last check.
+    This DTO is created by a SizePlanner (Fase 7). It enriches a
+    RiskDefinedSignal with the final position size and value. It contains
+    all necessary strategic information before being passed to the
+    OrderRouter (Fase 8) to be translated into tactical execution instructions.
 
     Attributes:
         correlation_id (uuid.UUID): The unique ID from the source Signal.
-        entry_time (pd.Timestamp): The timestamp of the original signal.
-        asset (str): The asset to be traded.
-        direction (str): The direction of the trade ('long' or 'short').
-        signal_type (str): The name of the original signal generator.
-        entry_price (float): The calculated entry price for the trade.
-        sl_price (float): The absolute stop-loss price.
-        tp_price (Optional[float]): The absolute take-profit price, if any.
-        position_value_eur (float): The total value of the position in EUR.
+        risk_defined_signal (RiskDefinedSignal): The nested DTO from the previous phase.
+        position_value_quote (float): The total value of the position in the quote currency.
         position_size_asset (float): The size of the position in the base asset.
     """
     correlation_id: uuid.UUID
-    entry_time: pd.Timestamp
-    asset: str
-    direction: str
-    signal_type: str
-    entry_price: float
-    sl_price: float
-    tp_price: Optional[float] = None
-    position_value_eur: float
+    risk_defined_signal: RiskDefinedSignal
+    position_value_quote: float
     position_size_asset: float
 
     model_config = ConfigDict(

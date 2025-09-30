@@ -38,6 +38,51 @@ De applicatie is opgebouwd uit drie strikt gescheiden lagen die een **eenrichtin
 
 ## 2.2. Visueel diagram (uitwerking)
 
++---------------------------------------------------------------------------------------------------------+
+|                                    GEBRUIKER (Via Web UI / API)                                         |
+|    (Start runs, analyseert resultaten, beheert portfolio)                                               |
++-----------------------------------------------------+---------------------------------------------------+
+                                                      |
+           +------------------------------------------+------------------------------------------+
+           |                                                                                     |
+           v                                                                                     v
++----------+----------------------------------+  +------------------------------------------------+------------+
+|  OPERATIONELE HIËRARCHIE (SERVICE LAAG)     |  |          R&D / OFFLINE ANALYSE (META WORKFLOWS)             |
+|  (Live / Paper Trading)                     |  |                                                             |
+|                                             |  |  +---------------------------+                              |
+|  +---------------------------------------+  |  |  |   OptimizationService /   |                              |
+|  |       PortfolioSupervisor             |  |  |  |    VariantTestService     |                              |
+|  |       (De "Fondsbeheerder")           |  |  |  +------------+--------------+                              |
+|  +------------------+--------------------+  |  |               | (Analyseert configuratiepad)                |
+|                     ^ (5. Events/Directives)|  |               |                                             |
+|                     | (naar boven)          |  |  +------------+------------------------------------------+  |
+|                     |                       |  |  | Scenario A (Micro/Meso)      |   | Scenario B (Macro) |  |
+|  (6. Management Commando's)                 |  |  v                                  v                       |
+|  (naar beneden)     v                       |  |  +-------------------------------+  +--------------------+  |
+|  +------------------+--------------------+  |  |  | Simuleert 1x StrategyOperator |  | Simuleert 1x       |  |
+|  |  StrategyOperator (Specialist) A      |  |  |  +-------------------------------+  | PortfolioSupervisor|  |
+|  |  (Voorheen "WorkflowService")         |  |  |                                     +--------------------+  |
+|  +---------------------------------------+  |  |                                                             |
+|                                             |  +------------------------------------------------+------------+
+|  +---------------------------------------+  |
+|  |  StrategyOperator (Specialist) B      |  |                      Λ
+|  |  (Draait parallel)                    |  |                      |
+|  +---------------------------------------+  |                      | (Gebruikt dezelfde Backend componenten)
+|                                             |                      |
++--------------------------------------------+----------------------+-------------------------------------+
+                                             | (Roept Backend aan)
+                                             v
++--------------------------------------------+-------------------------------------------------------------+
+|                                        DE FUNDERING (BACKEND LAAG)                                       |
+|                    (De herbruikbare, agnostische "Motor" & "Gereedschapskist")                           |
+|                                                                                                          |
+|  - StrategyEngine (De 9-fasen motor)            - AssemblyTeam (De bouwers: Registry, Builder)           |
+|  - ExecutionEnvironments (Backtest/Live/Paper)  - Portfolio (De "domme" boekhouder)                      |
+|  - Alle DTO's, Interfaces & Utilities           - DirectiveFlattener (De vertaler)                       |
+|                                                                                                          |
++----------------------------------------------------------------------------------------------------------+
+
+
 +--------------------------------------------------------------------------------------------------+
 |                                         FRONTEND LAAG                                            |
 |                  (Web UI / CLI - De "Marketing & Communicatie" afdeling)                         |
@@ -152,7 +197,7 @@ De Service-laag is geen verzameling losse componenten, maar een gestructureerde 
 
 #### **2.4.4. De ExecutionEnvironment (Het Chassis / De Wereld)**
 * **Laag:** Backend
-* **Verantwoordelijkheid:** Definieert de "wereld" (Backtest, Paper, Live) waarin een Operator of Supervisor opereert. Dit is de cruciale abstractielaag die de strategie-logica volledig ontkoppelt van de data- en executiebronnen.
+* **Verantwoordelijkheid:** Definieert de "wereld" (Backtest, Paper, Live) waarin de strategie opereert. Het ontkoppelt de strategie-logica volledig van de data- en executiebronnen.
 * **Componenten:**
   * **`DataSource`**: Levert marktdata (uit een CSV-bestand of een live WebSocket).
   * **`Clock`**: Genereert de "hartslag" van het systeem.
@@ -160,14 +205,15 @@ De Service-laag is geen verzameling losse componenten, maar een gestructureerde 
 
 #### **2.4.5. Het Portfolio (Het Grootboek)**
 * **Laag:** Backend (`backend/core/portfolio.py`)
-* **Verantwoordelijkheid:** Het "domme" grootboek. Managet kapitaal, posities en openstaande orders. Het wordt gedeeld en bijgewerkt door de `ExecutionHandler`, en gelezen door de `PortfolioSupervisor` voor risicobeslissingen.* **Proces:**
+* **Verantwoordelijkheid:** Het "domme" grootboek. Managet kapitaal, posities en openstaande orders. Het is volledig agnostisch over de omgeving en wordt geïnitialiseerd met simpele waarden, niet met een config-object.
+* **Proces:**
     * Houdt de cash-balans en de totale waarde van het portfolio bij.
-    * Registreert openstaande orders en actieve posities per `strategy_id`.
+    * Registreert openstaande orders en actieve posities per `correlation_id`.
 * **Output:** Een continu bijgewerkte equity curve en een lijst van `ClosedTrade` DTO's.
 
-#### **2.4.6. Assembly Team (`AbstractPluginFactory`)**
-* **Laag:** Backend/Assembly
-* **Verantwoordelijkheid:** Het "technische projectbureau". Bestaat uit de `PluginRegistry`, `WorkerBuilder`, en `ContextPipelineRunner`. Ontdekt, valideert, bouwt en orkestreert de technische executie van plugins.
+#### **2.4.6. Assembly Team (`PluginRegistry`, `WorkerBuilder`, `ContextBuilder`)**
+* **Laag:** Backend
+* **Verantwoordelijkheid:** Het "technische projectbureau". Bestaat uit specialisten die plugins ontdekken, valideren, bouwen en de context-pijplijn (Fase 1 & 2) uitvoeren.
 
 ---
 ## 2.5. Design Principles & Kernconcepten
@@ -191,12 +237,12 @@ Bij het starten van een run, leest de applicatie het `YAML`-bestand en bouwt een
   * ***V2 voorbeeld:*** Een `FVGEntryDetector`-plugin detecteert alleen Fair Value Gaps. Het bepalen van de positiegrootte of het analyseren van de marktstructuur gebeurt in aparte `position_sizer`- of context-plugins.
 
 * **OCP (Open/Closed Principle):** Uitbreidbaar zonder bestaande code te wijzigen.
-  * ***V2 voorbeeld:*** Wil je een nieuwe exit-strategie toevoegen? Je maakt simpelweg een nieuwe `trade_constructor`-plugin; de `StrategyOperator` (de regisseur van de pipeline) hoeft hiervoor niet aangepast te worden.
+    * ***V2 voorbeeld:*** Wil je een nieuwe exit-strategie toevoegen? Je maakt simpelweg een nieuwe `exit_planner`-plugin; de `StrategyEngine` hoeft hiervoor niet aangepast te worden.
 
 * **DIP (Dependency Inversion Principle):** Hoge-level modules hangen af van abstracties.
-  * ***V2 voorbeeld:*** De `StrategyOperator` en `PortfolioSupervisor` hangen af van de `BaseEnvironment`-interface, niet van de specifieke `BacktestEnvironment`. Hierdoor zijn de Service-laag componenten volledig herbruikbaar in elke context.
+    * ***V2 voorbeeld:*** De `BacktestService` (Service-laag) hangt af van de `BaseEnvironment`-interface, niet van de specifieke `BacktestEnvironment`. Hierdoor zijn de services volledig herbruikbaar in elke context.
 
 ### **Kernpatronen**
-* **Factory Pattern:** De `AbstractPluginFactory` centraliseert het ontdekken, valideren en creëren van alle plugins op basis van hun `plugin_manifest.yaml`.
+* **Factory Pattern:** Het `Assembly Team` (met `WorkerBuilder`) centraliseert het ontdekken, valideren en creëren van alle plugins.
 * **Strategy Pattern:** De "Plugin First"-benadering is de puurste vorm van dit patroon. Elke plugin is een uitwisselbare strategie voor een specifieke taak.
-* **DTO’s (Data Transfer Objects):** Pydantic-modellen (`Signal`, `Trade`, `ClosedTrade`) zorgen voor een voorspelbare en type-veil
+* **DTO’s (Data Transfer Objects):** Pydantic-modellen (`Signal`, `TradePlan`, `ClosedTrade`) zorgen voor een voorspelbare en type-veilige dataflow tussen alle componenten.

@@ -35,16 +35,15 @@ De architectuur is opgebouwd uit drie strikt gescheiden lagen (Frontend → Serv
 
 ## Hoofdstuk 3: De Anatomie van een Plugin
 
-* **3.1. Basisstructuur** Een plugin is een zelfstandige package met eigen logica, contracten (**Pydantic**-modellen), manifest (`plugin_manifest.yaml`) en metadata. Elke plugin declareert zijn `type` (bv. `regime_context`, `signal_generator`, `execution_planner`, etc.), `dependencies`, en Pydantic-gevalideerde `params`.
-
-* **3.2. Gedetailleerde uitwerking** Voor bestandsstructuur, **YAML vs. JSON**-beleid en aanpak voor **stateful** plugins:  
-  **→ `docs/system/3_PLUGIN_ANATOMY.md`**
+Een plugin is een zelfstandige package met eigen logica, contracten (**Pydantic**-modellen), manifest (`plugin_manifest.yaml`) en metadata. Elke plugin declareert zijn `type` (bv. `regime_context`, `signal_generator`, `execution_planner`, etc.), `dependencies`, en Pydantic-gevalideerde `params`.
+ 
+**→ Lees de volledige uitwerking in: `docs/system/3_PLUGIN_ANATOMY.md`**
 
 ---
 
 ## Hoofdstuk 4: De Quant Workflow: Van Idee tot Inzicht
 
-De kern van de strategie-executie is een systematische, multi-fase trechter die een idee valideert en omzet in een concrete trade. Dit hoofdstuk beschrijft elke fase, van Regime Context tot de Portfolio Overlay, en verduidelijkt de rollen van de `StrategyEngine` (de motor) en het `Assembly Team` (de technische projectmanager).
+De kern van de strategie-executie is een systematische, **9-fasen trechter** die een idee valideert en omzet in een `TradeProposal`. Dit hoofdstuk beschrijft elke fase, van `Regime Context` tot de `Critical Event Detector`, en verduidelijkt de rollen van de `StrategyEngine` (de motor) en het `Assembly Team` (de bouwers).
 
 **→ Lees de volledige uitwerking in: `docs/system/4_WORKFLOW_AND_ORCHESTRATOR.md`**
 

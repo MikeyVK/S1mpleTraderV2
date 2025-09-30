@@ -15,7 +15,7 @@ from typing import Any, Dict, Generator, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from backend.core.interfaces import Clock
-    from backend.dtos import TradingContext, TradePlan
+    from backend.dtos import TradingContext, EngineCycleResult
 
 class BaseStrategyEngine(ABC):
     """
@@ -32,7 +32,7 @@ class BaseStrategyEngine(ABC):
     @abstractmethod
     def run(self,
             trading_context: 'TradingContext',
-            clock: 'Clock') -> Generator['TradePlan', None, None]:
+            clock: 'Clock') -> Generator['EngineCycleResult', None, None]:
         """
         Starts the main event loop and yields approved TradePlans.
 
