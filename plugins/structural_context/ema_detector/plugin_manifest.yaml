@@ -1,0 +1,14 @@
+# plugins/structural_context/ema_detector/plugin_manifest.yaml
+name: "ema_detector"
+version: "1.0.0"
+description: "Calculates and adds an Exponential Moving Average (EMA) to the DataFrame."
+type: "structural_context" # Geeft aan dat dit een Fase 2 plugin is
+
+# --- Code Contract ---
+entry_class: "EmaDetector"          # De naam van de klasse in worker.py
+schema_path: "schema.py"            # Het pad naar het Pydantic-schema
+params_class: "EmaDetectorParams"   # De naam van de Pydantic-klasse in schema.py
+
+# --- Data Contract ---
+dependencies: ["close"]             # Deze plugin heeft de 'close' kolom nodig
+provides: []                        # De output kolomnaam is dynamisch, dus hier leeg

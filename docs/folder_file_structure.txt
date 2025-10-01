@@ -1,4 +1,4 @@
-S1mpleTraderV2/
+s1mpletrader/
 ├── backend
 │   ├── assembly
 │   │   ├── __init__.py
@@ -113,8 +113,6 @@ S1mpleTraderV2/
 │   │   │   └── main.py
 │   │   └── ui
 │   │       ├── src
-│   │       │   ├── components
-│   │       │   ├── services
 │   │       │   └── App.tsx
 │   │       └── package.json
 │   └── __init__.py
@@ -122,8 +120,17 @@ S1mpleTraderV2/
 │   ├── en.yaml
 │   └── nl.yaml
 ├── plugins
-│   ├── portfolio_overlays
-│   │   ├── max_drawdown_overlay
+│   ├── critical_event_detectors
+│   │   └── max_drawdown_overlay
+│   │       ├── tests
+│   │       │   ├── __init__.py
+│   │       │   └── test_worker.py
+│   │       ├── __init__.py
+│   │       ├── plugin_manifest.yaml
+│   │       ├── schema.py
+│   │       └── worker.py
+│   ├── entry_planners
+│   │   ├── liquidity_target_exit
 │   │   │   ├── tests
 │   │   │   │   ├── __init__.py
 │   │   │   │   └── test_worker.py
@@ -131,6 +138,9 @@ S1mpleTraderV2/
 │   │   │   ├── plugin_manifest.yaml
 │   │   │   ├── schema.py
 │   │   │   └── worker.py
+│   │   └── __init__.py
+│   ├── exit_planners
+│   ├── order_routers
 │   │   └── __init__.py
 │   ├── regime_filters
 │   │   ├── adx_trend_filter
@@ -162,18 +172,9 @@ S1mpleTraderV2/
 │   │   │   ├── schema.py
 │   │   │   └── worker.py
 │   │   └── __init__.py
+│   ├── size_planners
 │   ├── structural_context
-│   │   ├── market_structure_detector
-│   │   │   ├── tests
-│   │   │   │   ├── __init__.py
-│   │   │   │   └── test_worker.py
-│   │   │   ├── __init__.py
-│   │   │   ├── plugin_manifest.yaml
-│   │   │   ├── schema.py
-│   │   │   └── worker.py
-│   │   └── __init__.py
-│   ├── trade_constructors
-│   │   ├── liquidity_target_exit
+│   │   ├── ema_detector
 │   │   │   ├── tests
 │   │   │   │   ├── __init__.py
 │   │   │   │   └── test_worker.py

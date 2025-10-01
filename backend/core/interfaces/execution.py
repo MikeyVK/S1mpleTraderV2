@@ -10,9 +10,13 @@ directives.
     - Define the `ExecutionHandler` abstract base class.
     - Specify the `execute_plan` method as the required contract for all execution environments.
 """
+from __future__ import annotations
 from abc import ABC, abstractmethod
-from typing import List
-from backend.dtos import ExecutionDirective
+from typing import List, TYPE_CHECKING
+
+# CORRECTIE: Importeer DTOs alleen binnen een TYPE_CHECKING block
+if TYPE_CHECKING:
+    from backend.dtos import ExecutionDirective
 
 class ExecutionHandler(ABC):
     """
@@ -21,7 +25,7 @@ class ExecutionHandler(ABC):
     """
 
     @abstractmethod
-    def execute_plan(self, directives: List[ExecutionDirective]) -> None:
+    def execute_plan(self, directives: List["ExecutionDirective"]) -> None:
         """
         Processes a list of execution directives.
 

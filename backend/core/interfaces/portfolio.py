@@ -1,16 +1,20 @@
 # backend/core/interfaces/portfolio.py
+# pylint: disable=unnecessary-ellipsis
 """
 Contains the abstract contract (Protocol) for any component that can manage
 and execute trades within the S1mpleTrader ecosystem.
 
 @layer: Backend (Core Interfaces)
 """
-from typing import Protocol, List, Dict, Any, runtime_checkable
+from __future__ import annotations
+from typing import Protocol, List, Dict, Any, runtime_checkable, TYPE_CHECKING
 from uuid import UUID
 import pandas as pd
 
-from backend.dtos.execution_directive import ExecutionDirective
-from backend.dtos.closed_trade import ClosedTrade
+# CORRECTIE: Importeer DTOs alleen binnen een TYPE_CHECKING block
+if TYPE_CHECKING:
+    from backend.dtos.execution_directive import ExecutionDirective
+    from backend.dtos.closed_trade import ClosedTrade
 
 @runtime_checkable
 class Tradable(Protocol):
@@ -37,11 +41,11 @@ class Tradable(Protocol):
         ...
 
     @property
-    def closed_trades(self) -> List[ClosedTrade]:
+    def closed_trades(self) -> List["ClosedTrade"]:
         """A list of all closed trades."""
         ...
 
-    def open_trade(self, execution_directive: ExecutionDirective) -> None:
+    def open_trade(self, execution_directive: "ExecutionDirective") -> None:
         """
         Receives a complete trade plan and processes it to open a new
         position, updating the internal state.

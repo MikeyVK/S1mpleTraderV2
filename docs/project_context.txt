@@ -1791,9 +1791,13 @@ directives.
     - Define the `ExecutionHandler` abstract base class.
     - Specify the `execute_plan` method as the required contract for all execution environments.
 """
+from __future__ import annotations
 from abc import ABC, abstractmethod
-from typing import List
-from backend.dtos import ExecutionDirective
+from typing import List, TYPE_CHECKING
+
+# CORRECTIE: Importeer DTOs alleen binnen een TYPE_CHECKING block
+if TYPE_CHECKING:
+    from backend.dtos import ExecutionDirective
 
 class ExecutionHandler(ABC):
     """
@@ -1802,7 +1806,7 @@ class ExecutionHandler(ABC):
     """
 
     @abstractmethod
-    def execute_plan(self, directives: List[ExecutionDirective]) -> None:
+    def execute_plan(self, directives: List["ExecutionDirective"]) -> None:
         """
         Processes a list of execution directives.
 
@@ -1815,18 +1819,22 @@ class ExecutionHandler(ABC):
 
 --- START FILE: backend/core/interfaces/portfolio.py ---
 # backend/core/interfaces/portfolio.py
+# pylint: disable=unnecessary-ellipsis
 """
 Contains the abstract contract (Protocol) for any component that can manage
 and execute trades within the S1mpleTrader ecosystem.
 
 @layer: Backend (Core Interfaces)
 """
-from typing import Protocol, List, Dict, Any, runtime_checkable
+from __future__ import annotations
+from typing import Protocol, List, Dict, Any, runtime_checkable, TYPE_CHECKING
 from uuid import UUID
 import pandas as pd
 
-from backend.dtos.execution_directive import ExecutionDirective
-from backend.dtos.closed_trade import ClosedTrade
+# CORRECTIE: Importeer DTOs alleen binnen een TYPE_CHECKING block
+if TYPE_CHECKING:
+    from backend.dtos.execution_directive import ExecutionDirective
+    from backend.dtos.closed_trade import ClosedTrade
 
 @runtime_checkable
 class Tradable(Protocol):
@@ -1853,11 +1861,11 @@ class Tradable(Protocol):
         ...
 
     @property
-    def closed_trades(self) -> List[ClosedTrade]:
+    def closed_trades(self) -> List["ClosedTrade"]:
         """A list of all closed trades."""
         ...
 
-    def open_trade(self, execution_directive: ExecutionDirective) -> None:
+    def open_trade(self, execution_directive: "ExecutionDirective") -> None:
         """
         Receives a complete trade plan and processes it to open a new
         position, updating the internal state.
@@ -1875,112 +1883,109 @@ class Tradable(Protocol):
 
 --- START FILE: backend/core/interfaces/worker.py ---
 # backend/core/interfaces/worker.py
+# pylint: disable=unnecessary-ellipsis
 """
 Contains the behavioral contracts (Protocols) for all plugin worker types.
-
 These interfaces are the "constitution" for the S1mpleTrader plugin
 ecosystem, ensuring that any component created by a developer will correctly
 integrate with the StrategyEngine.
-
 @layer: Backend (Core Interfaces)
-@dependencies: [typing, pandas, backend.dtos]
+@dependencies: [typing, pandas]
 @responsibilities:
     - Defines the structural contracts for all types of plugin workers.
     - Enforces the logical data flow of the 9-fase strategy pipeline.
 """
 from __future__ import annotations
-
 from typing import (Any, List, Optional, Protocol, TYPE_CHECKING, runtime_checkable)
 import pandas as pd
 
 # Use TYPE_CHECKING to prevent circular imports at runtime
-# while still providing type hints for static analysis.
 if TYPE_CHECKING:
     from backend.dtos import (Signal, EntrySignal, RiskDefinedSignal,
                               TradePlan, RoutedTradePlan, CriticalEvent,
                               TradingContext)
 
-# --- Base Contracts ---
+# --- Specific Worker Contracts ---
 
 @runtime_checkable
-class BaseWorker(Protocol):
-    """The base behavioral contract for any plugin worker."""
+class ContextWorker(Protocol):
+    """A contract for a data enrichment worker (Fase 1 & 2)."""
+    def __init__(self, name: str, params: Any, logger: Any):
+        """Initializes the worker with its name, params, and logger."""
+        ...
 
-    def process(self, *args: Any, **kwargs: Any) -> Any:
-        """The main entry point method for the worker's logic."""
+    def process(self, df: pd.DataFrame, context: "TradingContext") -> pd.DataFrame:
+        """Processes the DataFrame to add context."""
         ...
 
 @runtime_checkable
-class ContextWorker(BaseWorker, Protocol):
-    """
-    A contract for a data enrichment worker (Fase 1 & 2).
-
-    ContextWorkers are responsible for adding analytical data (e.g., indicators,
-    market regime classifications) to the main DataFrame.
-    """
-
-    def process(self, df: pd.DataFrame, context: 'TradingContext') -> pd.DataFrame:
-        ...
-
-@runtime_checkable
-class StrategyWorker(BaseWorker, Protocol):
+class StrategyWorker(Protocol):
     """A base contract for any worker operating within the main DTO pipeline."""
-    ...
+    def __init__(self, name: str, params: Any, logger: Any):
+        """Initializes the worker with its name, params, and logger."""
+        ...
 
 # --- Specific Strategy Worker Contracts (The Pipeline) ---
 
 @runtime_checkable
 class SignalGenerator(StrategyWorker, Protocol):
     """Fase 3: A contract for a worker that generates trading opportunities."""
-
-    def process(self, context: 'TradingContext') -> List['Signal']:
+    def process(self, context: "TradingContext") -> List["Signal"]:
+        """Generates raw Signal DTOs based on the market context."""
         ...
 
 @runtime_checkable
 class SignalRefiner(StrategyWorker, Protocol):
     """Fase 4: A contract for a worker that filters raw signals."""
-
-    def process(self, signal: 'Signal', context: 'TradingContext') -> Optional['Signal']:
+    def process(
+        self, signal: "Signal", context: "TradingContext"
+    ) -> Optional["Signal"]:
+        """Processes a single signal and returns it if valid, otherwise None."""
         ...
 
 @runtime_checkable
 class EntryPlanner(StrategyWorker, Protocol):
     """Fase 5: A contract for a worker that defines the entry tactic."""
-
-    def process(self, signal: 'Signal', context: 'TradingContext') -> Optional['EntrySignal']:
+    def process(
+        self, signal: "Signal", context: "TradingContext"
+    ) -> Optional["EntrySignal"]:
+        """Enriches a Signal with a concrete entry price."""
         ...
 
 @runtime_checkable
 class ExitPlanner(StrategyWorker, Protocol):
     """Fase 6: A contract for a worker that defines risk parameters (SL/TP)."""
-
-    def process(self, entry_signal: 'EntrySignal',
-                context: 'TradingContext') -> Optional['RiskDefinedSignal']:
+    def process(
+        self, entry_signal: "EntrySignal", context: "TradingContext"
+    ) -> Optional["RiskDefinedSignal"]:
+        """Enriches an EntrySignal with stop-loss and take-profit prices."""
         ...
 
 @runtime_checkable
 class SizePlanner(StrategyWorker, Protocol):
     """Fase 7: A contract for a worker that calculates position size."""
-
-    def process(self, risk_defined_signal: 'RiskDefinedSignal',
-                context: 'TradingContext') -> Optional['TradePlan']:
+    def process(
+        self, risk_defined_signal: "RiskDefinedSignal", context: "TradingContext"
+    ) -> Optional["TradePlan"]:
+        """Enriches a RiskDefinedSignal with the final position size."""
         ...
 
 @runtime_checkable
 class OrderRouter(StrategyWorker, Protocol):
-    """Fase 8: A contract for a worker that translates a TradePlan into execution tactics."""
-
-    def process(self, trade_plan: 'TradePlan',
-                context: 'TradingContext') -> Optional['RoutedTradePlan']:
+    """Fase 8: A contract for a worker that translates a TradePlan."""
+    def process(
+        self, trade_plan: "TradePlan", context: "TradingContext"
+    ) -> Optional["RoutedTradePlan"]:
+        """Enriches a TradePlan with specific order execution instructions."""
         ...
 
 @runtime_checkable
 class CriticalEventDetector(StrategyWorker, Protocol):
-    """
-    Fase 9: A contract for a worker that scans the final context to detect systemic events.
-    """
-    def process(self, routed_trade_plans: List['RoutedTradePlan'],
-                context: 'TradingContext') -> List['CriticalEvent']:
+    """Fase 9: A contract for a worker that scans for systemic events."""
+    def process(
+        self, routed_trade_plans: List["RoutedTradePlan"], context: "TradingContext"
+    ) -> List["CriticalEvent"]:
+        """Detects and returns a list of critical events."""
         ...
 
 --- END FILE: backend/core/interfaces/worker.py ---
@@ -3195,12 +3200,13 @@ logging:
 --- END FILE: config/variants/robustness_test.yaml ---
 
 --- START FILE: docs/folder_file_structure.txt ---
-S1mpleTraderV2/
+s1mpletrader/
 ├── backend
 │   ├── assembly
 │   │   ├── __init__.py
 │   │   ├── context_builder.py
 │   │   ├── dependency_validator.py
+│   │   ├── engine_builder.py
 │   │   ├── plugin_registry.py
 │   │   └── worker_builder.py
 │   ├── config
@@ -3216,6 +3222,7 @@ S1mpleTraderV2/
 │   │   │   ├── __init__.py
 │   │   │   ├── engine.py
 │   │   │   ├── environment.py
+│   │   │   ├── execution.py
 │   │   │   ├── portfolio.py
 │   │   │   └── worker.py
 │   │   ├── __init__.py
@@ -3290,6 +3297,7 @@ S1mpleTraderV2/
 │   │   ├── B_BIJLAGE_OPENSTAANDE_VRAAGSTUKKEN.md
 │   │   └── C_BIJLAGE_MVP
 │   ├── folder_file_structure.txt
+│   ├── project_context.txt
 │   └── PROPOSED_FOLDER_STRUCTURE.md
 ├── frontends
 │   ├── cli
@@ -3307,8 +3315,6 @@ S1mpleTraderV2/
 │   │   │   └── main.py
 │   │   └── ui
 │   │       ├── src
-│   │       │   ├── components
-│   │       │   ├── services
 │   │       │   └── App.tsx
 │   │       └── package.json
 │   └── __init__.py
@@ -3316,8 +3322,17 @@ S1mpleTraderV2/
 │   ├── en.yaml
 │   └── nl.yaml
 ├── plugins
-│   ├── portfolio_overlays
-│   │   ├── max_drawdown_overlay
+│   ├── critical_event_detectors
+│   │   └── max_drawdown_overlay
+│   │       ├── tests
+│   │       │   ├── __init__.py
+│   │       │   └── test_worker.py
+│   │       ├── __init__.py
+│   │       ├── plugin_manifest.yaml
+│   │       ├── schema.py
+│   │       └── worker.py
+│   ├── entry_planners
+│   │   ├── liquidity_target_exit
 │   │   │   ├── tests
 │   │   │   │   ├── __init__.py
 │   │   │   │   └── test_worker.py
@@ -3325,6 +3340,9 @@ S1mpleTraderV2/
 │   │   │   ├── plugin_manifest.yaml
 │   │   │   ├── schema.py
 │   │   │   └── worker.py
+│   │   └── __init__.py
+│   ├── exit_planners
+│   ├── order_routers
 │   │   └── __init__.py
 │   ├── regime_filters
 │   │   ├── adx_trend_filter
@@ -3356,18 +3374,9 @@ S1mpleTraderV2/
 │   │   │   ├── schema.py
 │   │   │   └── worker.py
 │   │   └── __init__.py
+│   ├── size_planners
 │   ├── structural_context
-│   │   ├── market_structure_detector
-│   │   │   ├── tests
-│   │   │   │   ├── __init__.py
-│   │   │   │   └── test_worker.py
-│   │   │   ├── __init__.py
-│   │   │   ├── plugin_manifest.yaml
-│   │   │   ├── schema.py
-│   │   │   └── worker.py
-│   │   └── __init__.py
-│   ├── trade_constructors
-│   │   ├── liquidity_target_exit
+│   │   ├── ema_detector
 │   │   │   ├── tests
 │   │   │   │   ├── __init__.py
 │   │   │   │   └── test_worker.py
@@ -3395,6 +3404,7 @@ S1mpleTraderV2/
 │   │   │   ├── __init__.py
 │   │   │   ├── test_context_builder.py
 │   │   │   ├── test_dependency_validator.py
+│   │   │   ├── test_engine_builder.py
 │   │   │   ├── test_plugin_registry.py
 │   │   │   └── test_worker_builder.py
 │   │   ├── core
@@ -5225,9 +5235,13 @@ directives.
     - Define the `ExecutionHandler` abstract base class.
     - Specify the `execute_plan` method as the required contract for all execution environments.
 """
+from __future__ import annotations
 from abc import ABC, abstractmethod
-from typing import List
-from backend.dtos import ExecutionDirective
+from typing import List, TYPE_CHECKING
+
+# CORRECTIE: Importeer DTOs alleen binnen een TYPE_CHECKING block
+if TYPE_CHECKING:
+    from backend.dtos import ExecutionDirective
 
 class ExecutionHandler(ABC):
     """
@@ -5236,7 +5250,7 @@ class ExecutionHandler(ABC):
     """
 
     @abstractmethod
-    def execute_plan(self, directives: List[ExecutionDirective]) -> None:
+    def execute_plan(self, directives: List["ExecutionDirective"]) -> None:
         """
         Processes a list of execution directives.
 
@@ -5249,18 +5263,22 @@ class ExecutionHandler(ABC):
 
 --- START FILE: backend/core/interfaces/portfolio.py ---
 # backend/core/interfaces/portfolio.py
+# pylint: disable=unnecessary-ellipsis
 """
 Contains the abstract contract (Protocol) for any component that can manage
 and execute trades within the S1mpleTrader ecosystem.
 
 @layer: Backend (Core Interfaces)
 """
-from typing import Protocol, List, Dict, Any, runtime_checkable
+from __future__ import annotations
+from typing import Protocol, List, Dict, Any, runtime_checkable, TYPE_CHECKING
 from uuid import UUID
 import pandas as pd
 
-from backend.dtos.execution_directive import ExecutionDirective
-from backend.dtos.closed_trade import ClosedTrade
+# CORRECTIE: Importeer DTOs alleen binnen een TYPE_CHECKING block
+if TYPE_CHECKING:
+    from backend.dtos.execution_directive import ExecutionDirective
+    from backend.dtos.closed_trade import ClosedTrade
 
 @runtime_checkable
 class Tradable(Protocol):
@@ -5287,11 +5305,11 @@ class Tradable(Protocol):
         ...
 
     @property
-    def closed_trades(self) -> List[ClosedTrade]:
+    def closed_trades(self) -> List["ClosedTrade"]:
         """A list of all closed trades."""
         ...
 
-    def open_trade(self, execution_directive: ExecutionDirective) -> None:
+    def open_trade(self, execution_directive: "ExecutionDirective") -> None:
         """
         Receives a complete trade plan and processes it to open a new
         position, updating the internal state.
@@ -5309,112 +5327,109 @@ class Tradable(Protocol):
 
 --- START FILE: backend/core/interfaces/worker.py ---
 # backend/core/interfaces/worker.py
+# pylint: disable=unnecessary-ellipsis
 """
 Contains the behavioral contracts (Protocols) for all plugin worker types.
-
 These interfaces are the "constitution" for the S1mpleTrader plugin
 ecosystem, ensuring that any component created by a developer will correctly
 integrate with the StrategyEngine.
-
 @layer: Backend (Core Interfaces)
-@dependencies: [typing, pandas, backend.dtos]
+@dependencies: [typing, pandas]
 @responsibilities:
     - Defines the structural contracts for all types of plugin workers.
     - Enforces the logical data flow of the 9-fase strategy pipeline.
 """
 from __future__ import annotations
-
 from typing import (Any, List, Optional, Protocol, TYPE_CHECKING, runtime_checkable)
 import pandas as pd
 
 # Use TYPE_CHECKING to prevent circular imports at runtime
-# while still providing type hints for static analysis.
 if TYPE_CHECKING:
     from backend.dtos import (Signal, EntrySignal, RiskDefinedSignal,
                               TradePlan, RoutedTradePlan, CriticalEvent,
                               TradingContext)
 
-# --- Base Contracts ---
+# --- Specific Worker Contracts ---
 
 @runtime_checkable
-class BaseWorker(Protocol):
-    """The base behavioral contract for any plugin worker."""
+class ContextWorker(Protocol):
+    """A contract for a data enrichment worker (Fase 1 & 2)."""
+    def __init__(self, name: str, params: Any, logger: Any):
+        """Initializes the worker with its name, params, and logger."""
+        ...
 
-    def process(self, *args: Any, **kwargs: Any) -> Any:
-        """The main entry point method for the worker's logic."""
+    def process(self, df: pd.DataFrame, context: "TradingContext") -> pd.DataFrame:
+        """Processes the DataFrame to add context."""
         ...
 
 @runtime_checkable
-class ContextWorker(BaseWorker, Protocol):
-    """
-    A contract for a data enrichment worker (Fase 1 & 2).
-
-    ContextWorkers are responsible for adding analytical data (e.g., indicators,
-    market regime classifications) to the main DataFrame.
-    """
-
-    def process(self, df: pd.DataFrame, context: 'TradingContext') -> pd.DataFrame:
-        ...
-
-@runtime_checkable
-class StrategyWorker(BaseWorker, Protocol):
+class StrategyWorker(Protocol):
     """A base contract for any worker operating within the main DTO pipeline."""
-    ...
+    def __init__(self, name: str, params: Any, logger: Any):
+        """Initializes the worker with its name, params, and logger."""
+        ...
 
 # --- Specific Strategy Worker Contracts (The Pipeline) ---
 
 @runtime_checkable
 class SignalGenerator(StrategyWorker, Protocol):
     """Fase 3: A contract for a worker that generates trading opportunities."""
-
-    def process(self, context: 'TradingContext') -> List['Signal']:
+    def process(self, context: "TradingContext") -> List["Signal"]:
+        """Generates raw Signal DTOs based on the market context."""
         ...
 
 @runtime_checkable
 class SignalRefiner(StrategyWorker, Protocol):
     """Fase 4: A contract for a worker that filters raw signals."""
-
-    def process(self, signal: 'Signal', context: 'TradingContext') -> Optional['Signal']:
+    def process(
+        self, signal: "Signal", context: "TradingContext"
+    ) -> Optional["Signal"]:
+        """Processes a single signal and returns it if valid, otherwise None."""
         ...
 
 @runtime_checkable
 class EntryPlanner(StrategyWorker, Protocol):
     """Fase 5: A contract for a worker that defines the entry tactic."""
-
-    def process(self, signal: 'Signal', context: 'TradingContext') -> Optional['EntrySignal']:
+    def process(
+        self, signal: "Signal", context: "TradingContext"
+    ) -> Optional["EntrySignal"]:
+        """Enriches a Signal with a concrete entry price."""
         ...
 
 @runtime_checkable
 class ExitPlanner(StrategyWorker, Protocol):
     """Fase 6: A contract for a worker that defines risk parameters (SL/TP)."""
-
-    def process(self, entry_signal: 'EntrySignal',
-                context: 'TradingContext') -> Optional['RiskDefinedSignal']:
+    def process(
+        self, entry_signal: "EntrySignal", context: "TradingContext"
+    ) -> Optional["RiskDefinedSignal"]:
+        """Enriches an EntrySignal with stop-loss and take-profit prices."""
         ...
 
 @runtime_checkable
 class SizePlanner(StrategyWorker, Protocol):
     """Fase 7: A contract for a worker that calculates position size."""
-
-    def process(self, risk_defined_signal: 'RiskDefinedSignal',
-                context: 'TradingContext') -> Optional['TradePlan']:
+    def process(
+        self, risk_defined_signal: "RiskDefinedSignal", context: "TradingContext"
+    ) -> Optional["TradePlan"]:
+        """Enriches a RiskDefinedSignal with the final position size."""
         ...
 
 @runtime_checkable
 class OrderRouter(StrategyWorker, Protocol):
-    """Fase 8: A contract for a worker that translates a TradePlan into execution tactics."""
-
-    def process(self, trade_plan: 'TradePlan',
-                context: 'TradingContext') -> Optional['RoutedTradePlan']:
+    """Fase 8: A contract for a worker that translates a TradePlan."""
+    def process(
+        self, trade_plan: "TradePlan", context: "TradingContext"
+    ) -> Optional["RoutedTradePlan"]:
+        """Enriches a TradePlan with specific order execution instructions."""
         ...
 
 @runtime_checkable
 class CriticalEventDetector(StrategyWorker, Protocol):
-    """
-    Fase 9: A contract for a worker that scans the final context to detect systemic events.
-    """
-    def process(self, routed_trade_plans: List['RoutedTradePlan'],
-                context: 'TradingContext') -> List['CriticalEvent']:
+    """Fase 9: A contract for a worker that scans for systemic events."""
+    def process(
+        self, routed_trade_plans: List["RoutedTradePlan"], context: "TradingContext"
+    ) -> List["CriticalEvent"]:
+        """Detects and returns a list of critical events."""
         ...
 
 --- END FILE: backend/core/interfaces/worker.py ---
@@ -6629,12 +6644,13 @@ logging:
 --- END FILE: config/variants/robustness_test.yaml ---
 
 --- START FILE: docs/folder_file_structure.txt ---
-S1mpleTraderV2/
+s1mpletrader/
 ├── backend
 │   ├── assembly
 │   │   ├── __init__.py
 │   │   ├── context_builder.py
 │   │   ├── dependency_validator.py
+│   │   ├── engine_builder.py
 │   │   ├── plugin_registry.py
 │   │   └── worker_builder.py
 │   ├── config
@@ -6650,6 +6666,7 @@ S1mpleTraderV2/
 │   │   │   ├── __init__.py
 │   │   │   ├── engine.py
 │   │   │   ├── environment.py
+│   │   │   ├── execution.py
 │   │   │   ├── portfolio.py
 │   │   │   └── worker.py
 │   │   ├── __init__.py
@@ -6724,6 +6741,7 @@ S1mpleTraderV2/
 │   │   ├── B_BIJLAGE_OPENSTAANDE_VRAAGSTUKKEN.md
 │   │   └── C_BIJLAGE_MVP
 │   ├── folder_file_structure.txt
+│   ├── project_context.txt
 │   └── PROPOSED_FOLDER_STRUCTURE.md
 ├── frontends
 │   ├── cli
@@ -6741,8 +6759,6 @@ S1mpleTraderV2/
 │   │   │   └── main.py
 │   │   └── ui
 │   │       ├── src
-│   │       │   ├── components
-│   │       │   ├── services
 │   │       │   └── App.tsx
 │   │       └── package.json
 │   └── __init__.py
@@ -6750,8 +6766,17 @@ S1mpleTraderV2/
 │   ├── en.yaml
 │   └── nl.yaml
 ├── plugins
-│   ├── portfolio_overlays
-│   │   ├── max_drawdown_overlay
+│   ├── critical_event_detectors
+│   │   └── max_drawdown_overlay
+│   │       ├── tests
+│   │       │   ├── __init__.py
+│   │       │   └── test_worker.py
+│   │       ├── __init__.py
+│   │       ├── plugin_manifest.yaml
+│   │       ├── schema.py
+│   │       └── worker.py
+│   ├── entry_planners
+│   │   ├── liquidity_target_exit
 │   │   │   ├── tests
 │   │   │   │   ├── __init__.py
 │   │   │   │   └── test_worker.py
@@ -6759,6 +6784,9 @@ S1mpleTraderV2/
 │   │   │   ├── plugin_manifest.yaml
 │   │   │   ├── schema.py
 │   │   │   └── worker.py
+│   │   └── __init__.py
+│   ├── exit_planners
+│   ├── order_routers
 │   │   └── __init__.py
 │   ├── regime_filters
 │   │   ├── adx_trend_filter
@@ -6790,18 +6818,9 @@ S1mpleTraderV2/
 │   │   │   ├── schema.py
 │   │   │   └── worker.py
 │   │   └── __init__.py
+│   ├── size_planners
 │   ├── structural_context
-│   │   ├── market_structure_detector
-│   │   │   ├── tests
-│   │   │   │   ├── __init__.py
-│   │   │   │   └── test_worker.py
-│   │   │   ├── __init__.py
-│   │   │   ├── plugin_manifest.yaml
-│   │   │   ├── schema.py
-│   │   │   └── worker.py
-│   │   └── __init__.py
-│   ├── trade_constructors
-│   │   ├── liquidity_target_exit
+│   │   ├── ema_detector
 │   │   │   ├── tests
 │   │   │   │   ├── __init__.py
 │   │   │   │   └── test_worker.py
@@ -6829,6 +6848,7 @@ S1mpleTraderV2/
 │   │   │   ├── __init__.py
 │   │   │   ├── test_context_builder.py
 │   │   │   ├── test_dependency_validator.py
+│   │   │   ├── test_engine_builder.py
 │   │   │   ├── test_plugin_registry.py
 │   │   │   └── test_worker_builder.py
 │   │   ├── core
@@ -8558,17 +8578,13 @@ app:
 
 --- END FILE: plugins/__init__.py ---
 
---- START FILE: plugins/portfolio_overlays/__init__.py ---
-
---- END FILE: plugins/portfolio_overlays/__init__.py ---
-
---- START FILE: plugins/portfolio_overlays/max_drawdown_overlay/plugin_manifest.yaml ---
+--- START FILE: plugins/critical_event_detectors/max_drawdown_overlay/plugin_manifest.yaml ---
 name: max_drawdown_overlay
 type: portfolio_overlay
 ...
---- END FILE: plugins/portfolio_overlays/max_drawdown_overlay/plugin_manifest.yaml ---
+--- END FILE: plugins/critical_event_detectors/max_drawdown_overlay/plugin_manifest.yaml ---
 
---- START FILE: plugins/portfolio_overlays/max_drawdown_overlay/schema.py ---
+--- START FILE: plugins/critical_event_detectors/max_drawdown_overlay/schema.py ---
 # plugins/portfolio_overlays/max_drawdown_overlay/schema.py
 """
 Docstring for schema.py.
@@ -8582,9 +8598,9 @@ class MaxDrawdownOverlayParams:
     """Docstring for MaxDrawdownOverlayParams."""
     pass
 
---- END FILE: plugins/portfolio_overlays/max_drawdown_overlay/schema.py ---
+--- END FILE: plugins/critical_event_detectors/max_drawdown_overlay/schema.py ---
 
---- START FILE: plugins/portfolio_overlays/max_drawdown_overlay/worker.py ---
+--- START FILE: plugins/critical_event_detectors/max_drawdown_overlay/worker.py ---
 # plugins/portfolio_overlays/max_drawdown_overlay/worker.py
 """
 Docstring for worker.py.
@@ -8598,13 +8614,13 @@ class MaxDrawdownOverlay:
     """Docstring for MaxDrawdownOverlay."""
     pass
 
---- END FILE: plugins/portfolio_overlays/max_drawdown_overlay/worker.py ---
+--- END FILE: plugins/critical_event_detectors/max_drawdown_overlay/worker.py ---
 
---- START FILE: plugins/portfolio_overlays/max_drawdown_overlay/__init__.py ---
+--- START FILE: plugins/critical_event_detectors/max_drawdown_overlay/__init__.py ---
 
---- END FILE: plugins/portfolio_overlays/max_drawdown_overlay/__init__.py ---
+--- END FILE: plugins/critical_event_detectors/max_drawdown_overlay/__init__.py ---
 
---- START FILE: plugins/portfolio_overlays/max_drawdown_overlay/tests/test_worker.py ---
+--- START FILE: plugins/critical_event_detectors/max_drawdown_overlay/tests/test_worker.py ---
 # plugins/portfolio_overlays/max_drawdown_overlay/tests/test_worker.py
 """
 Docstring for test_worker.py.
@@ -8618,11 +8634,81 @@ class TestMaxDrawdownOverlay:
     """Docstring for TestMaxDrawdownOverlay."""
     pass
 
---- END FILE: plugins/portfolio_overlays/max_drawdown_overlay/tests/test_worker.py ---
+--- END FILE: plugins/critical_event_detectors/max_drawdown_overlay/tests/test_worker.py ---
 
---- START FILE: plugins/portfolio_overlays/max_drawdown_overlay/tests/__init__.py ---
+--- START FILE: plugins/critical_event_detectors/max_drawdown_overlay/tests/__init__.py ---
 
---- END FILE: plugins/portfolio_overlays/max_drawdown_overlay/tests/__init__.py ---
+--- END FILE: plugins/critical_event_detectors/max_drawdown_overlay/tests/__init__.py ---
+
+--- START FILE: plugins/entry_planners/__init__.py ---
+
+--- END FILE: plugins/entry_planners/__init__.py ---
+
+--- START FILE: plugins/entry_planners/liquidity_target_exit/plugin_manifest.yaml ---
+name: liquidity_target_exit
+type: trade_constructor
+...
+--- END FILE: plugins/entry_planners/liquidity_target_exit/plugin_manifest.yaml ---
+
+--- START FILE: plugins/entry_planners/liquidity_target_exit/schema.py ---
+# plugins/trade_constructors/liquidity_target_exit/schema.py
+"""
+Docstring for schema.py.
+
+@layer: TODO
+@dependencies: TODO
+@responsibilities: TODO
+"""
+
+class LiquidityTargetExitParams:
+    """Docstring for LiquidityTargetExitParams."""
+    pass
+
+--- END FILE: plugins/entry_planners/liquidity_target_exit/schema.py ---
+
+--- START FILE: plugins/entry_planners/liquidity_target_exit/worker.py ---
+# plugins/trade_constructors/liquidity_target_exit/worker.py
+"""
+Docstring for worker.py.
+
+@layer: TODO
+@dependencies: TODO
+@responsibilities: TODO
+"""
+
+class LiquidityTargetExitPlanner:
+    """Docstring for LiquidityTargetExitPlanner."""
+    pass
+
+--- END FILE: plugins/entry_planners/liquidity_target_exit/worker.py ---
+
+--- START FILE: plugins/entry_planners/liquidity_target_exit/__init__.py ---
+
+--- END FILE: plugins/entry_planners/liquidity_target_exit/__init__.py ---
+
+--- START FILE: plugins/entry_planners/liquidity_target_exit/tests/test_worker.py ---
+# plugins/trade_constructors/liquidity_target_exit/tests/test_worker.py
+"""
+Docstring for test_worker.py.
+
+@layer: TODO
+@dependencies: TODO
+@responsibilities: TODO
+"""
+
+class TestLiquidityTargetExitPlanner:
+    """Docstring for TestLiquidityTargetExitPlanner."""
+    pass
+
+--- END FILE: plugins/entry_planners/liquidity_target_exit/tests/test_worker.py ---
+
+--- START FILE: plugins/entry_planners/liquidity_target_exit/tests/__init__.py ---
+
+--- END FILE: plugins/entry_planners/liquidity_target_exit/tests/__init__.py ---
+
+--- START FILE: plugins/order_routers/__init__.py ---
+
+--- END FILE: plugins/order_routers/__init__.py ---
 
 --- START FILE: plugins/regime_filters/__init__.py ---
 
@@ -8826,133 +8912,181 @@ class TestVolumeSpikeRefiner:
 
 --- END FILE: plugins/structural_context/__init__.py ---
 
---- START FILE: plugins/structural_context/market_structure_detector/plugin_manifest.yaml ---
-name: market_structure_detector
-type: structural_context
-...
---- END FILE: plugins/structural_context/market_structure_detector/plugin_manifest.yaml ---
+--- START FILE: plugins/structural_context/ema_detector/plugin_manifest.yaml ---
+# plugins/structural_context/ema_detector/plugin_manifest.yaml
+name: "ema_detector"
+version: "1.0.0"
+description: "Calculates and adds an Exponential Moving Average (EMA) to the DataFrame."
+type: "structural_context" # Geeft aan dat dit een Fase 2 plugin is
 
---- START FILE: plugins/structural_context/market_structure_detector/schema.py ---
-# plugins/structural_context/market_structure_detector/schema.py
+# --- Code Contract ---
+entry_class: "EmaDetector"          # De naam van de klasse in worker.py
+schema_path: "schema.py"            # Het pad naar het Pydantic-schema
+params_class: "EmaDetectorParams"   # De naam van de Pydantic-klasse in schema.py
+
+# --- Data Contract ---
+dependencies: ["close"]             # Deze plugin heeft de 'close' kolom nodig
+provides: []                        # De output kolomnaam is dynamisch, dus hier leeg
+
+--- END FILE: plugins/structural_context/ema_detector/plugin_manifest.yaml ---
+
+--- START FILE: plugins/structural_context/ema_detector/schema.py ---
+# plugins/structural_context/ema_detector/schema.py
 """
-Docstring for schema.py.
+Contains the Pydantic validation schema for the EmaDetector plugin.
 
-@layer: TODO
-@dependencies: TODO
-@responsibilities: TODO
+@layer: Plugin
+@dependencies: [Pydantic]
+@responsibilities:
+    - Defines and validates the configuration parameters for the EmaDetector.
 """
+from pydantic import BaseModel, Field
 
-class MarketStructureDetectorParams:
-    """Docstring for MarketStructureDetectorParams."""
-    pass
+class EmaDetectorParams(BaseModel):
+    """
+    Validation schema for the parameters of the EmaDetector.
+    It ensures that the 'period' is a positive integer.
+    """
+    period: int = Field(
+        default=20,
+        gt=0,
+        description="The lookback period for the EMA calculation."
+    )
 
---- END FILE: plugins/structural_context/market_structure_detector/schema.py ---
+--- END FILE: plugins/structural_context/ema_detector/schema.py ---
 
---- START FILE: plugins/structural_context/market_structure_detector/worker.py ---
-# plugins/structural_context/market_structure_detector/worker.py
+--- START FILE: plugins/structural_context/ema_detector/worker.py ---
+# plugins/structural_context/ema_detector/worker.py
 """
-Docstring for worker.py.
+Contains the main logic for the EmaDetector plugin.
 
-@layer: TODO
-@dependencies: TODO
-@responsibilities: TODO
+@layer: Plugin
+@dependencies: [pandas, backend.core.interfaces]
+@responsibilities:
+    - Implements the ContextWorker interface.
+    - Calculates an EMA based on the provided period.
+    - Adds the calculated EMA as a new column to the DataFrame.
 """
+import pandas as pd
 
-class MarketStructureDetector:
-    """Docstring for MarketStructureDetector."""
-    pass
+from backend.core.interfaces import ContextWorker
+from backend.dtos import TradingContext
+from backend.utils.app_logger import LogEnricher
 
---- END FILE: plugins/structural_context/market_structure_detector/worker.py ---
+from .schema import EmaDetectorParams
 
---- START FILE: plugins/structural_context/market_structure_detector/__init__.py ---
 
---- END FILE: plugins/structural_context/market_structure_detector/__init__.py ---
+class EmaDetector(ContextWorker):
+    """
+    A context worker that calculates and adds an EMA column to a DataFrame.
+    """
 
---- START FILE: plugins/structural_context/market_structure_detector/tests/test_worker.py ---
-# plugins/structural_context/market_structure_detector/tests/test_worker.py
+    def __init__(self, name: str, params: EmaDetectorParams, logger: LogEnricher):
+        """
+        Initializes the EmaDetector.
+
+        Args:
+            name (str): The unique name of this worker instance.
+            params (EmaDetectorParams): A Pydantic object with validated parameters.
+            logger (LogEnricher): The pre-configured logger instance.
+        """
+        self.name = name
+        self.params = params
+        self.logger = logger
+        self.column_name = f"ema_{self.params.period}"
+
+    # pylint: disable=unused-argument, arguments-differ
+    def process(self, df: pd.DataFrame, context: TradingContext) -> pd.DataFrame:
+        """
+        Calculates the EMA and adds it as a new column to the DataFrame.
+
+        Args:
+            df (pd.DataFrame): The input DataFrame with OHLCV data.
+            context (TradingContext): The trading context (not used by this worker).
+
+        Returns:
+            pd.DataFrame: The DataFrame with the new EMA column added.
+        """
+        if self.column_name in df.columns:
+            return df
+
+        self.logger.info(
+            "Calculating EMA with period %s...", self.params.period
+        )
+        df[self.column_name] = df['close'].ewm(
+            span=self.params.period,
+            adjust=False
+        ).mean()
+
+        return df
+
+--- END FILE: plugins/structural_context/ema_detector/worker.py ---
+
+--- START FILE: plugins/structural_context/ema_detector/__init__.py ---
+
+--- END FILE: plugins/structural_context/ema_detector/__init__.py ---
+
+--- START FILE: plugins/structural_context/ema_detector/tests/test_worker.py ---
+# plugins/structural_context/ema_detector/tests/test_worker.py
 """
-Docstring for test_worker.py.
+Unit tests for the EmaDetector worker.
 
-@layer: TODO
-@dependencies: TODO
-@responsibilities: TODO
+@layer: Plugin
+@dependencies: [pandas, pytest]
+@responsibilities:
+    - Tests that the EmaDetector correctly calculates and adds an EMA column.
 """
+import pandas as pd
+from unittest.mock import MagicMock
 
-class TestMarketStructureDetector:
-    """Docstring for TestMarketStructureDetector."""
-    pass
+# Import de componenten die we testen
+from ..worker import EmaDetector
+from ..schema import EmaDetectorParams
+from backend.dtos import TradingContext
 
---- END FILE: plugins/structural_context/market_structure_detector/tests/test_worker.py ---
+def test_ema_detector_adds_correct_column():
+    """
+    Tests if the worker adds a correctly named and calculated EMA column.
+    """
+    # Arrange
+    params = EmaDetectorParams(period=3)
+    logger = MagicMock()
+    worker = EmaDetector(name="test_ema", params=params, logger=logger)
 
---- START FILE: plugins/structural_context/market_structure_detector/tests/__init__.py ---
+    # Maak een mock context object aan
+    mock_context = MagicMock(spec=TradingContext)
 
---- END FILE: plugins/structural_context/market_structure_detector/tests/__init__.py ---
+    # Maak test-data
+    data = {'close': [10, 20, 30, 40]}
+    df = pd.DataFrame(data)
 
---- START FILE: plugins/trade_constructors/__init__.py ---
+    # Handmatige berekening van de EMA (span=3 -> alpha=0.5)
+    # 1: 10
+    # 2: (20 * 0.5) + (10 * 0.5) = 15
+    # 3: (30 * 0.5) + (15 * 0.5) = 22.5
+    # 4: (40 * 0.5) + (22.5 * 0.5) = 31.25
+    expected_ema = [10.0, 15.0, 22.5, 31.25]
 
---- END FILE: plugins/trade_constructors/__init__.py ---
+    # Act
+    result_df = worker.process(df, mock_context)
 
---- START FILE: plugins/trade_constructors/liquidity_target_exit/plugin_manifest.yaml ---
-name: liquidity_target_exit
-type: trade_constructor
-...
---- END FILE: plugins/trade_constructors/liquidity_target_exit/plugin_manifest.yaml ---
+    # Assert
+    expected_col = "ema_3"
+    assert expected_col in result_df.columns
 
---- START FILE: plugins/trade_constructors/liquidity_target_exit/schema.py ---
-# plugins/trade_constructors/liquidity_target_exit/schema.py
-"""
-Docstring for schema.py.
+    # CORRECTIE: 'check_almost_equal' vervangen door 'check_exact=False' en 'atol'
+    pd.testing.assert_series_equal(
+        result_df[expected_col],
+        pd.Series(expected_ema, name=expected_col),
+        check_exact=False,
+        atol=0.01  # Absolute tolerance voor floating point vergelijkingen
+    )
 
-@layer: TODO
-@dependencies: TODO
-@responsibilities: TODO
-"""
+--- END FILE: plugins/structural_context/ema_detector/tests/test_worker.py ---
 
-class LiquidityTargetExitParams:
-    """Docstring for LiquidityTargetExitParams."""
-    pass
+--- START FILE: plugins/structural_context/ema_detector/tests/__init__.py ---
 
---- END FILE: plugins/trade_constructors/liquidity_target_exit/schema.py ---
-
---- START FILE: plugins/trade_constructors/liquidity_target_exit/worker.py ---
-# plugins/trade_constructors/liquidity_target_exit/worker.py
-"""
-Docstring for worker.py.
-
-@layer: TODO
-@dependencies: TODO
-@responsibilities: TODO
-"""
-
-class LiquidityTargetExitPlanner:
-    """Docstring for LiquidityTargetExitPlanner."""
-    pass
-
---- END FILE: plugins/trade_constructors/liquidity_target_exit/worker.py ---
-
---- START FILE: plugins/trade_constructors/liquidity_target_exit/__init__.py ---
-
---- END FILE: plugins/trade_constructors/liquidity_target_exit/__init__.py ---
-
---- START FILE: plugins/trade_constructors/liquidity_target_exit/tests/test_worker.py ---
-# plugins/trade_constructors/liquidity_target_exit/tests/test_worker.py
-"""
-Docstring for test_worker.py.
-
-@layer: TODO
-@dependencies: TODO
-@responsibilities: TODO
-"""
-
-class TestLiquidityTargetExitPlanner:
-    """Docstring for TestLiquidityTargetExitPlanner."""
-    pass
-
---- END FILE: plugins/trade_constructors/liquidity_target_exit/tests/test_worker.py ---
-
---- START FILE: plugins/trade_constructors/liquidity_target_exit/tests/__init__.py ---
-
---- END FILE: plugins/trade_constructors/liquidity_target_exit/tests/__init__.py ---
+--- END FILE: plugins/structural_context/ema_detector/tests/__init__.py ---
 
 --- START FILE: results/20250924_213000_mss_fvg_strategy/result_metrics.yaml ---
 # Placeholder for results/20250924_213000_mss_fvg_strategy/result_metrics.yaml
