@@ -194,7 +194,7 @@ __all__ = [
     # from .core
     "StrategyEngine",
     "Portfolio",
-    "BaseWorker",
+    "BaseStrategyWorker",
     "ContextRecorder",
     # from .dtos
     "Signal",
@@ -210,8 +210,8 @@ __all__ = [
     "BacktestResult",
     # from .environments
     "BacktestEnvironment",
-    "LiveEnvironment",
-    "PaperEnvironment",
+#    "LiveEnvironment",
+#    "PaperEnvironment",
     # from .assembly
     "ContextBuilder",
     "DependencyValidator",
@@ -222,7 +222,7 @@ __all__ = [
 from .core import (
     StrategyEngine,
     Portfolio,
-    BaseWorker,
+    BaseStrategyWorker,
     ContextRecorder,
 )
 from .dtos import (
@@ -240,8 +240,8 @@ from .dtos import (
 )
 from .environments import (
     BacktestEnvironment,
-    LiveEnvironment,
-    PaperEnvironment,
+#    LiveEnvironment,
+#    PaperEnvironment,
 )
 from .assembly import (
     ContextBuilder,
@@ -376,6 +376,59 @@ class DependencyValidator:
         return True
 
 --- END FILE: backend/assembly/dependency_validator.py ---
+
+--- START FILE: backend/assembly/engine_builder.py ---
+# backend/assembly/engine_builder.py
+"""
+Contains the EngineBuilder, a specialist for assembling a StrategyEngine.
+"""
+from typing import Any, Dict, List
+
+from backend.assembly.worker_builder import WorkerBuilder
+from backend.config.schemas.run_schema import RunBlueprint, WorkerDefinition
+from backend.core.enums import PipelinePhase
+from backend.core.strategy_engine import StrategyEngine
+from backend.core.interfaces.worker import ContextWorker
+
+class EngineBuilder:
+    """Assembles a StrategyEngine with all its required workers."""
+
+    def __init__(self, worker_builder: WorkerBuilder):
+        self._worker_builder = worker_builder
+
+    def build_context_pipeline(
+        self, run_conf: RunBlueprint
+    ) -> List[ContextWorker]:
+        """Builds the initial pipeline of context workers."""
+        context_plugin_names: List[str] = run_conf.taskboard.root.get(
+            PipelinePhase.STRUCTURAL_CONTEXT, []
+        )
+
+        built_workers = [
+            self._worker_builder.build(
+                name=name,
+                user_params=run_conf.workforce.get(name, WorkerDefinition()).params
+            ) for name in context_plugin_names if name
+        ]
+        # Filter out any workers that failed to build
+        return [worker for worker in built_workers if worker is not None]
+
+    def build_engine(self, run_conf: RunBlueprint) -> StrategyEngine:
+        """Builds and returns a configured StrategyEngine."""
+        active_workers: Dict[str, Any] = {}
+        for phase, plugin_names in run_conf.taskboard.root.items():
+            if phase != PipelinePhase.STRUCTURAL_CONTEXT:
+                worker_list = [
+                    self._worker_builder.build(
+                        name=name,
+                        user_params=run_conf.workforce.get(name, WorkerDefinition()).params
+                    ) for name in plugin_names if name
+                ]
+                active_workers[phase.value] = [w for w in worker_list if w is not None]
+
+        return StrategyEngine(active_workers=active_workers)
+
+--- END FILE: backend/assembly/engine_builder.py ---
 
 --- START FILE: backend/assembly/plugin_registry.py ---
 # backend/assembly/plugin_registry.py
@@ -1194,18 +1247,45 @@ class PipelinePhase(str, Enum):
 --- END FILE: backend/core/enums.py ---
 
 --- START FILE: backend/core/execution.py ---
-# backend/core/execution.py
-"""
-Docstring for execution.py.
+"""Contains the concrete implementation of an execution handler for backtests.
 
-@layer: TODO
-@dependencies: TODO
-@responsibilities: TODO
-"""
+This module provides the `BacktestExecutionHandler`, which is a concrete
+implementation of the `ExecutionHandler` interface. It is responsible for
+simulating the execution of trading directives within a backtesting environment.
 
-class ExecutionHandler:
-    """Docstring for ExecutionHandler."""
-    pass
+@layer: Backend (Core)
+@dependencies: [backend.core.interfaces, backend.dtos, backend.utils]
+@responsibilities:
+    - Implement the `ExecutionHandler` interface for simulated backtests.
+    - Receive `ExecutionDirective` objects and translate them into trade actions.
+    - Interact with a `Tradable` component (e.g., Portfolio) to open trades.
+    - Log all execution activities.
+"""
+from typing import List
+
+# --- CORRECTIE: Importeer de GECENTRALISEERDE interface ---
+from backend.core.interfaces.execution import ExecutionHandler
+from backend.core.interfaces.portfolio import Tradable
+from backend.dtos import ExecutionDirective
+from backend.utils.app_logger import LogEnricher
+
+class BacktestExecutionHandler(ExecutionHandler):
+    """
+    Handles the execution of directives within a simulated backtest environment.
+    """
+    def __init__(self, tradable: Tradable, logger: LogEnricher):
+        self._tradable = tradable
+        self._logger = logger
+
+    def execute_plan(self, directives: List[ExecutionDirective]):
+        """
+        Processes a list of execution directives by calling the appropriate
+        methods on the tradable entity (Portfolio).
+        """
+        for directive in directives:
+            # Hier kun je in de toekomst logica toevoegen voor verschillende directive types
+            # De huidige implementatie geeft de directive direct door.
+            self._tradable.open_trade(directive)
 
 --- END FILE: backend/core/execution.py ---
 
@@ -1577,13 +1657,15 @@ __all__ = [
     "StrategyEngine",
     "Portfolio",
     "BaseStrategyWorker",
-    "ContextRecorder"
+    "ContextRecorder",
+    "BacktestExecutionHandler"
 ]
 
 from .strategy_engine import StrategyEngine
 from .portfolio import Portfolio
 from .base_worker import BaseStrategyWorker
 from .context_recorder import ContextRecorder
+from .execution import BacktestExecutionHandler
 
 --- END FILE: backend/core/__init__.py ---
 
@@ -1649,13 +1731,13 @@ and its sub-components.
     - Defines the abstract contracts for the operational "world".
 """
 from __future__ import annotations
-
 from abc import ABC, abstractmethod
 from typing import Generator, Tuple, TYPE_CHECKING
 import pandas as pd
 
+# --- CORRECTIE: Importeer de ExecutionHandler interface HIER ---
 if TYPE_CHECKING:
-    from backend.dtos import ExecutionDirective
+    from backend.core.interfaces.execution import ExecutionHandler
 
 class DataSource(ABC):
     """Abstract contract for any component that provides market data."""
@@ -1670,15 +1752,6 @@ class Clock(ABC):
     def tick(self) -> Generator[Tuple[pd.Timestamp, pd.Series], None, None]:
         """Yields the next moment in time (timestamp and data row)."""
         ...
-
-class ExecutionHandler(ABC):
-    """Abstract contract for any component that executes trades."""
-    @abstractmethod
-    def execute_trade(self, directive: ExecutionDirective):
-        """Processes a trade DTO for execution."""
-        ...
-
-# --- Het Hoofdcontract voor de Environment ---
 
 class BaseEnvironment(ABC):
     """
@@ -1699,11 +1772,46 @@ class BaseEnvironment(ABC):
 
     @property
     @abstractmethod
-    def handler(self) -> ExecutionHandler:
+    def handler(self) -> "ExecutionHandler":
         """The execution handler for this environment."""
         ...
 
 --- END FILE: backend/core/interfaces/environment.py ---
+
+--- START FILE: backend/core/interfaces/execution.py ---
+"""Defines the abstract contract for all execution handlers.
+
+This module contains the `ExecutionHandler` Abstract Base Class (ABC), which
+enforces a standard interface for any component that executes trading
+directives.
+
+@layer: Backend (Core Interfaces)
+@dependencies: [abc, backend.dtos]
+@responsibilities:
+    - Define the `ExecutionHandler` abstract base class.
+    - Specify the `execute_plan` method as the required contract for all execution environments.
+"""
+from abc import ABC, abstractmethod
+from typing import List
+from backend.dtos import ExecutionDirective
+
+class ExecutionHandler(ABC):
+    """
+    Abstract Base Class that defines the contract for any component capable
+    of executing trade directives.
+    """
+
+    @abstractmethod
+    def execute_plan(self, directives: List[ExecutionDirective]) -> None:
+        """
+        Processes a list of execution directives.
+
+        Args:
+            directives (List[ExecutionDirective]): The directives to be executed.
+        """
+        raise NotImplementedError
+
+--- END FILE: backend/core/interfaces/execution.py ---
 
 --- START FILE: backend/core/interfaces/portfolio.py ---
 # backend/core/interfaces/portfolio.py
@@ -2526,23 +2634,21 @@ from typing import Generator, Tuple
 import pandas as pd
 
 from backend.config.schemas.app_schema import AppConfig
-from backend.core.interfaces import (BaseEnvironment, Clock, DataSource,
-                                     ExecutionHandler, Tradable)
+# --- CORRECTIE: Importeer de JUISTE, GECENTRALISEERDE interfaces ---
+from backend.core.interfaces import BaseEnvironment, Clock, DataSource, Tradable
+from backend.core.interfaces.execution import ExecutionHandler
 from backend.data.loader import DataLoader
-from backend.dtos.execution_directive import ExecutionDirective
 from backend.utils.app_logger import LogEnricher
+# --- CORRECTIE: Importeer de CONCRETE handler ---
+from backend.core.execution import BacktestExecutionHandler
 
 
 # --- Sub-component Implementations ---
-
 class CSVDataSource(DataSource):
     """A data source that loads market data from a CSV file."""
 
-    # --- DE FIX: Accepteer alleen de data die je echt nodig hebt ---
     def __init__(self, source_dir: str, trading_pair: str, timeframe: str, logger: LogEnricher):
         self._logger = logger
-
-        # --- DE FIX: Bouw het pad op met de directe input ---
         base_path = Path(source_dir)
         pair_filename = trading_pair.replace('/', '_')
         filename = f"{pair_filename}_{timeframe}.csv"
@@ -2556,6 +2662,7 @@ class CSVDataSource(DataSource):
         if self._data.empty:
             self._data = self._data_loader.load()
         return self._data
+
 class SimulatedClock(Clock):
     """A clock that simulates the passage of time by iterating over a DataFrame."""
 
@@ -2568,30 +2675,15 @@ class SimulatedClock(Clock):
             assert isinstance(timestamp, pd.Timestamp)
             yield timestamp, row
 
-
-class BacktestExecutionHandler(ExecutionHandler):
-    """An execution handler that simulates trades against a Tradable object."""
-
-    def __init__(self, tradable: Tradable):
-        self._tradable = tradable
-
-    def execute_trade(self, directive: ExecutionDirective):
-        """Passes the trade plan to the tradable object for simulated execution."""
-        self._tradable.open_trade(directive)
-
-
 # --- Main Environment Class ---
-
 class BacktestEnvironment(BaseEnvironment):
     """
     The concrete implementation of a BaseEnvironment for running backtests.
     """
-
     def __init__(self, app_config: AppConfig, tradable: Tradable):
         """Initializes the environment and constructs its sub-components."""
         self._logger = LogEnricher(logging.getLogger(__name__))
 
-        # Bouw de gespecialiseerde componenten voor een backtest.
         self._source = CSVDataSource(
             source_dir=app_config.platform.data.source_dir,
             trading_pair=app_config.run.data.trading_pair,
@@ -2599,21 +2691,18 @@ class BacktestEnvironment(BaseEnvironment):
             logger=self._logger
         )
         self._clock = SimulatedClock(self._source.get_data())
-        self._handler = BacktestExecutionHandler(tradable)
+        self._handler = BacktestExecutionHandler(tradable, self._logger)
 
     @property
     def source(self) -> DataSource:
-        """The data source for this environment."""
         return self._source
 
     @property
     def clock(self) -> Clock:
-        """The clock that controls time in this environment."""
         return self._clock
 
     @property
     def handler(self) -> ExecutionHandler:
-        """The execution handler for this environment."""
         return self._handler
 
 --- END FILE: backend/environments/backtest_environment.py ---
@@ -2630,7 +2719,6 @@ Docstring for live_environment.py.
 
 class LiveTradeEnvironment:
     """Docstring for LiveTradeEnvironment."""
-    pass
 
 --- END FILE: backend/environments/live_environment.py ---
 
@@ -2657,13 +2745,13 @@ Exposes the public API of the Environments sub-package.
 """
 __all__ = [
     "BacktestEnvironment",
-    "LiveEnvironment",
-    "PaperEnvironment",
+#    "LiveEnvironment",
+#    "PaperEnvironment",
 ]
 
 from .backtest_environment import BacktestEnvironment
-from .live_environment import LiveEnvironment
-from .paper_environment import PaperEnvironment
+#from .live_environment import LiveEnvironment
+#from .paper_environment import PaperEnvironment
 
 --- END FILE: backend/environments/__init__.py ---
 
@@ -3540,7 +3628,7 @@ __all__ = [
     # from .core
     "StrategyEngine",
     "Portfolio",
-    "BaseWorker",
+    "BaseStrategyWorker",
     "ContextRecorder",
     # from .dtos
     "Signal",
@@ -3556,8 +3644,8 @@ __all__ = [
     "BacktestResult",
     # from .environments
     "BacktestEnvironment",
-    "LiveEnvironment",
-    "PaperEnvironment",
+#    "LiveEnvironment",
+#    "PaperEnvironment",
     # from .assembly
     "ContextBuilder",
     "DependencyValidator",
@@ -3568,7 +3656,7 @@ __all__ = [
 from .core import (
     StrategyEngine,
     Portfolio,
-    BaseWorker,
+    BaseStrategyWorker,
     ContextRecorder,
 )
 from .dtos import (
@@ -3586,8 +3674,8 @@ from .dtos import (
 )
 from .environments import (
     BacktestEnvironment,
-    LiveEnvironment,
-    PaperEnvironment,
+#    LiveEnvironment,
+#    PaperEnvironment,
 )
 from .assembly import (
     ContextBuilder,
@@ -3722,6 +3810,59 @@ class DependencyValidator:
         return True
 
 --- END FILE: backend/assembly/dependency_validator.py ---
+
+--- START FILE: backend/assembly/engine_builder.py ---
+# backend/assembly/engine_builder.py
+"""
+Contains the EngineBuilder, a specialist for assembling a StrategyEngine.
+"""
+from typing import Any, Dict, List
+
+from backend.assembly.worker_builder import WorkerBuilder
+from backend.config.schemas.run_schema import RunBlueprint, WorkerDefinition
+from backend.core.enums import PipelinePhase
+from backend.core.strategy_engine import StrategyEngine
+from backend.core.interfaces.worker import ContextWorker
+
+class EngineBuilder:
+    """Assembles a StrategyEngine with all its required workers."""
+
+    def __init__(self, worker_builder: WorkerBuilder):
+        self._worker_builder = worker_builder
+
+    def build_context_pipeline(
+        self, run_conf: RunBlueprint
+    ) -> List[ContextWorker]:
+        """Builds the initial pipeline of context workers."""
+        context_plugin_names: List[str] = run_conf.taskboard.root.get(
+            PipelinePhase.STRUCTURAL_CONTEXT, []
+        )
+
+        built_workers = [
+            self._worker_builder.build(
+                name=name,
+                user_params=run_conf.workforce.get(name, WorkerDefinition()).params
+            ) for name in context_plugin_names if name
+        ]
+        # Filter out any workers that failed to build
+        return [worker for worker in built_workers if worker is not None]
+
+    def build_engine(self, run_conf: RunBlueprint) -> StrategyEngine:
+        """Builds and returns a configured StrategyEngine."""
+        active_workers: Dict[str, Any] = {}
+        for phase, plugin_names in run_conf.taskboard.root.items():
+            if phase != PipelinePhase.STRUCTURAL_CONTEXT:
+                worker_list = [
+                    self._worker_builder.build(
+                        name=name,
+                        user_params=run_conf.workforce.get(name, WorkerDefinition()).params
+                    ) for name in plugin_names if name
+                ]
+                active_workers[phase.value] = [w for w in worker_list if w is not None]
+
+        return StrategyEngine(active_workers=active_workers)
+
+--- END FILE: backend/assembly/engine_builder.py ---
 
 --- START FILE: backend/assembly/plugin_registry.py ---
 # backend/assembly/plugin_registry.py
@@ -4540,18 +4681,45 @@ class PipelinePhase(str, Enum):
 --- END FILE: backend/core/enums.py ---
 
 --- START FILE: backend/core/execution.py ---
-# backend/core/execution.py
-"""
-Docstring for execution.py.
+"""Contains the concrete implementation of an execution handler for backtests.
 
-@layer: TODO
-@dependencies: TODO
-@responsibilities: TODO
-"""
+This module provides the `BacktestExecutionHandler`, which is a concrete
+implementation of the `ExecutionHandler` interface. It is responsible for
+simulating the execution of trading directives within a backtesting environment.
 
-class ExecutionHandler:
-    """Docstring for ExecutionHandler."""
-    pass
+@layer: Backend (Core)
+@dependencies: [backend.core.interfaces, backend.dtos, backend.utils]
+@responsibilities:
+    - Implement the `ExecutionHandler` interface for simulated backtests.
+    - Receive `ExecutionDirective` objects and translate them into trade actions.
+    - Interact with a `Tradable` component (e.g., Portfolio) to open trades.
+    - Log all execution activities.
+"""
+from typing import List
+
+# --- CORRECTIE: Importeer de GECENTRALISEERDE interface ---
+from backend.core.interfaces.execution import ExecutionHandler
+from backend.core.interfaces.portfolio import Tradable
+from backend.dtos import ExecutionDirective
+from backend.utils.app_logger import LogEnricher
+
+class BacktestExecutionHandler(ExecutionHandler):
+    """
+    Handles the execution of directives within a simulated backtest environment.
+    """
+    def __init__(self, tradable: Tradable, logger: LogEnricher):
+        self._tradable = tradable
+        self._logger = logger
+
+    def execute_plan(self, directives: List[ExecutionDirective]):
+        """
+        Processes a list of execution directives by calling the appropriate
+        methods on the tradable entity (Portfolio).
+        """
+        for directive in directives:
+            # Hier kun je in de toekomst logica toevoegen voor verschillende directive types
+            # De huidige implementatie geeft de directive direct door.
+            self._tradable.open_trade(directive)
 
 --- END FILE: backend/core/execution.py ---
 
@@ -4923,13 +5091,15 @@ __all__ = [
     "StrategyEngine",
     "Portfolio",
     "BaseStrategyWorker",
-    "ContextRecorder"
+    "ContextRecorder",
+    "BacktestExecutionHandler"
 ]
 
 from .strategy_engine import StrategyEngine
 from .portfolio import Portfolio
 from .base_worker import BaseStrategyWorker
 from .context_recorder import ContextRecorder
+from .execution import BacktestExecutionHandler
 
 --- END FILE: backend/core/__init__.py ---
 
@@ -4995,13 +5165,13 @@ and its sub-components.
     - Defines the abstract contracts for the operational "world".
 """
 from __future__ import annotations
-
 from abc import ABC, abstractmethod
 from typing import Generator, Tuple, TYPE_CHECKING
 import pandas as pd
 
+# --- CORRECTIE: Importeer de ExecutionHandler interface HIER ---
 if TYPE_CHECKING:
-    from backend.dtos import ExecutionDirective
+    from backend.core.interfaces.execution import ExecutionHandler
 
 class DataSource(ABC):
     """Abstract contract for any component that provides market data."""
@@ -5016,15 +5186,6 @@ class Clock(ABC):
     def tick(self) -> Generator[Tuple[pd.Timestamp, pd.Series], None, None]:
         """Yields the next moment in time (timestamp and data row)."""
         ...
-
-class ExecutionHandler(ABC):
-    """Abstract contract for any component that executes trades."""
-    @abstractmethod
-    def execute_trade(self, directive: ExecutionDirective):
-        """Processes a trade DTO for execution."""
-        ...
-
-# --- Het Hoofdcontract voor de Environment ---
 
 class BaseEnvironment(ABC):
     """
@@ -5045,11 +5206,46 @@ class BaseEnvironment(ABC):
 
     @property
     @abstractmethod
-    def handler(self) -> ExecutionHandler:
+    def handler(self) -> "ExecutionHandler":
         """The execution handler for this environment."""
         ...
 
 --- END FILE: backend/core/interfaces/environment.py ---
+
+--- START FILE: backend/core/interfaces/execution.py ---
+"""Defines the abstract contract for all execution handlers.
+
+This module contains the `ExecutionHandler` Abstract Base Class (ABC), which
+enforces a standard interface for any component that executes trading
+directives.
+
+@layer: Backend (Core Interfaces)
+@dependencies: [abc, backend.dtos]
+@responsibilities:
+    - Define the `ExecutionHandler` abstract base class.
+    - Specify the `execute_plan` method as the required contract for all execution environments.
+"""
+from abc import ABC, abstractmethod
+from typing import List
+from backend.dtos import ExecutionDirective
+
+class ExecutionHandler(ABC):
+    """
+    Abstract Base Class that defines the contract for any component capable
+    of executing trade directives.
+    """
+
+    @abstractmethod
+    def execute_plan(self, directives: List[ExecutionDirective]) -> None:
+        """
+        Processes a list of execution directives.
+
+        Args:
+            directives (List[ExecutionDirective]): The directives to be executed.
+        """
+        raise NotImplementedError
+
+--- END FILE: backend/core/interfaces/execution.py ---
 
 --- START FILE: backend/core/interfaces/portfolio.py ---
 # backend/core/interfaces/portfolio.py
@@ -5872,23 +6068,21 @@ from typing import Generator, Tuple
 import pandas as pd
 
 from backend.config.schemas.app_schema import AppConfig
-from backend.core.interfaces import (BaseEnvironment, Clock, DataSource,
-                                     ExecutionHandler, Tradable)
+# --- CORRECTIE: Importeer de JUISTE, GECENTRALISEERDE interfaces ---
+from backend.core.interfaces import BaseEnvironment, Clock, DataSource, Tradable
+from backend.core.interfaces.execution import ExecutionHandler
 from backend.data.loader import DataLoader
-from backend.dtos.execution_directive import ExecutionDirective
 from backend.utils.app_logger import LogEnricher
+# --- CORRECTIE: Importeer de CONCRETE handler ---
+from backend.core.execution import BacktestExecutionHandler
 
 
 # --- Sub-component Implementations ---
-
 class CSVDataSource(DataSource):
     """A data source that loads market data from a CSV file."""
 
-    # --- DE FIX: Accepteer alleen de data die je echt nodig hebt ---
     def __init__(self, source_dir: str, trading_pair: str, timeframe: str, logger: LogEnricher):
         self._logger = logger
-
-        # --- DE FIX: Bouw het pad op met de directe input ---
         base_path = Path(source_dir)
         pair_filename = trading_pair.replace('/', '_')
         filename = f"{pair_filename}_{timeframe}.csv"
@@ -5902,6 +6096,7 @@ class CSVDataSource(DataSource):
         if self._data.empty:
             self._data = self._data_loader.load()
         return self._data
+
 class SimulatedClock(Clock):
     """A clock that simulates the passage of time by iterating over a DataFrame."""
 
@@ -5914,30 +6109,15 @@ class SimulatedClock(Clock):
             assert isinstance(timestamp, pd.Timestamp)
             yield timestamp, row
 
-
-class BacktestExecutionHandler(ExecutionHandler):
-    """An execution handler that simulates trades against a Tradable object."""
-
-    def __init__(self, tradable: Tradable):
-        self._tradable = tradable
-
-    def execute_trade(self, directive: ExecutionDirective):
-        """Passes the trade plan to the tradable object for simulated execution."""
-        self._tradable.open_trade(directive)
-
-
 # --- Main Environment Class ---
-
 class BacktestEnvironment(BaseEnvironment):
     """
     The concrete implementation of a BaseEnvironment for running backtests.
     """
-
     def __init__(self, app_config: AppConfig, tradable: Tradable):
         """Initializes the environment and constructs its sub-components."""
         self._logger = LogEnricher(logging.getLogger(__name__))
 
-        # Bouw de gespecialiseerde componenten voor een backtest.
         self._source = CSVDataSource(
             source_dir=app_config.platform.data.source_dir,
             trading_pair=app_config.run.data.trading_pair,
@@ -5945,21 +6125,18 @@ class BacktestEnvironment(BaseEnvironment):
             logger=self._logger
         )
         self._clock = SimulatedClock(self._source.get_data())
-        self._handler = BacktestExecutionHandler(tradable)
+        self._handler = BacktestExecutionHandler(tradable, self._logger)
 
     @property
     def source(self) -> DataSource:
-        """The data source for this environment."""
         return self._source
 
     @property
     def clock(self) -> Clock:
-        """The clock that controls time in this environment."""
         return self._clock
 
     @property
     def handler(self) -> ExecutionHandler:
-        """The execution handler for this environment."""
         return self._handler
 
 --- END FILE: backend/environments/backtest_environment.py ---
@@ -5976,7 +6153,6 @@ Docstring for live_environment.py.
 
 class LiveTradeEnvironment:
     """Docstring for LiveTradeEnvironment."""
-    pass
 
 --- END FILE: backend/environments/live_environment.py ---
 
@@ -6003,13 +6179,13 @@ Exposes the public API of the Environments sub-package.
 """
 __all__ = [
     "BacktestEnvironment",
-    "LiveEnvironment",
-    "PaperEnvironment",
+#    "LiveEnvironment",
+#    "PaperEnvironment",
 ]
 
 from .backtest_environment import BacktestEnvironment
-from .live_environment import LiveEnvironment
-from .paper_environment import PaperEnvironment
+#from .live_environment import LiveEnvironment
+#from .paper_environment import PaperEnvironment
 
 --- END FILE: backend/environments/__init__.py ---
 
@@ -8839,109 +9015,124 @@ single, complete strategy run.
     - Delegates the results from the engine (Directives and Events) to the
       appropriate handlers.
 """
-from typing import Any, Dict, List
+from typing import Optional
+import pandas as pd
 
 from backend.config.schemas.app_schema import AppConfig
-from backend.config.schemas.run_schema import WorkerDefinition
-from backend.core.enums import PipelinePhase
 from backend.utils.app_logger import LogEnricher
 
 from backend.assembly import PluginRegistry, WorkerBuilder, ContextBuilder
-from backend.core import (
-    Portfolio, StrategyEngine, ContextRecorder
-)
-from backend.core.interfaces import ContextWorker
+from backend.assembly.engine_builder import EngineBuilder  # Import the new builder
+from backend.core import Portfolio, ContextRecorder
+from backend.core.interfaces import Tradable #pyright: ignore[reportUnusedImport], pylint: disable=unused-import
+from backend.core.interfaces.execution import ExecutionHandler
 from backend.environments.backtest_environment import BacktestEnvironment
 from backend.dtos import TradingContext
 
+# Force Pydantic to resolve any forward-looking type references (like 'Tradable')
+# This is crucial for models that use abstract base classes or protocols.
+TradingContext.model_rebuild()
 
-class StrategyOperator:
-    """..."""
+class StrategyOperator:  # pylint: disable=too-many-instance-attributes
+    """Orchestrates a single, complete strategy run from setup to execution."""
 
     def __init__(self, app_config: AppConfig, logger: LogEnricher):
+        """Initializes the StrategyOperator."""
         self._app_config = app_config
         self._logger = logger
+        self._context_recorder = ContextRecorder()
 
-    def run(self):
-        """..."""
-        self._logger.info("operator.run_start")
-        platform_conf = self._app_config.platform
-        run_conf = self._app_config.run
+        # Attributes to be initialized in _prepare_components
+        self._engine_builder: Optional[EngineBuilder] = None
+        self._context_builder: Optional[ContextBuilder] = None
+        self._portfolio: Optional[Portfolio] = None
+        self._environment: Optional[BacktestEnvironment] = None
+        self._execution_handler: Optional[ExecutionHandler] = None
 
-        # --- Fase 1: De Voorbereiding ---
+    def _prepare_components(self):
+        """Phase 1: Prepares all long-lived components for the run."""
         self._logger.info("operator.setup_start")
+        platform_conf = self._app_config.platform
 
         registry = PluginRegistry(platform_config=platform_conf, logger=self._logger)
         worker_builder = WorkerBuilder(plugin_registry=registry, logger=self._logger)
-        context_builder = ContextBuilder()
-        context_recorder = ContextRecorder()
 
-        portfolio = Portfolio(
+        # The EngineBuilder is now a dedicated specialist for engine assembly
+        self._engine_builder = EngineBuilder(worker_builder=worker_builder)
+        self._context_builder = ContextBuilder()
+
+        self._portfolio = Portfolio(
             initial_capital=platform_conf.portfolio.initial_capital,
             fees_pct=platform_conf.portfolio.fees_pct,
             logger=self._logger,
-            context_recorder=context_recorder
+            context_recorder=self._context_recorder
         )
-        environment = BacktestEnvironment(app_config=self._app_config, tradable=portfolio)
-        execution_handler = environment.handler
 
-        # --- Fase 2: De Data Voorbereiden ---
+        # TODO: MVP HACK - Environment should be injected by a factory.
+        self._environment = BacktestEnvironment(app_config=self._app_config,
+                                                tradable=self._portfolio)
+        self._execution_handler = self._environment.handler
+
+    def _prepare_data(self) -> pd.DataFrame:
+        """Phase 2: Builds and runs the context pipeline to create enriched data."""
+        assert self._engine_builder is not None, "Components not prepared"
+        assert self._context_builder is not None, "Components not prepared"
+        assert self._environment is not None, "Components not prepared"
+
         self._logger.info("operator.context_building_start")
+        run_conf = self._app_config.run
 
-        context_plugin_names: List[str] = run_conf.taskboard.root.get(
-            PipelinePhase.STRUCTURAL_CONTEXT, []
-        )
+        context_pipeline = self._engine_builder.build_context_pipeline(run_conf)
 
-        built_workers = [
-            worker_builder.build(
-                name=name,
-                user_params=run_conf.workforce.get(name, WorkerDefinition()).params
-            ) for name in context_plugin_names if name
-        ]
-        # Filter Nones eruit voor type-veiligheid
-        context_workers: List[ContextWorker] = [
-            worker for worker in built_workers if worker is not None
-        ]
-
-        enriched_df = context_builder.build(
-            initial_df=environment.source.get_data(),
-            context_pipeline=context_workers
+        enriched_df = self._context_builder.build(
+            initial_df=self._environment.source.get_data(),
+            context_pipeline=context_pipeline
         )
         self._logger.info("operator.context_building_complete")
+        return enriched_df
 
-        # --- Fase 3: De Motor Assembleren ---
+    def _run_operational_cycle(self, enriched_df: pd.DataFrame):
+        """Phase 3 & 4: Assembles the engine and runs the main event loop."""
+        assert self._engine_builder is not None, "Components not prepared"
+        assert self._portfolio is not None, "Components not prepared"
+        assert self._environment is not None, "Components not prepared"
+        assert self._execution_handler is not None, "Components not prepared"
+
+        run_conf = self._app_config.run
+
+        # --- Assemble Engine ---
         self._logger.info("operator.engine_assembly_start")
-        active_workers: Dict[str, Any] = {}
-        for phase, plugin_names in run_conf.taskboard.root.items():
-            if phase != PipelinePhase.STRUCTURAL_CONTEXT:
-                worker_list = [
-                    worker_builder.build(
-                        name=name,
-                        user_params=run_conf.workforce.get(name, WorkerDefinition()).params
-                    ) for name in plugin_names if name
-                ]
-                # Filter Nones eruit
-                active_workers[phase.value] = [w for w in worker_list if w is not None]
-
-        engine = StrategyEngine(active_workers=active_workers)
+        engine = self._engine_builder.build_engine(run_conf)
         self._logger.info("operator.engine_assembly_complete")
 
-        # --- Fase 4: De Operationele Cyclus ---
+        # --- Run Main Loop ---
         trading_context = TradingContext(
             enriched_df=enriched_df,
-            portfolio=portfolio,
-            context_recorder=context_recorder
+            portfolio=self._portfolio,
+            context_recorder=self._context_recorder
         )
-
         self._logger.info("operator.engine_start")
-        for result in engine.run(trading_context=trading_context, clock=environment.clock):
+        for result in engine.run(trading_context=trading_context, clock=self._environment.clock):
             if result.critical_events:
+                # TODO: MVP HACK - Proper event handling belongs in a supervisor.
                 self._logger.error("operator.critical_events_detected",
-                                     values={'count': len(result.critical_events)})
+                                   values={'count': len(result.critical_events)})
                 break
 
-            for directive in result.execution_directives:
-                execution_handler.execute_trade(directive)
+            if result.execution_directives:
+                # TODO: ARCHITECTURE REFACTOR - Directive handling belongs in the caller.
+                self._execution_handler.execute_plan(result.execution_directives)
+
+    def run(self):
+        """
+        Executes the full workflow by composing the private helper methods.
+        This method now only describes WHAT happens, not HOW.
+        """
+        self._logger.info("operator.run_start")
+
+        self._prepare_components()
+        enriched_df = self._prepare_data()
+        self._run_operational_cycle(enriched_df)
 
         self._logger.info("operator.run_complete")
 
@@ -9212,6 +9403,110 @@ def test_pipeline_with_incorrect_order_fails(mocker: MockerFixture):
         validator.validate(pipeline)
 
 --- END FILE: tests/backend/assembly/test_dependency_validator.py ---
+
+--- START FILE: tests/backend/assembly/test_engine_builder.py ---
+# tests/backend/assembly/test_engine_builder.py
+"""
+Unit tests for the EngineBuilder class.
+"""
+from unittest.mock import call
+from pytest_mock import MockerFixture
+
+from backend.assembly.engine_builder import EngineBuilder
+from backend.assembly.worker_builder import WorkerBuilder
+from backend.config.schemas.run_schema import RunBlueprint, WorkerDefinition
+from backend.core.enums import PipelinePhase
+
+def test_build_context_pipeline(mocker: MockerFixture):
+    """
+    Tests if the context pipeline is built correctly by only requesting
+    workers from the STRUCTURAL_CONTEXT phase.
+    """
+    # --- Arrange ---
+    mock_worker_builder = mocker.MagicMock(spec=WorkerBuilder)
+    mock_run_conf = mocker.MagicMock(spec=RunBlueprint)
+
+    # --- DE FIX: Maak de geneste mock-structuur voor de taskboard ---
+    mock_taskboard = mocker.MagicMock()
+    mock_taskboard.root = {
+        PipelinePhase.STRUCTURAL_CONTEXT: ["worker_a", "worker_b"],
+        PipelinePhase.SIGNAL_GENERATOR: ["worker_c"]  # Should be ignored
+    }
+    mock_run_conf.taskboard = mock_taskboard
+    # ----------------------------------------------------------------
+
+    # --- DE FIX: Mock ook de workforce met een get methode ---
+    mock_workforce = mocker.MagicMock()
+    mock_workforce.get.return_value = WorkerDefinition()
+    mock_run_conf.workforce = mock_workforce
+    # ---------------------------------------------------------
+
+    # --- Act ---
+    builder = EngineBuilder(worker_builder=mock_worker_builder)
+    builder.build_context_pipeline(run_conf=mock_run_conf)
+
+    # --- Assert ---
+    # Verify that 'build' was called only for the context workers
+    expected_calls = [
+        call(name="worker_a", user_params={}),
+        call(name="worker_b", user_params={})
+    ]
+    mock_worker_builder.build.assert_has_calls(expected_calls, any_order=True)
+    assert mock_worker_builder.build.call_count == 2
+
+def test_build_engine(mocker: MockerFixture):
+    """
+    Tests if the StrategyEngine is assembled correctly with workers from all
+    phases EXCEPT the STRUCTURAL_CONTEXT phase.
+    """
+    # --- Arrange ---
+    mock_worker_builder = mocker.MagicMock(spec=WorkerBuilder)
+    mock_strategy_engine_class = mocker.patch('backend.assembly.engine_builder.StrategyEngine')
+    mock_run_conf = mocker.MagicMock(spec=RunBlueprint)
+
+    # --- DE FIX: Maak de geneste mock-structuur voor de taskboard ---
+    mock_taskboard = mocker.MagicMock()
+    mock_taskboard.root = {
+        PipelinePhase.STRUCTURAL_CONTEXT: ["context_worker"],  # Should be ignored
+        PipelinePhase.SIGNAL_GENERATOR: ["signal_worker_1"],
+        PipelinePhase.SIGNAL_REFINER: ["refiner_worker_1", "refiner_worker_2"]
+    }
+    mock_run_conf.taskboard = mock_taskboard
+    # ----------------------------------------------------------------
+
+    # --- DE FIX: Mock ook de workforce met een get methode ---
+    mock_workforce = mocker.MagicMock()
+    mock_workforce.get.return_value = WorkerDefinition()
+    mock_run_conf.workforce = mock_workforce
+    # ---------------------------------------------------------
+
+    # --- Act ---
+    builder = EngineBuilder(worker_builder=mock_worker_builder)
+    builder.build_engine(run_conf=mock_run_conf)
+
+    # --- Assert ---
+    # Verify the worker_builder was called for the correct, non-context workers
+    expected_build_calls = [
+        call(name="signal_worker_1", user_params={}),
+        call(name="refiner_worker_1", user_params={}),
+        call(name="refiner_worker_2", user_params={})
+    ]
+    mock_worker_builder.build.assert_has_calls(expected_build_calls, any_order=True)
+    assert mock_worker_builder.build.call_count == 3
+
+    # Verify the StrategyEngine was instantiated with the correctly grouped workers
+    active_workers_arg = mock_strategy_engine_class.call_args[1]['active_workers']
+
+    assert PipelinePhase.SIGNAL_GENERATOR.value in active_workers_arg
+    assert len(active_workers_arg[PipelinePhase.SIGNAL_GENERATOR.value]) == 1
+
+    assert PipelinePhase.SIGNAL_REFINER.value in active_workers_arg
+    assert len(active_workers_arg[PipelinePhase.SIGNAL_REFINER.value]) == 2
+
+    # Crucially, assert that the context phase was NOT included in the engine's workers
+    assert PipelinePhase.STRUCTURAL_CONTEXT.value not in active_workers_arg
+
+--- END FILE: tests/backend/assembly/test_engine_builder.py ---
 
 --- START FILE: tests/backend/assembly/test_plugin_registry.py ---
 # tests/backend/assembly/test_plugin_registry.py
@@ -9866,90 +10161,44 @@ def test_backtest_environment_initialization(mocker: MockerFixture):
 --- START FILE: tests/services/test_strategy_operator.py ---
 # tests/services/test_strategy_operator.py
 """
-Unit tests for the StrategyOperator service.
+Unit tests for the refactored StrategyOperator service.
 """
-
-import pandas as pd
 from pytest_mock import MockerFixture
-
-# Componenten die we gaan mocken
-from backend.core.interfaces import (
-    BaseEnvironment, Tradable, ExecutionHandler, BaseStrategyEngine
-)
-from backend.assembly import PluginRegistry, WorkerBuilder, ContextBuilder
-# --- DE FIX: Importeer alle benodigde config-schema's ---
-from backend.config.schemas.app_schema import AppConfig
-from backend.config.schemas.platform_schema import PlatformConfig
-from backend.config.schemas.run_schema import RunBlueprint
-from backend.dtos import EngineCycleResult, ExecutionDirective
 
 # De klasse die we gaan testen
 from services.strategy_operator import StrategyOperator
 
-def test_strategy_operator_full_orchestration(mocker: MockerFixture):
-    """
-    Tests if the StrategyOperator correctly orchestrates the entire run,
-    delegating each step to the appropriate backend component using the
-    nested AppConfig structure.
-    """
-    # --- Arrange (De Voorbereiding) ---
+# De klassen die we gaan mocken
+from backend.config.schemas.app_schema import AppConfig
 
-    # 1. Maak een complete, geneste mock-configuratie
-    mock_platform_config = mocker.MagicMock(spec=PlatformConfig)
-    mock_run_blueprint = mocker.MagicMock(spec=RunBlueprint)
-    mock_run_blueprint.taskboard = {} # Leeg voor deze test, wordt niet direct gebruikt
-    mock_run_blueprint.workforce = {}
+def test_strategy_operator_run_orchestration(mocker: MockerFixture):
+    """
+    Tests if the main `run` method correctly calls the private helper
+    methods in the correct order, confirming its role as a pure orchestrator.
+    """
+    # --- Arrange ---
+    # Mock the private helper methods that contain the actual logic
+    mock_prepare_components = mocker.patch(
+        'services.strategy_operator.StrategyOperator._prepare_components'
+    )
+    mock_prepare_data = mocker.patch('services.strategy_operator.StrategyOperator._prepare_data')
+    mock_run_cycle = mocker.patch(
+        'services.strategy_operator.StrategyOperator._run_operational_cycle'
+    )
 
+    # Create dummy config and logger for instantiation
     mock_app_config = mocker.MagicMock(spec=AppConfig)
-    mock_app_config.platform = mock_platform_config
-    mock_app_config.run = mock_run_blueprint
-
-    # 2. Mock alle externe afhankelijkheden die de Operator aanmaakt
-    mock_registry = mocker.MagicMock(spec=PluginRegistry)
-    mock_worker_builder = mocker.MagicMock(spec=WorkerBuilder)
-    mock_context_builder = mocker.MagicMock(spec=ContextBuilder)
-    mock_environment = mocker.MagicMock(spec=BaseEnvironment)
-    mock_execution_handler = mocker.MagicMock(spec=ExecutionHandler)
-    mock_portfolio = mocker.MagicMock(spec=Tradable)
-    mock_engine = mocker.MagicMock(spec=BaseStrategyEngine)
     mock_logger = mocker.MagicMock()
 
-    # 3. Patch de constructors om onze mocks terug te geven
-    mocker.patch('services.strategy_operator.PluginRegistry', return_value=mock_registry)
-    mocker.patch('services.strategy_operator.WorkerBuilder', return_value=mock_worker_builder)
-    mocker.patch('services.strategy_operator.ContextBuilder', return_value=mock_context_builder)
-    mocker.patch('services.strategy_operator.BacktestEnvironment', return_value=mock_environment)
-    mocker.patch('services.strategy_operator.Portfolio', return_value=mock_portfolio)
-    mocker.patch('services.strategy_operator.StrategyEngine', return_value=mock_engine)
-
-    # 4. Configureer het gedrag van de mocks
-    mock_environment.handler = mock_execution_handler
-    mock_context_builder.build.return_value = pd.DataFrame()
-
-    mock_directive = mocker.MagicMock(spec=ExecutionDirective)
-    mock_engine_result = EngineCycleResult(execution_directives=[mock_directive],
-                                           critical_events=[])
-    mock_engine.run.return_value = [mock_engine_result]
-
-    # --- Act (De Actie) ---
+    # --- Act ---
     operator = StrategyOperator(app_config=mock_app_config, logger=mock_logger)
     operator.run()
 
-    # --- Assert (De Controle) ---
-
-    # Is de PluginRegistry aangemaakt met de *juiste* (platform) config?
-    mocker.patch('services.strategy_operator.PluginRegistry').assert_called_once_with(
-        platform_config=mock_platform_config, logger=mock_logger
-    )
-
-    # Is de Environment aangemaakt met de *volledige* app config?
-    mocker.patch('services.strategy_operator.BacktestEnvironment').assert_called_once_with(
-        app_config=mock_app_config, tradable=mock_portfolio
-    )
-
-    # Zijn de motor en de handlers aangeroepen?
-    mock_engine.run.assert_called_once()
-    mock_execution_handler.execute_trade.assert_called_once_with(mock_directive)
+    # --- Assert ---
+    # Verify that the main orchestration methods were called exactly once
+    mock_prepare_components.assert_called_once()
+    mock_prepare_data.assert_called_once()
+    mock_run_cycle.assert_called_once()
 
 --- END FILE: tests/services/test_strategy_operator.py ---
 

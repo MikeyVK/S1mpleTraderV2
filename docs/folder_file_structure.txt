@@ -4,6 +4,7 @@ S1mpleTraderV2/
 │   │   ├── __init__.py
 │   │   ├── context_builder.py
 │   │   ├── dependency_validator.py
+│   │   ├── engine_builder.py
 │   │   ├── plugin_registry.py
 │   │   └── worker_builder.py
 │   ├── config
@@ -19,6 +20,7 @@ S1mpleTraderV2/
 │   │   │   ├── __init__.py
 │   │   │   ├── engine.py
 │   │   │   ├── environment.py
+│   │   │   ├── execution.py
 │   │   │   ├── portfolio.py
 │   │   │   └── worker.py
 │   │   ├── __init__.py
@@ -93,6 +95,7 @@ S1mpleTraderV2/
 │   │   ├── B_BIJLAGE_OPENSTAANDE_VRAAGSTUKKEN.md
 │   │   └── C_BIJLAGE_MVP
 │   ├── folder_file_structure.txt
+│   ├── project_context.txt
 │   └── PROPOSED_FOLDER_STRUCTURE.md
 ├── frontends
 │   ├── cli
@@ -198,6 +201,7 @@ S1mpleTraderV2/
 │   │   │   ├── __init__.py
 │   │   │   ├── test_context_builder.py
 │   │   │   ├── test_dependency_validator.py
+│   │   │   ├── test_engine_builder.py
 │   │   │   ├── test_plugin_registry.py
 │   │   │   └── test_worker_builder.py
 │   │   ├── core
