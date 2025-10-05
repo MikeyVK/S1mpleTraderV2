@@ -129,7 +129,7 @@ STRUCTURE = {
     },
     "services": {
         "__init__.py": None,
-        "strategy_orchestrator.py": "StrategyOrchestrator",
+        "strategy_operator.py": "StrategyOperator",
         "optimization_service.py": "OptimizationService",
         "variant_test_service.py": "VariantTestService",
         "parallel_run_service.py": "ParallelRunService",

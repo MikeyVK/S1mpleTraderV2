@@ -17,9 +17,13 @@ import pandas as pd
 
 # Use TYPE_CHECKING to prevent circular imports at runtime
 if TYPE_CHECKING:
-    from backend.dtos import (Signal, EntrySignal, RiskDefinedSignal,
-                              TradePlan, RoutedTradePlan, CriticalEvent,
-                              TradingContext)
+    from backend.dtos.pipeline.signal import Signal
+    from backend.dtos.pipeline.entry_signal import EntrySignal
+    from backend.dtos.pipeline.risk_defined_signal import RiskDefinedSignal
+    from backend.dtos.pipeline.trade_plan import TradePlan
+    from backend.dtos.pipeline.routed_trade_plan import RoutedTradePlan
+    from backend.dtos.execution.critical_event import CriticalEvent
+    from backend.dtos.state.trading_context import TradingContext
 
 # --- Specific Worker Contracts ---
 

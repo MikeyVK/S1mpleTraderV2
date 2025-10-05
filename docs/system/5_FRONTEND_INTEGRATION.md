@@ -36,7 +36,7 @@ Elk van deze secties representeert een "werkruimte" binnen de applicatie, met ee
 
 * **User Goal:** Het intuïtief en foutloos samenstellen van een complete handelsstrategie (`run.yaml`) door plugins te combineren.
 * **UI Componenten:**
-    * **Visuele Pijplijn:** Een grafische weergave van de 6-fasen trechter. Elke fase is een "slot" waar een of meerdere plugins in gesleept kunnen worden.
+    * **Visuele Pijplijn:** Een grafische weergave van de analytische pijplijn, opgedeeld in de logische fasen (bv. `Context`, `Signaal`, `Risico`, etc.) zoals gedefinieerd in de architectuur.
     * **Plugin Bibliotheek:** Een zijbalk toont alle beschikbare plugins, slim gegroepeerd op basis van het `type`-veld uit hun manifest (bv. `regime_filters`, `signal_generators`).
     * **Configuratie Paneel:** Dit is waar de magie gebeurt. Wanneer een plugin in een slot wordt geplaatst, verschijnt er een paneel met een **automatisch gegenereerd formulier**.
         * **Voorbeeld:** Als de `schema.py` van een EMA-plugin `length: int = Field(default=20, gt=1)` definieert, genereert de UI een numeriek inputveld, vooraf ingevuld met "20", met een validatieregel die afdwingt dat de waarde groter dan 1 moet zijn. Foutieve input wordt onmogelijk gemaakt.
@@ -65,7 +65,7 @@ Elk van deze secties representeert een "werkruimte" binnen de applicatie, met ee
         * **Optimization Results:** Een interactieve tabel (sorteren, filteren, zoeken) met de resultaten van een optimalisatierun, om snel de beste parameter-sets te vinden.
         * **Comparison Arena:** Een grafische vergelijking van varianten, met overlappende equity curves en een heatmap van key metrics om de robuustheid te beoordelen.
         * **Trade Explorer:** De meest krachtige analyse-tool. Hier kan de gebruiker door individuele trades van een *enkele* run klikken en op een grafiek precies zien wat de context was op het moment van de trade: welke indicatoren waren actief, waar lag de marktstructuur, waarom werd de entry getriggerd, etc.
-* **Backend Interactie:** De UI roept de `StrategyOrchestrator`, `OptimizationService` en `VariantTestService` aan. De resultaten worden opgehaald via de `VisualizationService`, die kant-en-klare "visualisatie-pakketten" (JSON-data voor grafieken en tabellen) levert.
+* **Backend Interactie:** De UI roept de `StrategyOperator`, `OptimizationService` en `VariantTestService` aan. De resultaten worden opgehaald via de `VisualizationService`, die kant-en-klare "visualisatie-pakketten" (JSON-data voor grafieken en tabellen) levert.
 
 ### **Werkruimte 4 & 5: PAPER TRADING & LIVE MONITORING**
 

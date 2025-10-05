@@ -22,8 +22,8 @@ from uuid import UUID
 import pandas as pd
 
 from backend.core.interfaces.portfolio import Tradable
-from backend.dtos.execution_directive import ExecutionDirective
-from backend.dtos.closed_trade import ClosedTrade
+from backend.dtos.execution.execution_directive import ExecutionDirective
+from backend.dtos.results.closed_trade import ClosedTrade
 from backend.utils.app_logger import LogEnricher
 from backend.core.context_recorder import ContextRecorder
 

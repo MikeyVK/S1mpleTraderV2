@@ -13,7 +13,7 @@ from unittest.mock import MagicMock
 # Import de componenten die we testen
 from ..worker import EmaDetector
 from ..schema import EmaDetectorParams
-from backend.dtos import TradingContext
+from backend.dtos.state.trading_context import TradingContext
 
 def test_ema_detector_adds_correct_column():
     """

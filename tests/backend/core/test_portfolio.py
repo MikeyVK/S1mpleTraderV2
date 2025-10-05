@@ -5,7 +5,7 @@ import pandas as pd
 
 from backend.core.interfaces.portfolio import Tradable
 from backend.core.portfolio import Portfolio
-from backend.dtos.execution_directive import ExecutionDirective
+from backend.dtos.execution.execution_directive import ExecutionDirective
 
 class MockLogger:
     def info(self, *args, **kwargs): pass

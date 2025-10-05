@@ -5,10 +5,15 @@ import uuid
 import pandas as pd
 from pytest_mock import MockerFixture
 
-from backend.dtos import (
-    Signal, EntrySignal, RiskDefinedSignal, TradePlan, RoutedTradePlan,
-    TradingContext, EngineCycleResult, ExecutionDirective, CriticalEvent
-)
+from backend.dtos.pipeline.signal import Signal
+from backend.dtos.pipeline.entry_signal import EntrySignal
+from backend.dtos.pipeline.risk_defined_signal import RiskDefinedSignal
+from backend.dtos.pipeline.trade_plan import TradePlan
+from backend.dtos.pipeline.routed_trade_plan import RoutedTradePlan
+from backend.dtos.state.trading_context import TradingContext
+from backend.dtos.results.engine_cycle_result import EngineCycleResult
+from backend.dtos.execution.execution_directive import ExecutionDirective
+from backend.dtos.execution.critical_event import CriticalEvent
 from backend.core.interfaces import Clock
 from backend.core.strategy_engine import StrategyEngine
 from backend.core.directive_flattener import DirectiveFlattener

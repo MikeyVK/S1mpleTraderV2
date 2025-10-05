@@ -16,7 +16,7 @@ from typing import List, TYPE_CHECKING
 
 # CORRECTIE: Importeer DTOs alleen binnen een TYPE_CHECKING block
 if TYPE_CHECKING:
-    from backend.dtos import ExecutionDirective
+    from backend.dtos.execution.execution_directive import ExecutionDirective
 
 class ExecutionHandler(ABC):
     """

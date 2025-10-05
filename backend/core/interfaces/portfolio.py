@@ -13,8 +13,8 @@ import pandas as pd
 
 # CORRECTIE: Importeer DTOs alleen binnen een TYPE_CHECKING block
 if TYPE_CHECKING:
-    from backend.dtos.execution_directive import ExecutionDirective
-    from backend.dtos.closed_trade import ClosedTrade
+    from backend.dtos.execution.execution_directive import ExecutionDirective
+    from backend.dtos.results.closed_trade import ClosedTrade
 
 @runtime_checkable
 class Tradable(Protocol):

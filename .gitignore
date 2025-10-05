@@ -29,5 +29,9 @@ dist/
 # Run results
 results/
 
+# Source data
+source_data/
+Kraken_Trading_History/
+
 # Generated documents
 #docs/

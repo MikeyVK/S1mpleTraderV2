@@ -17,7 +17,7 @@ from typing import List
 # --- CORRECTIE: Importeer de GECENTRALISEERDE interface ---
 from backend.core.interfaces.execution import ExecutionHandler
 from backend.core.interfaces.portfolio import Tradable
-from backend.dtos import ExecutionDirective
+from backend.dtos.execution.execution_directive import ExecutionDirective
 from backend.utils.app_logger import LogEnricher
 
 class BacktestExecutionHandler(ExecutionHandler):

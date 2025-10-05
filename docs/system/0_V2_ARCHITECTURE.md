@@ -1,95 +1,67 @@
-# S1mpleTrader V2: Architectonische Blauwdruk
-**Versie:** 2.0 · **Status:** Definitief
+# **S1mpleTrader V2: Architectonische Blauwdruk**
 
----
+Versie: 3.0 (Event-Gedreven Architectuur)  
+Status: Definitief
 
-## Hoofdstuk 1: Visie & Kernprincipes
+## **Hoofdstuk 1: Visie & Architectonische Principes**
 
-* **1.1. Visie**
-  
-  Het creëren van één uniforme, plugin-gedreven architectuur die de volledige levenscyclus van een handelsstrategie ondersteunt: van concept & ontwikkeling, via rigoureuze backtesting en optimalisatie, naar paper trading en uiteindelijk live executie.
+* **1.1. Visie**  
+  Het creëren van één uniforme, plugin-gedreven architectuur die de volledige levenscyclus van een handelsstrategie ondersteunt: van concept & ontwikkeling, via rigoureuze backtesting en optimalisatie, naar paper trading en uiteindelijk live executie.  
+* **1.2. De Event-Gedreven Architectuur**  
+  De kern van de V2-architectuur is een ontkoppeld, **event-gedreven model** dat robuustheid, schaalbaarheid en onderhoudbaarheid maximaliseert. Een centrale EventBus fungeert als zenuwstelsel, waardoor componenten als gelijkwaardige specialisten samenwerken via strikt gedefinieerde, contract-gedreven events.  
+  **→ Lees de volledige uitwerking in: system/1_EVENT_DRIVEN_ARCHITECTURE.md**
 
-* **1.2. Kernprincipes**
+## **Hoofdstuk 2: Architectuur & Componenten**
 
-  * **Plugin First** Alle strategische en contextuele logica wordt ingekapseld in zelfstandige, ontdekbare en onafhankelijk testbare plugins. Dit is de doorontwikkeling van het Strategy Pattern uit V1: waar V1 een set uitwisselbare “specialisten” had, formaliseert V2 dit tot een gestandaardiseerd ecosysteem.
+De applicatie is opgebouwd uit drie strikt gescheiden lagen (Frontend → Service → Backend). Dit hoofdstuk beschrijft de verantwoordelijkheden van elke laag, definieert de functionele categorieën van de componenten, en licht de rol toe van kerncomponenten zoals de PortfolioSupervisor, ContextOrchestrator en de StrategyOperator.
 
-  * **Scheiding van Zorgen (Separation of Concerns)** Strikte scheiding tussen:
-    - **Strategie-logica:** `StrategyEngine` (weet **hoe** de signaal-gedreven fasen (3-6) worden uitgevoerd).
-    - **Executie-omgeving:** `ExecutionEnvironment` (weet **waar** het gebeurt — backtest, paper, live).
-    - **Assemblage & Bouw:** Het `Assembly Team` (`PluginRegistry`, `WorkerBuilder`, `ContextBuilder`) weet hoe plugins worden beheerd en samengesteld.
-    - **Portfolio:** `Portfolio` (weet alleen **wat** de financiële staat is en fungeert als “dom” grootboek).
+**→ Lees de volledige uitwerking in: system/2_ARCHITECTURE.md**
 
-  * **Configuratie-gedreven (Configuration-driven)** Samenstelling, gedrag en parametrisering van de actieve plugins worden volledig gedefinieerd in **mens-leesbare `YAML`-bestanden**. De code is de motor; **configuratie is de bestuurder**.
+## **Hoofdstuk 3: De Anatomie van een Plugin**
 
-  * **Contract-gedreven (Contract-driven)** **Pydantic**-schema’s (en, voor de UI, **TypeScript**-interfaces) definiëren de contracten voor alle configuraties, **DTO**-input/output van plugins en data-uitwisseling tussen lagen. Dit borgt voorspelbaarheid, type-veiligheid en voorkomt runtime-fouten door ongeldige data.
+Een plugin is de fundamentele, zelfstandige en testbare eenheid van logica. Dit hoofdstuk beschrijft de mappenstructuur, het plugin_manifest.yaml (de ID-kaart), het schema.py (het contract) en de worker.py (de logica), en de rol van het BaseWorker-raamwerk.
 
----
+**→ Lees de volledige uitwerking in: system/3_PLUGIN_ANATOMY.md**
 
-## Hoofdstuk 2: Architectuur & Componenten
+## **Hoofdstuk 4: De Analytische Pijplijn**
 
-De architectuur is opgebouwd uit drie strikt gescheiden lagen (Frontend → Service → Backend) en wordt aangestuurd door gespecialiseerde entrypoints (`run_web.py`, `run_supervisor.py`, `run_backtest_cli.py`). Dit hoofdstuk beschrijft de verantwoordelijkheden van elke laag en de hoofdcomponenten zoals de `StrategyOperator`, `ExecutionEnvironment`, en het `Assembly Team`.
+De StrategyEngine is de motor van de analytische pijplijn. Dit hoofdstuk beschrijft de interne, procedurele (fase 3-9 van de analytische pijplijn) die wordt uitgevoerd in reactie op een ContextReady-event. Het detailleert hoe een idee stapsgewijs wordt gevalideerd en omgezet in een StrategyProposal, van Regime Context tot Critical Event Detection.
 
-**→ Lees de volledige uitwerking in: `docs/system/2_ARCHITECTURE.md`**
+**→ Lees de volledige uitwerking in: system/4_WORKFLOW_AND_ORCHESTRATOR.md**
 
----
+## **Hoofdstuk 5: Frontend Integratie**
 
-## Hoofdstuk 3: De Anatomie van een Plugin
+De frontend is de primaire ontwikkelomgeving (IDE) voor de strateeg, ontworpen om de "Bouwen -> Meten -> Leren" cyclus te maximaliseren. Dit hoofdstuk beschrijft de verschillende "Werkruimtes" en legt uit hoe een strikt contract tussen de Pydantic-backend en de TypeScript-frontend zorgt voor een robuuste gebruikerservaring.
 
-Een plugin is een zelfstandige package met eigen logica, contracten (**Pydantic**-modellen), manifest (`plugin_manifest.yaml`) en metadata. Elke plugin declareert zijn `type` (bv. `regime_context`, `signal_generator`, `execution_planner`, etc.), `dependencies`, en Pydantic-gevalideerde `params`.
- 
-**→ Lees de volledige uitwerking in: `docs/system/3_PLUGIN_ANATOMY.md`**
+**→ Lees de volledige uitwerking in: system/5_FRONTEND_INTEGRATION.md**
 
----
+## **Hoofdstuk 6: Robuustheid & Operationele Betrouwbaarheid**
 
-## Hoofdstuk 4: De Quant Workflow: Van Idee tot Inzicht
+Een live trading-systeem moet veerkrachtig zijn. Dit hoofdstuk beschrijft de drie verdedigingslinies: atomische schrijfacties (journaling) voor staatintegriteit, protocollen voor netwerkveerkracht (heartbeat, reconnect, reconciliation) en een Supervisor-model voor automatische crash recovery.
 
-De kern van de strategie-executie is een systematische, **9-fasen trechter** die een idee valideert en omzet in een `TradeProposal`. Dit hoofdstuk beschrijft elke fase, van `Regime Context` tot de `Critical Event Detector`, en verduidelijkt de rollen van de `StrategyEngine` (de motor) en het `Assembly Team` (de bouwers).
+**→ Lees de volledige uitwerking in: system/6_RESILIENCE_AND_OPERATIONS.md**
 
-**→ Lees de volledige uitwerking in: `docs/system/4_WORKFLOW_AND_ORCHESTRATOR.md`**
+## **Hoofdstuk 7: Ontwikkelstrategie & Tooling**
 
----
+Dit hoofdstuk beschrijft de workflow, van de visuele 'Strategy Builder' tot de 'Trade Explorer'. Daarnaast worden de kern-tools behandeld, zoals de gespecialiseerde entrypoints, de gelaagde logging-aanpak en de cruciale rol van de Correlation ID voor traceerbaarheid.
 
-## Hoofdstuk 5: Frontend Integratie
+**→ Lees de volledige uitwerking in: system/7_DEVELOPMENT_STRATEGY.md**
 
-De frontend in V2 is de primaire ontwikkelomgeving (IDE) voor de strateeg, ontworpen om de "Bouwen -> Meten -> Leren" cyclus te maximaliseren. Dit hoofdstuk beschrijft hoe de UI zichzelf dynamisch opbouwt op basis van ontdekte plugins en hun schema's. Het detailleert de verschillende "Werkruimtes", van de Strategy Builder tot de Trade Explorer, en legt uit hoe een strikt contract tussen de Pydantic-backend en de TypeScript-frontend zorgt voor een robuuste, naadloze gebruikerservaring.
+## **Hoofdstuk 8: Meta Workflows**
 
-**→ Lees de volledige uitwerking in: `docs/system/5_FRONTEND_INTEGRATION.md`**
+Bovenop de executie van een enkele strategie draaien "Meta Workflows" om geavanceerde analyses uit te voeren. Dit hoofdstuk beschrijft de OptimizationService en VariantTestService, die de kern-executielogica herhaaldelijk en parallel aanroepen om complexe kwantitatieve analyses uit te voeren.
 
----
+**→ Lees de volledige uitwerking in: system/8_META_WORKFLOWS.md**
 
-## Hoofdstuk 6: Robuustheid & Operationele Betrouwbaarheid
+## **Hoofdstuk 9: Coding Standaarden & Design Principles**
 
-Een live trading-systeem moet veerkrachtig zijn tegen crashes, corrupte data en netwerkproblemen. Dit hoofdstuk beschrijft de drie verdedigingslinies van de architectuur: atomische schrijfacties (journaling) om de integriteit van de staat te garanderen, protocollen voor netwerkveerkracht (heartbeat, reconnect, reconciliation) en een Supervisor-model voor automatische crash recovery.
+Een consistente codebase is essentieel. Dit hoofdstuk beschrijft de verplichte standaarden (PEP 8, Type Hinting, Docstrings) en de kern design principles (SOLID, Factory Pattern, DTO's) die de vier kernprincipes van V2 (Plugin First, Scheiding van Zorgen, Configuratie-gedreven, Contract-gedreven) tot leven brengen.
 
-**→ Lees de volledige uitwerking in: `docs/system/6_RESILIENCE_AND_OPERATIONS.md`**
+**→ Lees de volledige uitwerking in: system/9_CODING_STANDAARDS_DESIGN_PRINCIPLES.md**
 
----
+## **Bijlages**
 
-## Hoofdstuk 7: Ontwikkelstrategie & Tooling
-
-De ontwikkelstrategie van V2 is gebaseerd op een snelle, visuele 'Bouwen -> Meten -> Leren' cyclus, met de Web UI als de primaire ontwikkelomgeving (IDE). Dit hoofdstuk beschrijft de workflow, van de visuele 'Strategy Builder' tot de diepgaande 'Trade Explorer'. Daarnaast worden de kern-tools behandeld, zoals de gespecialiseerde entrypoints, de gelaagde logging-aanpak en de cruciale rol van de Correlation ID voor volledige traceerbaarheid van trades.
-
-**→ Lees de volledige uitwerking in: `docs/system/7_DEVELOPMENT_STRATEGY.md`**
-
----
-
-## Hoofdstuk 8: Meta Workflows
-
-Bovenop de executie van een enkele strategie draaien "Meta Workflows" om geavanceerde analyses uit te voeren. Dit hoofdstuk beschrijft de `OptimizationService` en `VariantTestService`, die de kern-executielogica herhaaldelijk en parallel aanroepen om systematisch de beste parameters te vinden of om de robuustheid van strategie-varianten te testen. Dit maakt complexe kwantitatieve analyse een "eerste klas burger" binnen de architectuur.
-
-**→ Lees de volledige uitwerking in: `docs/system/8_META_WORKFLOWS.md`**
-
----
-
-## Hoofdstuk 9: Coding Standaarden
-
-Een consistente en kwalitatieve codebase is essentieel. Dit hoofdstuk beschrijft de verplichte standaarden voor het S1mpleTrader V2 project, inclusief PEP 8, volledige type hinting en Google Style Docstrings. Het behandelt de kernprincipes van contract-gedreven ontwikkeling via Pydantic, de gelaagde logging-strategie met Correlation ID voor traceability, en de eis dat alle code vergezeld wordt van tests die via Continue Integratie worden gevalideerd.
-
-**→ Lees de volledige uitwerking in: `docs/system/9_CODING_STANDAARDS.md`**
-
----
-
-## Bijlages
-
-* **`Bijlage A: Terminologie`**: Een uitgebreid naslagwerk met kernachtige beschrijvingen van alle belangrijke concepten, componenten en patronen binnen de S1mpleTrader V2-architectuur.
-* **`Bijlage B: Openstaande Vraagstukken`**: Een overzicht van bekende "onbekenden" en complexe vraagstukken die tijdens de implementatie verder onderzocht moeten worden.
+* **Bijlage A: Terminologie**: Een uitgebreid naslagwerk met beschrijvingen van alle belangrijke concepten en componenten.  
+* **Bijlage B: Openstaande Vraagstukken**: Een overzicht van bekende "onbekenden" die tijdens de implementatie verder onderzocht moeten worden.  
+* **Bijlage C: MVP**: De scope en componenten van het Minimum Viable Product.  
+* **Bijlage D: Plugin IDE**: De architectuur en UX voor de web-based IDE voor plugins.

@@ -5,9 +5,9 @@ Dit document beschrijft de architectuur en de rol van de "Meta Workflows". Dit z
 ---
 ## 8.1. Concept: De Orchestrator als Werknemer
 
-De `StrategyOrchestrator` is de motor die in staat is om **één enkele** strategie-configuratie uit te voeren. Meta Workflows zijn services in de `Service`-laag die deze motor herhaaldelijk en systematisch aanroepen om complexe, kwantitatieve vragen te beantwoorden.
+De run levenscyclus (aangestuurd door componenten als de `PortfolioSupervisor`, `RunOrchestrator` en `StrategyOperator`) is de motor die in staat is om **één enkele** strategie-configuratie uit te voeren. Meta Workflows zijn services in de `Service`-laag die deze motor herhaaldelijk en systematisch aanroepen om complexe, kwantitatieve vragen te beantwoorden.
 
-Ze fungeren als "onderzoekleiders" die de `StrategyOrchestrator` als een werknemer behandelen, en leunen zwaar op de `ParallelRunService` om duizenden backtests efficiënt en parallel uit te voeren. Waar optimalisatie in V1 een ad-hoc script was, wordt het in V2 een **"eerste klas burger"** van de architectuur.
+Ze fungeren als "onderzoekleiders" die de `StrategyOperator` als een werknemer behandelen, en leunen zwaar op de `ParallelRunService` om duizenden backtests efficiënt en parallel uit te voeren. Waar optimalisatie in V1 een ad-hoc script was, wordt het in V2 een **"eerste klas burger"** van de architectuur.
 
 ---
 ## 8.2. De `OptimizationService` (Het Onderzoekslab)
@@ -26,7 +26,7 @@ Ze fungeren als "onderzoekleiders" die de `StrategyOrchestrator` als een werknem
 
 3.  **Executie (Het Robotleger):**
     * De `ParallelRunService` start een pool van workers (één per CPU-kern).
-    * Elke worker ontvangt één configuratie, start een `StrategyOrchestrator` en voert een volledige backtest uit.
+    * Elke worker ontvangt één configuratie, initieert een volledige, opzichzelfstaande run levenscyclus en voert een volledige backtest uit.
 
 4.  **Output (De Analyse):**
     * De `OptimizationService` verzamelt alle `BacktestResult`-objecten.

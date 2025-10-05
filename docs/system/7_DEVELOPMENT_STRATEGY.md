@@ -22,7 +22,7 @@ De gehele workflow, van het bouwen van een strategie tot het analyseren van de r
 * **Proces:**
     1.  De gebruiker opent de "Strategy Builder" in de Web UI.
     2.  In een zijbalk verschijnen alle beschikbare plugins, opgehaald via een API en gegroepeerd per `type` (bv. `signal_generators`).
-    3.  De gebruiker sleept plugins naar de "slots" in een visuele weergave van de 6-fasen trechter.
+    3.  De gebruiker sleept plugins naar de "slots" in een visuele weergave van de 9-fasen (fase 1-2 en fase 3-9) trechter/pijplijn.
     4.  Voor elke geplaatste plugin genereert de UI automatisch een configuratieformulier op basis van de `schema.py` van de plugin. Input wordt direct in de browser gevalideerd.
     5.  Bij het opslaan wordt de configuratie als `YAML` op de server aangemaakt.
 
@@ -50,7 +50,7 @@ De applicatie kent drie manieren om gestart te worden, elk met een eigen doel:
 
 ### **7.3.2. Testen als Integraal Onderdeel**
 * **Unit Tests per Plugin:** Elke plugin-map krijgt een `tests/test_worker.py`. Deze test laadt een stukje voorbeeld-data, draait de `worker.py` erop, en valideert of de output (bv. de nieuwe kolom of de `Signal` DTO) correct is. Dit gebeurt volledig geïsoleerd.
-* **Integratietests:** Testen de samenwerking tussen de `StrategyOrchestrator` en de `Assembly`-componenten.
+* **Integratietests:** Testen de samenwerking tussen de service laag componenten en de `Assembly`-componenten.
 * **End-to-End Tests:** Een klein aantal tests die via `run_backtest_cli.py` een volledige backtest draaien op een vaste dataset en controleren of het eindresultaat (de PnL) exact overeenkomt met een vooraf berekende waarde.
 
 ### **7.3.3. Gelaagde Logging & Debugging**

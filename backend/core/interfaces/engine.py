@@ -15,7 +15,8 @@ from typing import Any, Dict, Generator, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from backend.core.interfaces import Clock
-    from backend.dtos import TradingContext, EngineCycleResult
+    from backend.dtos.state.trading_context import TradingContext
+    from backend.dtos.results.engine_cycle_result import EngineCycleResult
 
 class BaseStrategyEngine(ABC):
     """

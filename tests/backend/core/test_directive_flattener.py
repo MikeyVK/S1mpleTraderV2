@@ -5,12 +5,12 @@ Unit tests for the DirectiveFlattener utility.
 
 import uuid
 import pandas as pd
-from backend.dtos.signal import Signal
-from backend.dtos.entry_signal import EntrySignal
-from backend.dtos.risk_defined_signal import RiskDefinedSignal
-from backend.dtos.trade_plan import TradePlan
-from backend.dtos.routed_trade_plan import RoutedTradePlan
-from backend.dtos.execution_directive import ExecutionDirective
+from backend.dtos.pipeline.signal import Signal
+from backend.dtos.pipeline.entry_signal import EntrySignal
+from backend.dtos.pipeline.risk_defined_signal import RiskDefinedSignal
+from backend.dtos.pipeline.trade_plan import TradePlan
+from backend.dtos.pipeline.routed_trade_plan import RoutedTradePlan
+from backend.dtos.execution.execution_directive import ExecutionDirective
 from backend.core.directive_flattener import DirectiveFlattener
 
 def test_flatten_routed_trade_plan_to_directive():

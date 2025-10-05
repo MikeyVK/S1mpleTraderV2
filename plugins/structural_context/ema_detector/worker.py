@@ -12,7 +12,7 @@ Contains the main logic for the EmaDetector plugin.
 import pandas as pd
 
 from backend.core.interfaces import ContextWorker
-from backend.dtos import TradingContext
+from backend.dtos.state.trading_context import TradingContext
 from backend.utils.app_logger import LogEnricher
 
 from .schema import EmaDetectorParams

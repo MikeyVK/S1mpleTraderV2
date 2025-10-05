@@ -1,10 +1,20 @@
-s1mpletrader/
+S1mpleTraderV2/
 ├── backend
 │   ├── assembly
+│   │   ├── templates
+│   │   │   ├── test
+│   │   │   │   ├── __init__.py
+│   │   │   │   └── test_worker.py.tpl
+│   │   │   ├── __init__.py
+│   │   │   ├── context_schema.py.tpl
+│   │   │   ├── manifest.yaml.tpl
+│   │   │   ├── schema.py.tpl
+│   │   │   └── worker.py.tpl
 │   │   ├── __init__.py
 │   │   ├── context_builder.py
 │   │   ├── dependency_validator.py
 │   │   ├── engine_builder.py
+│   │   ├── plugin_creator.py
 │   │   ├── plugin_registry.py
 │   │   └── worker_builder.py
 │   ├── config
@@ -80,9 +90,12 @@ s1mpletrader/
 │   │   │   ├── backlog_to_github.py
 │   │   │   ├── clear_github_issues.py
 │   │   │   └── product_backlog.csv
+│   │   ├── D_BIJLAGE_PLUGIN SECURITY.pdf
+│   │   ├── E_BIJLAGE_ARCHITECTURAL_BLIND_SPOT_ANALYSE.pdf
 │   │   └── USM_DEV_ROADMAP.md
 │   ├── system
 │   │   ├── 0_V2_ARCHITECTURE.md
+│   │   ├── 1_EVENT_DRIVEN_ARCHITECTURE.md
 │   │   ├── 2_ARCHITECTURE.md
 │   │   ├── 3_PLUGIN_ANATOMY.md
 │   │   ├── 4_WORKFLOW_AND_ORCHESTRATOR.md
@@ -90,10 +103,12 @@ s1mpletrader/
 │   │   ├── 6_RESILIENCE_AND_OPERATIONS.md
 │   │   ├── 7_DEVELOPMENT_STRATEGY.md
 │   │   ├── 8_META_WORKFLOWS.md
-│   │   ├── 9_CODING_STANDAARDS.md
+│   │   ├── 9_CODING_STANDAARDS_DESIGN_PRINCIPLES.md
 │   │   ├── A_BIJLAGE_TEMINOLOGIE.md
 │   │   ├── B_BIJLAGE_OPENSTAANDE_VRAAGSTUKKEN.md
-│   │   └── C_BIJLAGE_MVP
+│   │   ├── C_BIJLAGE_MVP.pdf
+│   │   └── D_BIJLAGE_PLUGIN_IDE.md
+│   ├── docs.md
 │   ├── folder_file_structure.txt
 │   ├── project_context.txt
 │   └── PROPOSED_FOLDER_STRUCTURE.md
@@ -113,6 +128,8 @@ s1mpletrader/
 │   │   │   └── main.py
 │   │   └── ui
 │   │       ├── src
+│   │       │   ├── components
+│   │       │   ├── services
 │   │       │   └── App.tsx
 │   │       └── package.json
 │   └── __init__.py
@@ -139,7 +156,6 @@ s1mpletrader/
 │   │   │   ├── schema.py
 │   │   │   └── worker.py
 │   │   └── __init__.py
-│   ├── exit_planners
 │   ├── order_routers
 │   │   └── __init__.py
 │   ├── regime_filters
@@ -172,14 +188,13 @@ s1mpletrader/
 │   │   │   ├── schema.py
 │   │   │   └── worker.py
 │   │   └── __init__.py
-│   ├── size_planners
 │   ├── structural_context
 │   │   ├── ema_detector
 │   │   │   ├── tests
 │   │   │   │   ├── __init__.py
 │   │   │   │   └── test_worker.py
 │   │   │   ├── __init__.py
-│   │   │   ├── plugin_manifest.yaml
+│   │   │   ├── manifest.yaml
 │   │   │   ├── schema.py
 │   │   │   └── worker.py
 │   │   └── __init__.py
@@ -195,7 +210,25 @@ s1mpletrader/
 │   ├── strategy_operator.py
 │   └── variant_test_service.py
 ├── source_data
-│   └── BTC_EUR_15m.csv
+│   ├── ADA_EUR_15m.csv
+│   ├── AVAX_EUR_15m.csv
+│   ├── BAT_EUR_15m.csv
+│   ├── BNB_EUR_15m.csv
+│   ├── BTC_EUR_15m.csv
+│   ├── DOGE_EUR_15m.csv
+│   ├── DOT_EUR_15m.csv
+│   ├── ETH_EUR_15m.csv
+│   ├── KAS_EUR_15m.csv
+│   ├── Kraken_Trading_History.zip
+│   ├── LINK_EUR_15m.csv
+│   ├── LTC_EUR_15m.csv
+│   ├── OXT_EUR_15m.csv
+│   ├── RLC_EUR_15m.csv
+│   ├── SHIB_EUR_15m.csv
+│   ├── SOL_EUR_15m.csv
+│   ├── STORJ_EUR_15m.csv
+│   ├── TON_EUR_15m.csv
+│   └── XRP_EUR_15m.csv
 ├── tests
 │   ├── backend
 │   │   ├── assembly
@@ -203,6 +236,7 @@ s1mpletrader/
 │   │   │   ├── test_context_builder.py
 │   │   │   ├── test_dependency_validator.py
 │   │   │   ├── test_engine_builder.py
+│   │   │   ├── test_plugin_creator.py
 │   │   │   ├── test_plugin_registry.py
 │   │   │   └── test_worker_builder.py
 │   │   ├── core
@@ -224,8 +258,8 @@ s1mpletrader/
 │   ├── __init__.py
 │   ├── bootstrap_v2.py
 │   ├── collect_context.py
-│   ├── generate_structure.py
-│   └── plugin_creator.py
+│   ├── combine_docs.py
+│   └── generate_structure.py
 ├── .env
 ├── .gitignore
 ├── .pylintrc

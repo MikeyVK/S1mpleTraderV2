@@ -35,9 +35,9 @@ Een live-systeem is afhankelijk van een stabiele verbinding met externe databron
         * **Principe:** Na een reconnect is de interne staat van het `Portfolio`-object **onbetrouwbaar**. Het systeem moet uitgaan van de "single source of truth": de exchange zelf.
         * **Proces:** De `ExecutionHandler` voert een **reconciliation**-procedure uit. Het roept de REST API van de exchange aan met de vragen: "Geef mij de status van al mijn openstaande orders" en "Geef mij al mijn huidige posities". Het vergelijkt dit antwoord met de data in het `Portfolio`-object en corrigeert eventuele discrepanties.
 
-    3.  **`StrategyOrchestrator` (met Circuit Breaker):**
+    3.  **`StrategyOperator` (met Circuit Breaker):**
         * **Principe:** Als de `LiveDataSource` na een configureerbaar aantal pogingen geen verbinding kan herstellen, moet het systeem in een veilige modus gaan om verdere schade te voorkomen.
-        * **Proces:** De `DataSource` stuurt een `CONNECTION_LOST`-event naar de `Orchestrator`. De `Orchestrator` activeert dan de **Circuit Breaker**:
+        * **Proces:** De `DataSource` stuurt een `CONNECTION_LOST`-event naar de `Operator`. De `Operator` activeert dan de **Circuit Breaker**:
             * Het stopt onmiddellijk met het verwerken van nieuwe signalen.
             * Het stuurt een kritieke alert (via e-mail, Telegram, etc.) naar de gebruiker.
             * Het kan (optioneel) proberen alle open posities te sluiten als laatste redmiddel.
@@ -45,12 +45,12 @@ Een live-systeem is afhankelijk van een stabiele verbinding met externe databron
 ---
 ## 6.3. Applicatie Crash Recovery (Supervisor Model)
 
-* **Probleem:** Het hoofdproces van de `StrategyOrchestrator` kan crashen door een onverwachte bug in een plugin of een geheugenprobleem.
+* **Probleem:** Het hoofdproces van de `StrategyOperator` kan crashen door een onverwachte bug in een plugin of een geheugenprobleem.
 * **Architectonische Oplossing:** We scheiden het *starten* van de applicatie van de *applicatie zelf* door middel van een **Supervisor (Watchdog)**-proces, aangestuurd door `run_supervisor.py`.
 
 * **Gedetailleerde Workflow:**
     1.  **Entrypoint `run_supervisor.py`:** Dit is het enige script dat je handmatig start in een live-omgeving.
-    2.  **Supervisor Proces:** Dit script start een extreem lichtgewicht en robuust "supervisor"-proces. Zijn enige taak is het spawnen van een *kind-proces* voor de daadwerkelijke `StrategyOrchestrator` en het monitoren van dit kind-proces.
+    2.  **Supervisor Proces:** Dit script start een extreem lichtgewicht en robuust "supervisor"-proces. Zijn enige taak is het spawnen van een *kind-proces* voor de daadwerkelijke `StrategyOperator` en het monitoren van dit kind-proces.
     3.  **Herstart & Herstel Cyclus:**
         * Als het `Orchestrator`-proces onverwacht stopt, detecteert de `Supervisor` dit.
         * De `Supervisor` start de `Orchestrator` opnieuw.

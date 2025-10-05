@@ -11,8 +11,8 @@ into a simple, flat ExecutionDirective.
     - Dynamically unnests DTOs to create a flat data structure.
 """
 from typing import Any, Dict, cast
-from backend.dtos.routed_trade_plan import RoutedTradePlan
-from backend.dtos.execution_directive import ExecutionDirective
+from backend.dtos.pipeline.routed_trade_plan import RoutedTradePlan
+from backend.dtos.execution.execution_directive import ExecutionDirective
 
 class DirectiveFlattener:
     """

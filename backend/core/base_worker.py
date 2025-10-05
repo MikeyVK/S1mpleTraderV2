@@ -19,15 +19,13 @@ from typing import TYPE_CHECKING, Any, List, Dict, Generic, Optional, TypeVar
 from uuid import UUID
 
 if TYPE_CHECKING:
-    from backend.dtos import (
-        EntrySignal,
-        RiskDefinedSignal,
-        RoutedTradePlan,
-        Signal,
-        TradePlan,
-        TradingContext,
-        CriticalEvent,
-    )
+    from backend.dtos.pipeline.entry_signal import EntrySignal
+    from backend.dtos.pipeline.risk_defined_signal import RiskDefinedSignal
+    from backend.dtos.pipeline.routed_trade_plan import RoutedTradePlan
+    from backend.dtos.pipeline.signal import Signal
+    from backend.dtos.pipeline.trade_plan import TradePlan
+    from backend.dtos.state.trading_context import TradingContext
+    from backend.dtos.execution.critical_event import CriticalEvent
 
 
 # --- Generieke Type Variabelen (volgens PEP 484 conventie) ---
@@ -199,7 +197,7 @@ class BaseOrderRouter(BaseStrategyWorker["TradePlan", "RoutedTradePlan"]):
 
     def _get_output_dto_class(self) -> type["RoutedTradePlan"]:
         # pylint: disable=import-outside-toplevel
-        from backend.dtos import RoutedTradePlan
+        from backend.dtos.pipeline.routed_trade_plan import RoutedTradePlan
 
         return RoutedTradePlan
 

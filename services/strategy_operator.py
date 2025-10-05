@@ -28,7 +28,7 @@ from backend.core import Portfolio, ContextRecorder
 from backend.core.interfaces import Tradable #pyright: ignore[reportUnusedImport], pylint: disable=unused-import
 from backend.core.interfaces.execution import ExecutionHandler
 from backend.environments.backtest_environment import BacktestEnvironment
-from backend.dtos import TradingContext
+from backend.dtos.state.trading_context import TradingContext
 
 # Force Pydantic to resolve any forward-looking type references (like 'Tradable')
 # This is crucial for models that use abstract base classes or protocols.
@@ -75,7 +75,7 @@ class StrategyOperator:  # pylint: disable=too-many-instance-attributes
         self._execution_handler = self._environment.handler
 
     def _prepare_data(self) -> pd.DataFrame:
-        """Phase 2: Builds and runs the context pipeline to create enriched data."""
+        """Phase 2: Builds and runs the ContextBuilder to create enriched data."""
         assert self._engine_builder is not None, "Components not prepared"
         assert self._context_builder is not None, "Components not prepared"
         assert self._environment is not None, "Components not prepared"

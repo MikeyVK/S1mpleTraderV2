@@ -10,8 +10,8 @@ Contains the DTO that represents the complete output of a single StrategyEngine 
 """
 from typing import List
 from pydantic import BaseModel, ConfigDict
-from .execution_directive import ExecutionDirective
-from .critical_event import CriticalEvent
+from backend.dtos.execution.execution_directive import ExecutionDirective
+from backend.dtos.execution.critical_event import CriticalEvent
 
 class EngineCycleResult(BaseModel):
     """

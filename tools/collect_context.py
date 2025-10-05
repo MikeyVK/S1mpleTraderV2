@@ -2,7 +2,7 @@
 import os
 
 # Definieer welke bestanden en mappen je wilt negeren
-IGNORE_DIRS = {'.git', '.vscode', '__pycache__', 'venv', '.venv', 'dist', 'build'}
+IGNORE_DIRS = {'.git', '.vscode', '__pycache__', 'venv', '.venv', 'dist', 'build', 'docs'}
 IGNORE_FILES = {'.gitignore', 'collect_context.py'}
 # Definieer welke extensies je wilt meenemen
 INCLUDE_EXTENSIONS = {'.py', '.yaml', '.yml', '.md', '.txt'}

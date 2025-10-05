@@ -21,9 +21,11 @@ from backend.core.interfaces import (
     Clock, BaseStrategyEngine, SignalGenerator, SignalRefiner, EntryPlanner,
     ExitPlanner, SizePlanner, OrderRouter, CriticalEventDetector
 )
-from backend.dtos import (
-    TradingContext, Signal, RoutedTradePlan, EngineCycleResult, CriticalEvent
-)
+from backend.dtos.state.trading_context import TradingContext
+from backend.dtos.pipeline.signal import Signal
+from backend.dtos.pipeline.routed_trade_plan import RoutedTradePlan
+from backend.dtos.results.engine_cycle_result import EngineCycleResult
+from backend.dtos.execution.critical_event import CriticalEvent
 from .directive_flattener import DirectiveFlattener
 
 
