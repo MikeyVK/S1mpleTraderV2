@@ -19,3 +19,11 @@ plugin_registry:
 
 worker_builder:
   build_success: "Successfully built worker '{name}'."
+
+data_coverage:
+  start_time:
+    desc: "The timestamp of the earliest trade in the data block."
+  end_time:
+    desc: "The timestamp of the latest trade in the data block."
+  trade_count:
+    desc: "The total number of trades within this data block."

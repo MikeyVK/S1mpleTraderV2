@@ -20,6 +20,9 @@ __all__ = [
     "ClosedTrade",
     "TradingContext",
     "BacktestResult",
+    "DataCoverage",
+    "TradeTick",
+    # from .core
     # from .environments
     "BacktestEnvironment",
 #    "LiveEnvironment",
@@ -49,6 +52,8 @@ from .dtos import (
     ClosedTrade,
     TradingContext,
     BacktestResult,
+    DataCoverage,
+    TradeTick,
 )
 from .environments import (
     BacktestEnvironment,

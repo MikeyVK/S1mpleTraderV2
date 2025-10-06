@@ -50,17 +50,19 @@ class DependencyValidator:
 
             manifest, _ = plugin_data
 
+            # <<< CORRECTIE DEEL 1: Itereer over de 'requires' lijst >>>
             # Controleer de dependencies van de huidige plugin.
-            if manifest.dependencies:
-                for dep in manifest.dependencies:
+            if manifest.dependencies and manifest.dependencies.requires:
+                for dep in manifest.dependencies.requires:
                     if dep not in available_columns:
                         raise ValueError(
                             f"Dependency '{dep}' for plugin '{plugin_name}' not met. "
                             f"Available columns: {sorted(list(available_columns))}"
                         )
 
+            # <<< CORRECTIE DEEL 2: Update met de 'provides' lijst >>>
             # Voeg de output van deze plugin toe aan de set van beschikbare kolommen.
-            if manifest.provides:
-                available_columns.update(manifest.provides)
+            if manifest.dependencies and manifest.dependencies.provides:
+                available_columns.update(manifest.dependencies.provides)
 
         return True

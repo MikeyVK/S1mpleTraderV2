@@ -1,5 +1,4 @@
-# tests/backend/assembly/test_dependency_validator.py
-"""Unit tests for the DependencyValidator."""
+# In bestand: tests/backend/assembly/test_dependency_validator.py
 
 from typing import List, Optional
 from pathlib import Path
@@ -8,27 +7,34 @@ from pytest_mock import MockerFixture
 
 from backend.assembly.dependency_validator import DependencyValidator
 from backend.assembly.plugin_registry import PluginRegistry
-from backend.config.schemas.plugin_manifest_schema import PluginManifest
+from backend.config.schemas.plugin_manifest_schema import PluginManifest, CoreIdentity, PluginIdentification, Dependencies, Permissions
 
-# CORRECTIE: Type hints toegevoegd voor duidelijkheid en linter.
 def create_mock_manifest(
     name: str,
     dependencies: Optional[List[str]] = None,
     provides: Optional[List[str]] = None
 ) -> PluginManifest:
-    """Creates a mock PluginManifest for testing purposes."""
+    """Creates a mock PluginManifest with the correct nested structure."""
     return PluginManifest(
-        name=name, version="1.0", type="structural_context",
-        description="A test plugin.",
-        entry_class="Dummy", schema_path="dummy.py", params_class="DummyParams",
-        dependencies=dependencies or [],
-        provides=provides or []
+        core_identity=CoreIdentity(apiVersion="s1mpletrader.io/v1", kind="PluginManifest"),
+        identification=PluginIdentification(
+            name=name,
+            display_name=f"{name.replace('_', ' ').title()}",
+            type="structural_context",
+            version="1.0.0",
+            description="A test plugin.",
+            author="Test Author"
+        ),
+        dependencies=Dependencies(requires=dependencies or [], provides=provides or []),
+        permissions=Permissions(network_access=[], filesystem_access=[])
     )
 
 def test_valid_pipeline_succeeds(mocker: MockerFixture):
     """Tests that a logically correct pipeline validates successfully."""
     # Arrange
     mock_registry = mocker.MagicMock(spec=PluginRegistry)
+    
+    # Gebruik de bijgewerkte create_mock_manifest functie
     mock_registry.get_plugin_data.side_effect = {
         "ema_50": (create_mock_manifest("ema_50", ["close"], ["EMA_50"]), Path("path1")),
         "rsi_14": (create_mock_manifest("rsi_14", ["close"], ["RSI_14"]), Path("path2")),

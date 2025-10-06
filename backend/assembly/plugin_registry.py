@@ -60,16 +60,19 @@ class PluginRegistry:
                 manifest = PluginManifest(**manifest_data)
 
                 # Controleer op dubbele namen
-                if manifest.name in self._registry:
+                plugin_name = manifest.identification.name
+
+                # Controleer op dubbele namen
+                if plugin_name in self._registry:
                     self._logger.warning(
-                        f"Duplicate plugin name '{manifest.name}' found at '{manifest_path}'. "
+                        f"Duplicate plugin name '{plugin_name}' found at '{manifest_path}'. "
                         "Skipping."
                     )
                     continue
 
                 # Voeg de gevalideerde manifest toe aan de registry
                 plugin_directory = manifest_path.parent
-                self._registry[manifest.name] = (manifest, plugin_directory)
+                self._registry[plugin_name] = (manifest, plugin_directory)
 
             except yaml.YAMLError as e:
                 self._logger.warning(f"Could not parse manifest at '{manifest_path}': {e}")

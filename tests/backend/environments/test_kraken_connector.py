@@ -13,6 +13,8 @@ from unittest.mock import MagicMock, call
 from pytest_mock import MockerFixture
 import requests
 
+import pandas as pd
+
 from backend.environments.api_connectors.kraken_connector import KrakenAPIConnector
 from backend.dtos.market.trade_tick import TradeTick
 from backend.config.schemas.connectors.kraken_schema import KrakenAPIConnectorConfig, KrakenAPIRetryConfig
@@ -25,6 +27,17 @@ MOCK_KRAKEN_SUCCESS_RESPONSE = {
             ["60000.20", "0.05", 1617225601.5678, "s", "l", ""]
         ],
         "last": "1617225601567800000"
+    }
+}
+
+MOCK_KRAKEN_OHLCV_SUCCESS_RESPONSE = {
+    "error": [],
+    "result": {
+        "XXBTZEUR": [
+            [1617225600, "60000.1", "60005.0", "59990.5", "60002.0", "60001.0", "10.5", 150],
+            [1617226500, "60002.1", "60010.0", "60000.0", "60008.0", "60007.0", "12.0", 180],
+        ],
+        "last": 1617226500
     }
 }
 
@@ -91,7 +104,8 @@ def test_get_historical_trades_respects_time_window(mocker: MockerFixture):
     mock_response_page2 = MagicMock()
     mock_response_page2.json.return_value = { "error": [], "result": { "XXBTZEUR": [["3500.0", "3.5", 3500.0, "s", "l", ""]], "last": str(3500 * 1_000_000_000) } }
 
-    mock_get = mocker.patch('requests.Session.get', side_effect=[mock_response_page1, mock_response_page2])
+    mock_get = mocker.patch(
+        'requests.Session.get', side_effect=[mock_response_page1, mock_response_page2])
     mocker.patch('time.sleep')
 
     connector = KrakenAPIConnector(logger=mock_logger, config=mock_config)
@@ -104,7 +118,8 @@ def test_get_historical_trades_respects_time_window(mocker: MockerFixture):
 
 def test_get_historical_trades_retries_on_network_error(mocker: MockerFixture):
     mock_logger = MagicMock()
-    mock_config = KrakenAPIConnectorConfig(retries=KrakenAPIRetryConfig(max_attempts=3, delay_seconds=1))
+    mock_config = KrakenAPIConnectorConfig(
+        retries=KrakenAPIRetryConfig(max_attempts=3, delay_seconds=1))
 
     mock_success_response = MagicMock()
     mock_success_response.json.return_value = MOCK_KRAKEN_SUCCESS_RESPONSE
@@ -113,7 +128,9 @@ def test_get_historical_trades_retries_on_network_error(mocker: MockerFixture):
         requests.RequestException("First network error"),
         requests.RequestException("Second network error"),
         mock_success_response,
-        MagicMock(json=MagicMock(return_value={"error": [], "result": {"last": MOCK_KRAKEN_SUCCESS_RESPONSE["result"]["last"]}}))
+        MagicMock(json=MagicMock(
+            return_value={"error": [],
+                          "result": {"last": MOCK_KRAKEN_SUCCESS_RESPONSE["result"]["last"]}}))
     ])
     mocker.patch('time.sleep')
 
@@ -123,3 +140,29 @@ def test_get_historical_trades_retries_on_network_error(mocker: MockerFixture):
     assert mocked_get.call_count == 4
     assert len(trades) == 2
     assert mock_logger.error.call_count == 2
+
+def test_get_historical_ohlcv_success(mocker: MockerFixture):
+    """
+    Tests if the connector correctly fetches and parses OHLCV data into a DataFrame.
+    """
+    # Arrange
+    mock_logger = MagicMock()
+    mock_config = KrakenAPIConnectorConfig()
+
+    mock_response = MagicMock()
+    mock_response.json.return_value = MOCK_KRAKEN_OHLCV_SUCCESS_RESPONSE
+    mocker.patch('requests.Session.get', return_value=mock_response)
+
+    connector = KrakenAPIConnector(logger=mock_logger, config=mock_config)
+
+    # Act
+    df = connector.get_historical_ohlcv(pair="XXBTZEUR", timeframe="15m", since=0)
+
+    # Assert
+    assert isinstance(df, pd.DataFrame)
+    assert len(df) == 2
+    assert list(df.columns) == ["open", "high", "low", "close", "vwap", "volume", "count"]
+    assert isinstance(df.index, pd.DatetimeIndex)
+    assert df.index.name == "timestamp"
+    assert df.iloc[0]['open'] == 60000.1
+    assert df.iloc[1]['close'] == 60008.0

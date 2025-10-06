@@ -975,6 +975,49 @@ class RunBlueprint(BaseModel):
 
 --- END FILE: backend/config/schemas/__init__.py ---
 
+--- START FILE: backend/config/schemas/connectors/kraken_schema.py ---
+# backend/config/schemas/connectors/kraken_schema.py
+"""
+Contains Pydantic models that define the configuration structure for the
+KrakenAPIConnector.
+
+@layer: Backend (Config/Schemas)
+@dependencies: [pydantic]
+@responsibilities:
+    - Defines and validates all configuration parameters specific to the
+      KrakenAPIConnector.
+"""
+from pydantic import BaseModel, Field
+
+class KrakenAPIRetryConfig(BaseModel):
+    """Defines the retry strategy for API requests."""
+    max_attempts: int = Field(
+        default=3,
+        gt=0,
+        description="kraken_connector_config.retries.max_attempts.desc"
+    )
+    delay_seconds: int = Field(
+        default=2,
+        gt=0,
+        description="kraken_connector_config.retries.delay_seconds.desc"
+    )
+
+class KrakenAPIConnectorConfig(BaseModel):
+    """
+    The main Pydantic model that validates the configuration for the
+    KrakenAPIConnector.
+    """
+    base_url: str = Field(
+        default="https://api.kraken.com/0/public",
+        description="kraken_connector_config.base_url.desc"
+    )
+    retries: KrakenAPIRetryConfig = Field(
+        default_factory=KrakenAPIRetryConfig,
+        description="kraken_connector_config.retries.desc"
+    )
+
+--- END FILE: backend/config/schemas/connectors/kraken_schema.py ---
+
 --- START FILE: backend/core/base_worker.py ---
 # backend/core/base_worker.py
 """
@@ -997,15 +1040,13 @@ from typing import TYPE_CHECKING, Any, List, Dict, Generic, Optional, TypeVar
 from uuid import UUID
 
 if TYPE_CHECKING:
-    from backend.dtos import (
-        EntrySignal,
-        RiskDefinedSignal,
-        RoutedTradePlan,
-        Signal,
-        TradePlan,
-        TradingContext,
-        CriticalEvent,
-    )
+    from backend.dtos.pipeline.entry_signal import EntrySignal
+    from backend.dtos.pipeline.risk_defined_signal import RiskDefinedSignal
+    from backend.dtos.pipeline.routed_trade_plan import RoutedTradePlan
+    from backend.dtos.pipeline.signal import Signal
+    from backend.dtos.pipeline.trade_plan import TradePlan
+    from backend.dtos.state.trading_context import TradingContext
+    from backend.dtos.execution.critical_event import CriticalEvent
 
 
 # --- Generieke Type Variabelen (volgens PEP 484 conventie) ---
@@ -1177,7 +1218,7 @@ class BaseOrderRouter(BaseStrategyWorker["TradePlan", "RoutedTradePlan"]):
 
     def _get_output_dto_class(self) -> type["RoutedTradePlan"]:
         # pylint: disable=import-outside-toplevel
-        from backend.dtos import RoutedTradePlan
+        from backend.dtos.pipeline.routed_trade_plan import RoutedTradePlan
 
         return RoutedTradePlan
 
@@ -1295,8 +1336,8 @@ into a simple, flat ExecutionDirective.
     - Dynamically unnests DTOs to create a flat data structure.
 """
 from typing import Any, Dict, cast
-from backend.dtos.routed_trade_plan import RoutedTradePlan
-from backend.dtos.execution_directive import ExecutionDirective
+from backend.dtos.pipeline.routed_trade_plan import RoutedTradePlan
+from backend.dtos.execution.execution_directive import ExecutionDirective
 
 class DirectiveFlattener:
     """
@@ -1405,7 +1446,7 @@ from typing import List
 # --- CORRECTIE: Importeer de GECENTRALISEERDE interface ---
 from backend.core.interfaces.execution import ExecutionHandler
 from backend.core.interfaces.portfolio import Tradable
-from backend.dtos import ExecutionDirective
+from backend.dtos.execution.execution_directive import ExecutionDirective
 from backend.utils.app_logger import LogEnricher
 
 class BacktestExecutionHandler(ExecutionHandler):
@@ -1469,8 +1510,8 @@ from uuid import UUID
 import pandas as pd
 
 from backend.core.interfaces.portfolio import Tradable
-from backend.dtos.execution_directive import ExecutionDirective
-from backend.dtos.closed_trade import ClosedTrade
+from backend.dtos.execution.execution_directive import ExecutionDirective
+from backend.dtos.results.closed_trade import ClosedTrade
 from backend.utils.app_logger import LogEnricher
 from backend.core.context_recorder import ContextRecorder
 
@@ -1690,9 +1731,11 @@ from backend.core.interfaces import (
     Clock, BaseStrategyEngine, SignalGenerator, SignalRefiner, EntryPlanner,
     ExitPlanner, SizePlanner, OrderRouter, CriticalEventDetector
 )
-from backend.dtos import (
-    TradingContext, Signal, RoutedTradePlan, EngineCycleResult, CriticalEvent
-)
+from backend.dtos.state.trading_context import TradingContext
+from backend.dtos.pipeline.signal import Signal
+from backend.dtos.pipeline.routed_trade_plan import RoutedTradePlan
+from backend.dtos.results.engine_cycle_result import EngineCycleResult
+from backend.dtos.execution.critical_event import CriticalEvent
 from .directive_flattener import DirectiveFlattener
 
 
@@ -1808,6 +1851,149 @@ from .execution import BacktestExecutionHandler
 
 --- END FILE: backend/core/__init__.py ---
 
+--- START FILE: backend/core/interfaces/connectors.py ---
+# backend/core/interfaces/connectors.py
+"""
+Contains the abstract contracts (Protocols) for all external data connectors.
+
+@layer: Backend (Core Interfaces)
+@dependencies: [typing, pandas, backend.dtos]
+@responsibilities:
+    - Defines the universal `IAPIConnector` contract that every external data
+      source (CEX, DEX, wallet) must adhere to.
+"""
+from typing import Protocol, List, Optional, Any, Dict
+import pandas as pd
+from backend.dtos.market.trade_tick import TradeTick
+from backend.dtos.state.portfolio_state import PortfolioState
+from backend.dtos.execution.execution_directive import ExecutionDirective
+
+class IAPIConnector(Protocol):
+    """
+    An interface for any component that can communicate with an external data
+    source.
+
+    This protocol is the cornerstone of the system's agnosticism. It ensures
+    that high-level services like the `DataCollectionService` or the
+    `LiveEnvironment` can interact with any data source (a CEX via REST, a
+    DEX via RPC, or a wallet via CSV) in a consistent, standardized way.
+    The interface defines the required methods for both historical data
+    retrieval and live trading operations.
+    """
+
+    # --- Historical Data Acquisition ---
+
+    def get_historical_trades(self,
+                              pair: str,
+                              since: int,
+                              until: Optional[int] = None,
+                              limit: Optional[int] = None) -> List[TradeTick]:
+        """
+        Fetches a list of historical transactions (ticks) from the data source.
+
+        Args:
+            pair (str): The trading pair to fetch data for.
+            since (int): The UNIX timestamp (nanoseconds) to start fetching from.
+            until (Optional[int]): An optional UNIX timestamp (nanoseconds) to
+                                   stop fetching at.
+            limit (Optional[int]): An optional limit on the number of trades
+                                   to return.
+
+        Returns:
+            A list of validated TradeTick DTOs.
+        """
+        ...
+
+    def get_historical_ohlcv(self,
+                             pair: str,
+                             timeframe: str,
+                             since: int,
+                             until: Optional[int] = None,
+                             limit: Optional[int] = None) -> pd.DataFrame:
+        """
+        Fetches historical OHLCV (candlestick) data from the data source.
+
+        Args:
+            pair (str): The trading pair.
+            timeframe (str): The timeframe identifier (e.g., '15m', '1h').
+            since (int): The UNIX timestamp to start fetching from.
+            limit (Optional[int]): An optional limit on the number of candles
+                                   to return.
+
+        Returns:
+            A pandas DataFrame containing OHLCV data, indexed by timestamp.
+        """
+        ...
+
+    # --- Real-time Portfolio Management ---
+
+    def get_portfolio_state(self) -> PortfolioState:
+        """
+        Retrieves the complete, current state of the portfolio from the source.
+        
+        This is crucial for state reconciliation after a restart or disconnect.
+        """
+        ...
+
+    def get_open_orders(self) -> List[Dict[str, Any]]:
+        """Retrieves a list of all currently open (unfilled) orders."""
+        ...
+
+    # --- Real-time Order Management ---
+
+    def place_order(self, directive: ExecutionDirective) -> Dict[str, Any]:
+        """
+        Places a new order on the exchange based on an ExecutionDirective.
+        
+        Returns:
+            A dictionary containing the response from the exchange, typically
+            including the new order's ID.
+        """
+        ...
+
+    def cancel_order(self, order_id: str) -> Dict[str, Any]:
+        """
+        Cancels an open order based on its unique identifier.
+        
+        Returns:
+            A dictionary containing the response from the exchange.
+        """
+        ...
+
+    # --- Real-time Data Streams ---
+
+    def start_market_data_stream(self, pair: str, callback: Any) -> None:
+        """
+        Starts the PUBLIC data stream for market-wide transactions and events.
+        
+        Args:
+            pair (str): The trading pair to subscribe to.
+            callback (Any): A callable function that will be invoked with each
+                          new piece of market data.
+        """
+        ...
+
+    def stop_market_data_stream(self) -> None:
+        """Stops the active PUBLIC market data stream."""
+        ...
+
+    def start_user_data_stream(self, callback: Any) -> None:
+        """
+        Starts the PRIVATE, authenticated data stream for account-specific
+        updates (e.g., order fills, balance changes).
+        
+        Args:
+            callback (Any): A callable function that will be invoked with each
+                          new user data event.
+        """
+        ...
+
+    def stop_user_data_stream(self) -> None:
+        """Stops the active PRIVATE user data stream."""
+        ...
+
+--- END FILE: backend/core/interfaces/connectors.py ---
+
 --- START FILE: backend/core/interfaces/engine.py ---
 # backend/core/interfaces/engine.py
 """
@@ -1826,7 +2012,8 @@ from typing import Any, Dict, Generator, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from backend.core.interfaces import Clock
-    from backend.dtos import TradingContext, EngineCycleResult
+    from backend.dtos.state.trading_context import TradingContext
+    from backend.dtos.results.engine_cycle_result import EngineCycleResult
 
 class BaseStrategyEngine(ABC):
     """
@@ -1936,7 +2123,7 @@ from typing import List, TYPE_CHECKING
 
 # CORRECTIE: Importeer DTOs alleen binnen een TYPE_CHECKING block
 if TYPE_CHECKING:
-    from backend.dtos import ExecutionDirective
+    from backend.dtos.execution.execution_directive import ExecutionDirective
 
 class ExecutionHandler(ABC):
     """
@@ -1956,6 +2143,62 @@ class ExecutionHandler(ABC):
 
 --- END FILE: backend/core/interfaces/execution.py ---
 
+--- START FILE: backend/core/interfaces/persistors.py ---
+# backend/core/interfaces/persistors.py
+"""
+Contains the abstract contracts (Protocols) for all data persistence components.
+
+@layer: Backend (Core Interfaces)
+@dependencies: [typing, pandas, backend.dtos]
+@responsibilities:
+    - Defines the universal `IDataPersistor` contract that every data storage
+      mechanism (e.g., Parquet, Database) must adhere to.
+"""
+from typing import Protocol, List
+from backend.dtos.market.trade_tick import TradeTick
+
+class IDataPersistor(Protocol):
+    """
+    An interface for any component that can read from and write to a durable
+    data storage.
+
+    This protocol ensures that high-level services, like the
+    `DataCollectionService`, can store and retrieve historical market data
+    without needing to know the underlying storage technology (e.g., file
+    format or database type).
+    """
+
+    def get_last_timestamp(self, pair: str) -> int:
+        """
+        Retrieves the timestamp of the most recently stored trade for a pair.
+
+        This is crucial for the data collection process to know from which
+        point in time it should start fetching new data.
+
+        Args:
+            pair (str): The trading pair to check.
+
+        Returns:
+            The UNIX timestamp (in nanoseconds) of the last known trade,
+            or 0 if no data exists for the pair.
+        """
+        ...
+
+    def save_trades(self, pair: str, trades: List[TradeTick]) -> None:
+        """
+        Saves a list of TradeTick DTOs to the persistent storage.
+
+        The implementation should handle appending the new data to the
+        existing dataset for the given pair.
+
+        Args:
+            pair (str): The trading pair the data belongs to.
+            trades (List[TradeTick]): The list of TradeTick DTOs to be saved.
+        """
+        ...
+
+--- END FILE: backend/core/interfaces/persistors.py ---
+
 --- START FILE: backend/core/interfaces/portfolio.py ---
 # backend/core/interfaces/portfolio.py
 # pylint: disable=unnecessary-ellipsis
@@ -1972,8 +2215,8 @@ import pandas as pd
 
 # CORRECTIE: Importeer DTOs alleen binnen een TYPE_CHECKING block
 if TYPE_CHECKING:
-    from backend.dtos.execution_directive import ExecutionDirective
-    from backend.dtos.closed_trade import ClosedTrade
+    from backend.dtos.execution.execution_directive import ExecutionDirective
+    from backend.dtos.results.closed_trade import ClosedTrade
 
 @runtime_checkable
 class Tradable(Protocol):
@@ -2040,9 +2283,13 @@ import pandas as pd
 
 # Use TYPE_CHECKING to prevent circular imports at runtime
 if TYPE_CHECKING:
-    from backend.dtos import (Signal, EntrySignal, RiskDefinedSignal,
-                              TradePlan, RoutedTradePlan, CriticalEvent,
-                              TradingContext)
+    from backend.dtos.pipeline.signal import Signal
+    from backend.dtos.pipeline.entry_signal import EntrySignal
+    from backend.dtos.pipeline.risk_defined_signal import RiskDefinedSignal
+    from backend.dtos.pipeline.trade_plan import TradePlan
+    from backend.dtos.pipeline.routed_trade_plan import RoutedTradePlan
+    from backend.dtos.execution.critical_event import CriticalEvent
+    from backend.dtos.state.trading_context import TradingContext
 
 # --- Specific Worker Contracts ---
 
@@ -2187,108 +2434,47 @@ class DataLoader:
 
 --- END FILE: backend/data/__init__.py ---
 
---- START FILE: backend/dtos/backtest_result.py ---
-# backend/dtos/backtest_result.py
+--- START FILE: backend/dtos/__init__.py ---
+# backend/dtos/__init__.py
 """
-Contains the data class for storing the complete result of a single backtest run.
+Exposes the public API of the DTOs sub-package.
+
+This file centralizes all DTO imports, allowing other parts of the
+application to import any DTO directly from `backend.dtos` without
+needing to know the specific internal file structure.
 
 @layer: Backend (DTO)
-@dependencies: [pydantic, pandas]
-@responsibilities:
-    - Defines the standardized data structure for holding all results from a
-      single backtest run, ready for analysis and presentation.
 """
-from typing import Dict, Any
-from pydantic import BaseModel, ConfigDict
-import pandas as pd
+__all__ = [
+    # pipeline
+    "Signal",
+    "EntrySignal",
+    "RiskDefinedSignal",
+    "TradePlan",
+    "RoutedTradePlan",
+    # execution
+    "CriticalEvent",
+    "ExecutionDirective",
+    # market
+    "TradeTick",
+    # state
+    "PortfolioState",
+    "TradingContext",
+    # results
+    "EngineCycleResult",
+    "ClosedTrade",
+    "BacktestResult",
+]
 
-class BacktestResult(BaseModel):
-    """A container for all results of a single backtest run.
+from .pipeline import *
+from .execution import *
+from .market import *
+from .state import *
+from .results import *
 
-    This object acts as a standardized Data Transfer Object (DTO) that holds
-    all the essential, aggregated outputs from a backtest analysis, produced
-    by the PerformanceAnalyzer.
+--- END FILE: backend/dtos/__init__.py ---
 
-    Attributes:
-        trades_df (pd.DataFrame): A DataFrame containing all ClosedTrade objects.
-        equity_curve (pd.Series): A Series representing the portfolio's equity over time.
-        drawdown_curve (pd.Series): A Series representing the portfolio's drawdown.
-        metrics (Dict[str, Any]): A dictionary of calculated performance metrics.
-        initial_capital (float): The starting capital for the run.
-    """
-    trades_df: pd.DataFrame
-    equity_curve: pd.Series
-    drawdown_curve: pd.Series
-    metrics: Dict[str, Any]
-    initial_capital: float
-
-    model_config = ConfigDict(
-        arbitrary_types_allowed=True
-    )
-
---- END FILE: backend/dtos/backtest_result.py ---
-
---- START FILE: backend/dtos/closed_trade.py ---
-# backend/dtos/closed_trade.py
-"""
-Contains the data class for a closed trade, representing a completed transaction.
-
-@layer: Backend (DTO)
-@dependencies: [pydantic, pandas, uuid]
-@responsibilities:
-    - Defines the standardized data structure for a trade that has been fully
-      executed and resulted in a profit or loss.
-"""
-import uuid
-from typing import Optional
-from pydantic import BaseModel, ConfigDict
-import pandas as pd
-
-class ClosedTrade(BaseModel):
-    """Represents the final, recorded result of a single completed trade.
-
-    This DTO is created by the Portfolio after a position is closed. It serves
-    as the definitive, historical record for performance analysis and reporting.
-    It contains all information from the original TradePlan, enriched with the
-    actual exit details and the resulting profit or loss.
-
-    Attributes:
-        correlation_id (uuid.UUID): The unique ID linking this record to its
-                                    full context log. Inherited from the TradePlan.
-        entry_time (pd.Timestamp): The timestamp when the trade was opened.
-        exit_time (pd.Timestamp): The timestamp when the trade was closed.
-        asset (str): The asset that was traded.
-        direction (str): The direction of the trade ('long' or 'short').
-        signal_type (str): The name of the logic that generated the original signal.
-        entry_price (float): The actual entry price.
-        exit_price (float): The actual exit price.
-        sl_price (float): The original stop-loss price from the TradePlan.
-        tp_price (Optional[float]): The original take-profit price, if any.
-        position_value_quote (float): The initial value of the position.
-        position_size_asset (float): The size of the position.
-        pnl_quote (float): The net profit or loss of the trade, after fees.
-    """
-    correlation_id: uuid.UUID
-    entry_time: pd.Timestamp
-    exit_time: pd.Timestamp
-    asset: str
-    direction: str
-    signal_type: str
-    entry_price: float
-    exit_price: float
-    sl_price: float
-    tp_price: Optional[float] = None
-    position_value_quote: float
-    position_size_asset: float
-    pnl_quote: float
-
-    model_config = ConfigDict(
-        arbitrary_types_allowed=True
-    )
-
---- END FILE: backend/dtos/closed_trade.py ---
-
---- START FILE: backend/dtos/critical_event.py ---
+--- START FILE: backend/dtos/execution/critical_event.py ---
 # backend/dtos/critical_event.py
 """
 Contains the DTO for a critical event notification.
@@ -2326,82 +2512,9 @@ class CriticalEvent(BaseModel):
         arbitrary_types_allowed=True
     )
 
---- END FILE: backend/dtos/critical_event.py ---
+--- END FILE: backend/dtos/execution/critical_event.py ---
 
---- START FILE: backend/dtos/engine_cycle_result.py ---
-# backend/dtos/engine_cycle_result.py
-"""
-Contains the DTO that represents the complete output of a single StrategyEngine cycle.
-
-@layer: Backend (DTO)
-@dependencies: [pydantic, .execution_directive, .critical_event]
-@responsibilities:
-    - Bundles all outcomes of a single engine tick into one object.
-    - Decouples new trade instructions from systemic event notifications.
-"""
-from typing import List
-from pydantic import BaseModel, ConfigDict
-from .execution_directive import ExecutionDirective
-from .critical_event import CriticalEvent
-
-class EngineCycleResult(BaseModel):
-    """
-    Represents the complete output of a single processing cycle (tick)
-    of the StrategyEngine. It decouples trade proposals from critical events.
-
-    This object is yielded by the StrategyEngine on every tick and allows the
-    consuming service (e.g., BacktestService) to intelligently decide on the
-    next course of action.
-
-    Attributes:
-        execution_directives (List[ExecutionDirective]): A list of new trades to be executed.
-        critical_events (List[CriticalEvent]): A list of detected systemic events.
-    """
-    execution_directives: List[ExecutionDirective]
-    critical_events: List[CriticalEvent]
-
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
---- END FILE: backend/dtos/engine_cycle_result.py ---
-
---- START FILE: backend/dtos/entry_signal.py ---
-# backend/dtos/entry_signal.py
-"""
-Contains the data class for a signal enriched with an entry tactic.
-
-@layer: Backend (DTO)
-@dependencies: [pydantic, pandas, uuid]
-@responsibilities:
-    - Defines the data structure for a signal that has been enriched with
-      a concrete entry tactic by an EntryPlanner.
-"""
-import uuid
-from pydantic import BaseModel, ConfigDict
-from .signal import Signal
-
-class EntrySignal(BaseModel):
-    """Represents a signal with a concrete entry tactic.
-
-    This DTO is created by an EntryPlanner (Fase 5a). It enriches a raw
-    Signal DTO with a calculated entry price and a descriptive entry method.
-    It serves as the input for the ExitPlanner (Fase 5b).
-
-    Attributes:
-        correlation_id (uuid.UUID): The unique ID inherited from the source Signal.
-        signal: the original Signal DTO.
-        entry_price (float): The calculated entry price for the trade.
-    """
-    correlation_id: uuid.UUID
-    signal: Signal
-    entry_price: float
-
-    model_config = ConfigDict(
-        arbitrary_types_allowed=True
-    )
-
---- END FILE: backend/dtos/entry_signal.py ---
-
---- START FILE: backend/dtos/execution_directive.py ---
+--- START FILE: backend/dtos/execution/execution_directive.py ---
 # backend/dtos/execution_directive.py
 """
 Contains the DTO for a final, flattened execution instruction.
@@ -2476,9 +2589,117 @@ class ExecutionDirective(BaseModel):
         arbitrary_types_allowed=True
     )
 
---- END FILE: backend/dtos/execution_directive.py ---
+--- END FILE: backend/dtos/execution/execution_directive.py ---
 
---- START FILE: backend/dtos/risk_defined_signal.py ---
+--- START FILE: backend/dtos/execution/__init__.py ---
+__all__ = [
+    "ExecutionDirective",
+    "CriticalEvent",
+]
+
+from .execution_directive import ExecutionDirective
+from .critical_event import CriticalEvent
+
+--- END FILE: backend/dtos/execution/__init__.py ---
+
+--- START FILE: backend/dtos/market/trade_tick.py ---
+# backend/dtos/common.py
+"""
+Bevat de meest basale, herbruikbare DTO's die op meerdere plekken worden gebruikt.
+
+@layer: Backend (DTO)
+@dependencies: [pydantic, pandas]
+@responsibilities:
+    - Definieert de gestandaardiseerde datastructuur voor een enkele transactie (tick).
+"""
+from __future__ import annotations
+from typing import Any, Literal
+
+import pandas as pd
+from pydantic import BaseModel, Field, field_validator
+
+
+class TradeTick(BaseModel):
+    """
+    Een enkele, daadwerkelijk uitgevoerde transactie (Time & Sales),
+    gemodelleerd naar de Kraken REST API 'Trades' response.
+    """
+    model_config = {"arbitrary_types_allowed": True}
+
+    price: float = Field(..., description="De prijs van de transactie.")
+    volume: float = Field(
+        ..., description="De omvang (volume) van de transactie."
+    )
+    timestamp: pd.Timestamp = Field(
+        ..., description="De exacte UTC timestamp van de transactie."
+    )
+    side: Literal['buy', 'sell'] = Field(
+        ..., description="De kant van de agressor ('buy' of 'sell')."
+    )
+    order_type: Literal['market', 'limit'] = Field(
+        ..., description="Het type order van de agressor ('market' of 'limit')."
+    )
+    misc: str = Field(
+        "", description="Diverse aanvullende informatie van de API."
+    )
+
+    @field_validator('timestamp', mode='before')
+    @classmethod
+    def convert_unix_to_timestamp(cls, v: Any) -> pd.Timestamp:
+        """Converteert een UNIX timestamp (in seconden) naar een Pandas Timestamp."""
+        if isinstance(v, (int, float)):
+            return pd.to_datetime(v, unit='s', utc=True)
+        return v
+
+--- END FILE: backend/dtos/market/trade_tick.py ---
+
+--- START FILE: backend/dtos/market/__init__.py ---
+__all__ = [
+    "TradeTick",
+]
+
+from .trade_tick import TradeTick
+
+--- END FILE: backend/dtos/market/__init__.py ---
+
+--- START FILE: backend/dtos/pipeline/entry_signal.py ---
+# backend/dtos/entry_signal.py
+"""
+Contains the data class for a signal enriched with an entry tactic.
+
+@layer: Backend (DTO)
+@dependencies: [pydantic, pandas, uuid]
+@responsibilities:
+    - Defines the data structure for a signal that has been enriched with
+      a concrete entry tactic by an EntryPlanner.
+"""
+import uuid
+from pydantic import BaseModel, ConfigDict
+from .signal import Signal
+
+class EntrySignal(BaseModel):
+    """Represents a signal with a concrete entry tactic.
+
+    This DTO is created by an EntryPlanner (Fase 5a). It enriches a raw
+    Signal DTO with a calculated entry price and a descriptive entry method.
+    It serves as the input for the ExitPlanner (Fase 5b).
+
+    Attributes:
+        correlation_id (uuid.UUID): The unique ID inherited from the source Signal.
+        signal: the original Signal DTO.
+        entry_price (float): The calculated entry price for the trade.
+    """
+    correlation_id: uuid.UUID
+    signal: Signal
+    entry_price: float
+
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True
+    )
+
+--- END FILE: backend/dtos/pipeline/entry_signal.py ---
+
+--- START FILE: backend/dtos/pipeline/risk_defined_signal.py ---
 # backend/dtos/risk_defined_signal.py
 """
 Contains the data class for a signal enriched with exit prices (risk definition).
@@ -2517,9 +2738,9 @@ class RiskDefinedSignal(BaseModel):
         arbitrary_types_allowed=True
     )
 
---- END FILE: backend/dtos/risk_defined_signal.py ---
+--- END FILE: backend/dtos/pipeline/risk_defined_signal.py ---
 
---- START FILE: backend/dtos/routed_trade_plan.py ---
+--- START FILE: backend/dtos/pipeline/routed_trade_plan.py ---
 # backend/dtos/routed_trade_plan.py
 """
 Contains the DTO that represents a TradePlan decorated with execution tactics.
@@ -2571,9 +2792,9 @@ class RoutedTradePlan(BaseModel):
         arbitrary_types_allowed=True
     )
 
---- END FILE: backend/dtos/routed_trade_plan.py ---
+--- END FILE: backend/dtos/pipeline/routed_trade_plan.py ---
 
---- START FILE: backend/dtos/signal.py ---
+--- START FILE: backend/dtos/pipeline/signal.py ---
 # backend/dtos/signal.py
 """
 Contains the data class for a raw, unfiltered signal event.
@@ -2619,9 +2840,9 @@ class Signal(BaseModel):
         arbitrary_types_allowed=True
     )
 
---- END FILE: backend/dtos/signal.py ---
+--- END FILE: backend/dtos/pipeline/signal.py ---
 
---- START FILE: backend/dtos/trade_plan.py ---
+--- START FILE: backend/dtos/pipeline/trade_plan.py ---
 # backend/dtos/trade_plan.py
 """
 Contains the data class for a complete, executable trade plan.
@@ -2660,9 +2881,251 @@ class TradePlan(BaseModel):
         arbitrary_types_allowed=True
     )
 
---- END FILE: backend/dtos/trade_plan.py ---
+--- END FILE: backend/dtos/pipeline/trade_plan.py ---
 
---- START FILE: backend/dtos/trading_context.py ---
+--- START FILE: backend/dtos/pipeline/__init__.py ---
+__all__ = [
+    "Signal",
+    "EntrySignal",
+    "RiskDefinedSignal",
+    "TradePlan",
+    "RoutedTradePlan",
+]
+
+from .signal import Signal
+from .entry_signal import EntrySignal
+from .risk_defined_signal import RiskDefinedSignal
+from .trade_plan import TradePlan
+from .routed_trade_plan import RoutedTradePlan
+
+--- END FILE: backend/dtos/pipeline/__init__.py ---
+
+--- START FILE: backend/dtos/results/backtest_result.py ---
+# backend/dtos/backtest_result.py
+"""
+Contains the data class for storing the complete result of a single backtest run.
+
+@layer: Backend (DTO)
+@dependencies: [pydantic, pandas]
+@responsibilities:
+    - Defines the standardized data structure for holding all results from a
+      single backtest run, ready for analysis and presentation.
+"""
+from typing import Dict, Any
+from pydantic import BaseModel, ConfigDict
+import pandas as pd
+
+class BacktestResult(BaseModel):
+    """A container for all results of a single backtest run.
+
+    This object acts as a standardized Data Transfer Object (DTO) that holds
+    all the essential, aggregated outputs from a backtest analysis, produced
+    by the PerformanceAnalyzer.
+
+    Attributes:
+        trades_df (pd.DataFrame): A DataFrame containing all ClosedTrade objects.
+        equity_curve (pd.Series): A Series representing the portfolio's equity over time.
+        drawdown_curve (pd.Series): A Series representing the portfolio's drawdown.
+        metrics (Dict[str, Any]): A dictionary of calculated performance metrics.
+        initial_capital (float): The starting capital for the run.
+    """
+    trades_df: pd.DataFrame
+    equity_curve: pd.Series
+    drawdown_curve: pd.Series
+    metrics: Dict[str, Any]
+    initial_capital: float
+
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True
+    )
+
+--- END FILE: backend/dtos/results/backtest_result.py ---
+
+--- START FILE: backend/dtos/results/closed_trade.py ---
+# backend/dtos/closed_trade.py
+"""
+Contains the data class for a closed trade, representing a completed transaction.
+
+@layer: Backend (DTO)
+@dependencies: [pydantic, pandas, uuid]
+@responsibilities:
+    - Defines the standardized data structure for a trade that has been fully
+      executed and resulted in a profit or loss.
+"""
+import uuid
+from typing import Optional
+from pydantic import BaseModel, ConfigDict
+import pandas as pd
+
+class ClosedTrade(BaseModel):
+    """Represents the final, recorded result of a single completed trade.
+
+    This DTO is created by the Portfolio after a position is closed. It serves
+    as the definitive, historical record for performance analysis and reporting.
+    It contains all information from the original TradePlan, enriched with the
+    actual exit details and the resulting profit or loss.
+
+    Attributes:
+        correlation_id (uuid.UUID): The unique ID linking this record to its
+                                    full context log. Inherited from the TradePlan.
+        entry_time (pd.Timestamp): The timestamp when the trade was opened.
+        exit_time (pd.Timestamp): The timestamp when the trade was closed.
+        asset (str): The asset that was traded.
+        direction (str): The direction of the trade ('long' or 'short').
+        signal_type (str): The name of the logic that generated the original signal.
+        entry_price (float): The actual entry price.
+        exit_price (float): The actual exit price.
+        sl_price (float): The original stop-loss price from the TradePlan.
+        tp_price (Optional[float]): The original take-profit price, if any.
+        position_value_quote (float): The initial value of the position.
+        position_size_asset (float): The size of the position.
+        pnl_quote (float): The net profit or loss of the trade, after fees.
+    """
+    correlation_id: uuid.UUID
+    entry_time: pd.Timestamp
+    exit_time: pd.Timestamp
+    asset: str
+    direction: str
+    signal_type: str
+    entry_price: float
+    exit_price: float
+    sl_price: float
+    tp_price: Optional[float] = None
+    position_value_quote: float
+    position_size_asset: float
+    pnl_quote: float
+
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True
+    )
+
+--- END FILE: backend/dtos/results/closed_trade.py ---
+
+--- START FILE: backend/dtos/results/engine_cycle_result.py ---
+# backend/dtos/engine_cycle_result.py
+"""
+Contains the DTO that represents the complete output of a single StrategyEngine cycle.
+
+@layer: Backend (DTO)
+@dependencies: [pydantic, .execution_directive, .critical_event]
+@responsibilities:
+    - Bundles all outcomes of a single engine tick into one object.
+    - Decouples new trade instructions from systemic event notifications.
+"""
+from typing import List
+from pydantic import BaseModel, ConfigDict
+from backend.dtos.execution.execution_directive import ExecutionDirective
+from backend.dtos.execution.critical_event import CriticalEvent
+
+class EngineCycleResult(BaseModel):
+    """
+    Represents the complete output of a single processing cycle (tick)
+    of the StrategyEngine. It decouples trade proposals from critical events.
+
+    This object is yielded by the StrategyEngine on every tick and allows the
+    consuming service (e.g., BacktestService) to intelligently decide on the
+    next course of action.
+
+    Attributes:
+        execution_directives (List[ExecutionDirective]): A list of new trades to be executed.
+        critical_events (List[CriticalEvent]): A list of detected systemic events.
+    """
+    execution_directives: List[ExecutionDirective]
+    critical_events: List[CriticalEvent]
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+--- END FILE: backend/dtos/results/engine_cycle_result.py ---
+
+--- START FILE: backend/dtos/state/portfolio_state.py ---
+# backend/dtos/portfolio_state.py
+"""
+Contains the DTO for a snapshot of the portfolio's financial state.
+
+@layer: Backend (DTO)
+@dependencies: [pydantic]
+@responsibilities:
+    - Defines the standardized, read-only data structure that represents the
+      financial state of a portfolio at a specific moment in time.
+    - Defines the specific data contracts for open positions and open orders.
+"""
+from __future__ import annotations
+from uuid import UUID
+from typing import List, Literal, Optional
+from pydantic import BaseModel, Field
+import pandas as pd
+
+class OpenPosition(BaseModel):
+    """
+    A data contract for a single, currently open position.
+    """
+    model_config = {"arbitrary_types_allowed": True}
+
+    correlation_id: UUID = Field(..., description="open_position.correlation_id.desc")
+    asset: str = Field(..., description="open_position.asset.desc")
+    direction: Literal['long', 'short'] = Field(..., description="open_position.direction.desc")
+    entry_price: float = Field(..., description="open_position.entry_price.desc")
+    position_size_asset: float = Field(..., description="open_position.position_size_asset.desc")
+    entry_timestamp: pd.Timestamp = Field(..., description="open_position.entry_timestamp.desc")
+
+
+class OpenOrder(BaseModel):
+    """
+    A data contract for a single, currently open (unfilled) order.
+    """
+    order_id: str = Field(..., description="open_order.order_id.desc")
+    asset: str = Field(..., description="open_order.asset.desc")
+    side: Literal['buy', 'sell'] = Field(..., description="open_order.side.desc")
+    order_type: Literal['limit',
+                        'market',
+                        'stop_loss',
+                        'take_profit'] = Field(..., description="open_order.order_type.desc")
+    amount: float = Field(..., description="open_order.amount.desc")
+    price: Optional[float] = Field(None, description="open_order.price.desc")
+
+
+class PortfolioState(BaseModel):
+    """
+    A read-only snapshot of the financial state of the portfolio.
+
+    This DTO is used to pass the current financial reality to various
+    components, such as the StrategyEngine, without exposing the full
+    Portfolio object. This ensures that the state can be read but not
+    modified, adhering to a clear data flow.
+    """
+    equity: float = Field(
+        ...,
+        description="portfolio_state.equity.desc"
+    )
+    available_cash: float = Field(
+        ...,
+        description="portfolio_state.available_cash.desc"
+    )
+    total_exposure_quote: float = Field(
+        ...,
+        description="portfolio_state.total_exposure_quote.desc"
+    )
+    open_positions: List[OpenPosition] = Field( # type: ignore
+        default_factory=list,
+        description="portfolio_state.open_positions.desc"
+    )
+    open_orders: List[OpenOrder] = Field( # type: ignore
+        default_factory=list,
+        description="portfolio_state.open_orders.desc"
+    )
+
+# Pylance Suppression Note for 'future Me':
+# The Pylance linter may incorrectly flag the 'default_factory=list' lines
+# below as a 'reportUnknownVariableType' error. This is a known false
+# positive. Using 'default_factory=list' is the idiomatic and correct
+# Pydantic approach for providing a mutable default (an empty list).
+# The '# type: ignore' comment is intentionally used here to suppress this
+# specific, non-critical linter warning while maintaining the functionally
+# superior implementatio
+
+--- END FILE: backend/dtos/state/portfolio_state.py ---
+
+--- START FILE: backend/dtos/state/trading_context.py ---
 # backend/dtos/trading_context.py
 """
 Contains the data class for the TradingContext.
@@ -2717,46 +3180,18 @@ class TradingContext(BaseModel):
         arbitrary_types_allowed=True
     )
 
---- END FILE: backend/dtos/trading_context.py ---
+--- END FILE: backend/dtos/state/trading_context.py ---
 
---- START FILE: backend/dtos/__init__.py ---
-# backend/dtos/__init__.py
-"""
-Exposes the public API of the DTOs sub-package.
-
-This file centralizes all DTO imports, allowing other parts of the
-application to import any DTO directly from `backend.dtos` without
-needing to know the specific internal file structure.
-
-@layer: Backend (DTO)
-"""
+--- START FILE: backend/dtos/state/__init__.py ---
 __all__ = [
-    "Signal",
-    "EntrySignal",
-    "RiskDefinedSignal",
-    "TradePlan",
-    "RoutedTradePlan",
-    "CriticalEvent",
-    "ExecutionDirective",
-    "EngineCycleResult",
-    "ClosedTrade",
+    "PortfolioState",
     "TradingContext",
-    "BacktestResult",
 ]
 
-from .signal import Signal
-from .entry_signal import EntrySignal
-from .risk_defined_signal import RiskDefinedSignal
-from .trade_plan import TradePlan
-from .routed_trade_plan import RoutedTradePlan
-from .critical_event import CriticalEvent
-from .execution_directive import ExecutionDirective
-from .engine_cycle_result import EngineCycleResult
-from .closed_trade import ClosedTrade
-from .backtest_result import BacktestResult
+from .portfolio_state import PortfolioState
 from .trading_context import TradingContext
 
---- END FILE: backend/dtos/__init__.py ---
+--- END FILE: backend/dtos/state/__init__.py ---
 
 --- START FILE: backend/environments/backtest_environment.py ---
 # backend/environments/backtest_environment.py
@@ -2898,6 +3333,132 @@ from .backtest_environment import BacktestEnvironment
 #from .paper_environment import PaperEnvironment
 
 --- END FILE: backend/environments/__init__.py ---
+
+--- START FILE: backend/environments/api_connectors/kraken_connector.py ---
+# backend/environments/api_connectors/kraken_connector.py
+"""
+Contains the concrete implementation of an APIConnector for the Kraken exchange.
+
+@layer: Backend (Environment/APIConnectors)
+@dependencies: [requests, pydantic, pandas, backend.core.interfaces, backend.dtos]
+@responsibilities:
+    - Implements the IAPIConnector interface for the Kraken REST API.
+    - Fetches raw market data and translates it into application-specific DTOs.
+    - Handles API-specific details like pagination, error parsing, and retries.
+"""
+
+import time
+from typing import cast, List, Dict, Any, Optional
+import requests
+import pandas as pd
+from pydantic import ValidationError
+
+from backend.core.interfaces.connectors import IAPIConnector
+from backend.dtos.market.trade_tick import TradeTick
+from backend.utils.app_logger import LogEnricher
+from backend.config.schemas.connectors.kraken_schema import KrakenAPIConnectorConfig
+
+class KrakenAPIConnector(IAPIConnector):
+    """
+    A concrete implementation of the IAPIConnector interface that communicates
+    with the public Kraken REST API.
+    """
+
+    def __init__(self, logger: LogEnricher, config: KrakenAPIConnectorConfig):
+        self.logger = logger
+        self.config = config
+        self.session = requests.Session()
+        self.session.headers.update({'User-Agent': 'S1mpleTraderV2'})
+
+    def _request(self, endpoint: str, params: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+        """
+        Executes a single, robust request to a public Kraken API endpoint,
+        including the full retry logic.
+
+        Args:
+            endpoint (str): The API endpoint to call (e.g., "/Trades").
+            params (Optional[Dict[str, Any]]): A dictionary of query parameters.
+
+        Returns:
+            A dictionary with the parsed JSON response on success, or None on failure.
+        """
+        attempt = 1
+        while attempt <= self.config.retries.max_attempts:
+            try:
+                log_msg = (
+                    f"Requesting '{endpoint}' (attempt {attempt}/{self.config.retries.max_attempts})"
+                )
+                self.logger.info(log_msg)
+                response = self.session.get(f"{self.config.base_url}{endpoint}", params=params)
+                response.raise_for_status()
+                
+                data = cast(Dict[str, Any], response.json())
+                if data.get('error'):
+                    self.logger.error(f"Kraken API error for endpoint '{endpoint}': {data['error']}")
+                    return None # API error is a final failure, no retry
+                
+                return data
+
+            except requests.RequestException as e:
+                self.logger.error(f"HTTP Request failed (attempt {attempt}): {e}")
+                if attempt == self.config.retries.max_attempts:
+                    self.logger.error("Max retries reached. Aborting request.")
+                    return None
+                time.sleep(self.config.retries.delay_seconds)
+                attempt += 1
+        return None
+
+    def get_historical_trades(
+        self, pair: str, since: int, until: Optional[int] = None, limit: Optional[int] = None
+    ) -> List[TradeTick]:
+        all_trades: List[TradeTick] = []
+        current_since_ns = str(since)
+
+        while True:
+            data = self._request("/Trades", params={'pair': pair, 'since': current_since_ns})
+
+            if not data:
+                break
+
+            result = cast(Dict[str, Any], data.get('result', {}))
+            pair_key = next(iter(result.keys()), None)
+            trade_data = cast(List[List[Any]], result.get(pair_key, [])) if pair_key else []
+
+            if not trade_data:
+                break
+            
+            # De 'last' timestamp is de timestamp van de LAATSTE trade in de batch
+            last_trade_in_batch_ns = result.get('last')
+
+            for trade in trade_data:
+                try:
+                    timestamp_obj = pd.to_datetime(float(trade[2]), unit='s', utc=True)
+                    trade_timestamp_ns = int(timestamp_obj.value)
+
+                    if until and trade_timestamp_ns > until:
+                        return all_trades
+
+                    side = 'sell' if trade[3] == 's' else 'buy'
+                    order_type = 'market' if trade[4] == 'm' else 'limit'
+                    tick = TradeTick(
+                        price=float(trade[0]), volume=float(trade[1]),
+                        timestamp=timestamp_obj, side=side,
+                        order_type=order_type, misc=str(trade[5])
+                    )
+                    all_trades.append(tick)
+                except (ValidationError, IndexError, ValueError) as e:
+                    self.logger.warning(f"Skipping invalid trade data: {trade}. Error: {e}")
+            
+            # Waterdichte stop-conditie: als de 'last' niet verandert, stoppen we.
+            if last_trade_in_batch_ns == current_since_ns:
+                break
+            
+            current_since_ns = last_trade_in_batch_ns
+            time.sleep(1) # Rate limit tussen succesvolle page fetches
+
+        return all_trades
+
+--- END FILE: backend/environments/api_connectors/kraken_connector.py ---
 
 --- START FILE: backend/utils/app_logger.py ---
 # utils/app_logger.py
@@ -3831,7 +4392,7 @@ Contains the main logic for the EmaDetector plugin.
 import pandas as pd
 
 from backend.core.interfaces import ContextWorker
-from backend.dtos import TradingContext
+from backend.dtos.state.trading_context import TradingContext
 from backend.utils.app_logger import LogEnricher
 
 from .schema import EmaDetectorParams
@@ -3903,7 +4464,7 @@ from unittest.mock import MagicMock
 # Import de componenten die we testen
 from ..worker import EmaDetector
 from ..schema import EmaDetectorParams
-from backend.dtos import TradingContext
+from backend.dtos.state.trading_context import TradingContext
 
 def test_ema_detector_adds_correct_column():
     """
@@ -4022,7 +4583,7 @@ from backend.core import Portfolio, ContextRecorder
 from backend.core.interfaces import Tradable #pyright: ignore[reportUnusedImport], pylint: disable=unused-import
 from backend.core.interfaces.execution import ExecutionHandler
 from backend.environments.backtest_environment import BacktestEnvironment
-from backend.dtos import TradingContext
+from backend.dtos.state.trading_context import TradingContext
 
 # Force Pydantic to resolve any forward-looking type references (like 'Tradable')
 # This is crucial for models that use abstract base classes or protocols.
@@ -4787,12 +5348,12 @@ Unit tests for the DirectiveFlattener utility.
 
 import uuid
 import pandas as pd
-from backend.dtos.signal import Signal
-from backend.dtos.entry_signal import EntrySignal
-from backend.dtos.risk_defined_signal import RiskDefinedSignal
-from backend.dtos.trade_plan import TradePlan
-from backend.dtos.routed_trade_plan import RoutedTradePlan
-from backend.dtos.execution_directive import ExecutionDirective
+from backend.dtos.pipeline.signal import Signal
+from backend.dtos.pipeline.entry_signal import EntrySignal
+from backend.dtos.pipeline.risk_defined_signal import RiskDefinedSignal
+from backend.dtos.pipeline.trade_plan import TradePlan
+from backend.dtos.pipeline.routed_trade_plan import RoutedTradePlan
+from backend.dtos.execution.execution_directive import ExecutionDirective
 from backend.core.directive_flattener import DirectiveFlattener
 
 def test_flatten_routed_trade_plan_to_directive():
@@ -4844,7 +5405,7 @@ import pandas as pd
 
 from backend.core.interfaces.portfolio import Tradable
 from backend.core.portfolio import Portfolio
-from backend.dtos.execution_directive import ExecutionDirective
+from backend.dtos.execution.execution_directive import ExecutionDirective
 
 class MockLogger:
     def info(self, *args, **kwargs): pass
@@ -5020,10 +5581,15 @@ import uuid
 import pandas as pd
 from pytest_mock import MockerFixture
 
-from backend.dtos import (
-    Signal, EntrySignal, RiskDefinedSignal, TradePlan, RoutedTradePlan,
-    TradingContext, EngineCycleResult, ExecutionDirective, CriticalEvent
-)
+from backend.dtos.pipeline.signal import Signal
+from backend.dtos.pipeline.entry_signal import EntrySignal
+from backend.dtos.pipeline.risk_defined_signal import RiskDefinedSignal
+from backend.dtos.pipeline.trade_plan import TradePlan
+from backend.dtos.pipeline.routed_trade_plan import RoutedTradePlan
+from backend.dtos.state.trading_context import TradingContext
+from backend.dtos.results.engine_cycle_result import EngineCycleResult
+from backend.dtos.execution.execution_directive import ExecutionDirective
+from backend.dtos.execution.critical_event import CriticalEvent
 from backend.core.interfaces import Clock
 from backend.core.strategy_engine import StrategyEngine
 from backend.core.directive_flattener import DirectiveFlattener
@@ -5211,6 +5777,135 @@ def test_backtest_environment_initialization(mocker: MockerFixture):
     assert isinstance(environment.handler, BacktestExecutionHandler)
 
 --- END FILE: tests/backend/environments/test_backtest_environment.py ---
+
+--- START FILE: tests/backend/environments/test_kraken_connector.py ---
+# tests/backend/environments/api_connectors/test_kraken_connector.py
+"""
+Unit tests for the KrakenAPIConnector.
+
+@layer: Tests (Backend/Environments/APIConnectors)
+@dependencies: [pytest, pytest-mock, requests]
+@responsibilities:
+    - Verify that the connector correctly calls the Kraken API endpoints.
+    - Verify that the connector correctly parses valid API responses into DTOs.
+    - Verify that the connector handles API errors and invalid data gracefully.
+"""
+from unittest.mock import MagicMock, call
+from pytest_mock import MockerFixture
+import requests
+
+from backend.environments.api_connectors.kraken_connector import KrakenAPIConnector
+from backend.dtos.market.trade_tick import TradeTick
+from backend.config.schemas.connectors.kraken_schema import KrakenAPIConnectorConfig, KrakenAPIRetryConfig
+
+MOCK_KRAKEN_SUCCESS_RESPONSE = {
+    "error": [],
+    "result": {
+        "XXBTZEUR": [
+            ["60000.10", "0.1", 1617225600.1234, "b", "m", ""],
+            ["60000.20", "0.05", 1617225601.5678, "s", "l", ""]
+        ],
+        "last": "1617225601567800000"
+    }
+}
+
+MOCK_KRAKEN_ERROR_RESPONSE = {
+    "error": ["EQuery:Invalid pair"]
+}
+
+
+def test_get_historical_trades_success(mocker: MockerFixture):
+    mock_logger = MagicMock()
+    mock_config = KrakenAPIConnectorConfig()
+    
+    # Mock de eerste call met data, en de tweede zonder nieuwe data
+    mock_response_page1 = MagicMock()
+    mock_response_page1.json.return_value = MOCK_KRAKEN_SUCCESS_RESPONSE
+    mock_response_page2 = MagicMock()
+    mock_response_page2.json.return_value = {
+        "error": [], 
+        "result": {
+            "XXBTZEUR": [["60000.20", "0.05", 1617225601.5678, "s", "l", ""]],
+            "last": MOCK_KRAKEN_SUCCESS_RESPONSE["result"]["last"]
+        }
+    }
+    mocker.patch('requests.Session.get', side_effect=[mock_response_page1, mock_response_page2])
+    mocker.patch('time.sleep')
+
+    connector = KrakenAPIConnector(logger=mock_logger, config=mock_config)
+    trades = connector.get_historical_trades(pair="XXBTZEUR", since=0)
+
+    assert len(trades) == 2
+    assert trades[0].price == 60000.10
+    assert trades[1].price == 60000.20
+
+
+def test_get_historical_trades_handles_api_error(mocker: MockerFixture):
+    mock_logger = MagicMock()
+    mock_config = KrakenAPIConnectorConfig()
+    
+    mocker.patch('requests.Session.get', return_value=MagicMock(json=MagicMock(return_value=MOCK_KRAKEN_ERROR_RESPONSE)))
+
+    connector = KrakenAPIConnector(logger=mock_logger, config=mock_config)
+    trades = connector.get_historical_trades(pair="INVALIDPAIR", since=0)
+
+    assert trades == []
+    # FIX: De assert controleert nu de correcte, specifiekere foutmelding.
+    mock_logger.error.assert_called_once_with("Kraken API error for endpoint '/Trades': ['EQuery:Invalid pair']")
+
+
+def test_get_historical_trades_respects_time_window(mocker: MockerFixture):
+    mock_logger = MagicMock()
+    mock_config = KrakenAPIConnectorConfig()
+    
+    SINCE_NS = 1000 * 1_000_000_000
+    UNTIL_NS = 3000 * 1_000_000_000
+
+    # Pagina 1 bevat een valide trade en een trade die we al hebben
+    mock_response_page1 = MagicMock()
+    mock_response_page1.json.return_value = { "error": [], "result": { "XXBTZEUR": [
+        ["1000.0", "1.0", 1000.0, "b", "m", ""], 
+        ["1500.0", "1.5", 1500.0, "b", "m", ""]
+    ], "last": str(1500 * 1_000_000_000) } }
+    
+    # Pagina 2 bevat een trade NA het venster
+    mock_response_page2 = MagicMock()
+    mock_response_page2.json.return_value = { "error": [], "result": { "XXBTZEUR": [["3500.0", "3.5", 3500.0, "s", "l", ""]], "last": str(3500 * 1_000_000_000) } }
+
+    mock_get = mocker.patch('requests.Session.get', side_effect=[mock_response_page1, mock_response_page2])
+    mocker.patch('time.sleep')
+
+    connector = KrakenAPIConnector(logger=mock_logger, config=mock_config)
+    trades = connector.get_historical_trades(pair="XXBTZEUR", since=SINCE_NS, until=UNTIL_NS)
+
+    assert len(trades) == 1
+    assert trades[0].price == 1500.0
+    assert mock_get.call_count == 2
+
+
+def test_get_historical_trades_retries_on_network_error(mocker: MockerFixture):
+    mock_logger = MagicMock()
+    mock_config = KrakenAPIConnectorConfig(retries=KrakenAPIRetryConfig(max_attempts=3, delay_seconds=1))
+
+    mock_success_response = MagicMock()
+    mock_success_response.json.return_value = MOCK_KRAKEN_SUCCESS_RESPONSE
+    
+    mocked_get = mocker.patch('requests.Session.get', side_effect=[
+        requests.RequestException("First network error"),
+        requests.RequestException("Second network error"),
+        mock_success_response,
+        MagicMock(json=MagicMock(return_value={"error": [], "result": {"last": MOCK_KRAKEN_SUCCESS_RESPONSE["result"]["last"]}}))
+    ])
+    mocker.patch('time.sleep')
+
+    connector = KrakenAPIConnector(logger=mock_logger, config=mock_config)
+    trades = connector.get_historical_trades(pair="XXBTZEUR", since=0)
+
+    assert mocked_get.call_count == 4
+    assert len(trades) == 2
+    assert mock_logger.error.call_count == 2
+
+--- END FILE: tests/backend/environments/test_kraken_connector.py ---
 
 --- START FILE: tests/backend/environments/__init__.py ---
 

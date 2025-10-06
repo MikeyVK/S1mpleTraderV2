@@ -20,6 +20,7 @@ __all__ = [
     "ExecutionDirective",
     # market
     "TradeTick",
+    "DataCoverage",
     # state
     "PortfolioState",
     "TradingContext",

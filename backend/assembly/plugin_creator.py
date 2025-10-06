@@ -21,14 +21,10 @@ class PluginCreator:
     """
 
     def __init__(self, plugins_root: Path, logger: LogEnricher):
-        """Initializes the PluginCreator.
-
-        Args:
-            plugins_root (Path): The root directory where all plugins are stored.
-            logger (LogEnricher): The logger instance, passed via dependency injection.
-        """
+        """Initializes the PluginCreator."""
         self._logger = logger
         self.plugins_root = plugins_root
+        # Het pad naar de templates is relatief aan DIT bestand
         self.template_root = Path(__file__).parent / "templates"
 
         if not self.plugins_root.is_dir():
@@ -40,15 +36,7 @@ class PluginCreator:
             raise FileNotFoundError(f"Template directory not found at: {self.template_root}")
 
     def create(self, name: str, plugin_type: str) -> bool:
-        """Creates a new plugin skeleton from templates.
-
-        Args:
-            name (str): The name of the new plugin (e.g., "my_test_plugin").
-            plugin_type (str): The type of the plugin (e.g., "signal_generator").
-
-        Returns:
-            bool: True if creation was successful, False otherwise.
-        """
+        """Creates a new plugin skeleton from templates."""
         plugin_path = self.plugins_root / plugin_type / name
         tests_path = plugin_path / "tests"
 
@@ -56,20 +44,22 @@ class PluginCreator:
             self._logger.info(f"Creating plugin '{name}' at: {plugin_path}")
             tests_path.mkdir(parents=True, exist_ok=True)
 
+            # Gecorrigeerde paden voor de template bestanden
             template_files = {
-                "manifest.yaml.tpl": "plugin_manifest.yaml",
-                "schema.py.tpl": "schema.py",
-                "worker.py.tpl": "worker.py",
-                "visualization_schema.py.tpl": "visualization_schema.py",
-                "test/test_worker.py.tpl": "tests/test_worker.py"
+                "manifest.yaml.tpl": plugin_path / "manifest.yaml",
+                "schema.py.tpl": plugin_path / "schema.py",
+                "worker.py.tpl": plugin_path / "worker.py",
+                "context_schema.py.tpl": plugin_path / "context_schema.py",
+                "test/test_worker.py.tpl": tests_path / "test_worker.py"
             }
 
-            for template_name, target_name in template_files.items():
+            for template_name, target_path in template_files.items():
                 source_path = self.template_root / template_name
-                target_path = plugin_path / target_name
+                
+                if not source_path.is_file():
+                    self._logger.error(f"Template file not found: {source_path}")
+                    raise FileNotFoundError(f"Template file not found: {source_path}")
 
-                # TODO: Implement actual template rendering (e.g., with Jinja2)
-                # For now, we are just copying the files.
                 shutil.copy(source_path, target_path)
 
             self._logger.info(f"Successfully created plugin '{name}'.")

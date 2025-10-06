@@ -1,10 +1,11 @@
-S1mpleTraderV2/
+s1mpletrader/
 ├── backend
 │   ├── assembly
 │   │   ├── templates
 │   │   │   ├── test
 │   │   │   │   ├── __init__.py
 │   │   │   │   └── test_worker.py.tpl
+│   │   │   ├── tests
 │   │   │   ├── __init__.py
 │   │   │   ├── context_schema.py.tpl
 │   │   │   ├── manifest.yaml.tpl
@@ -19,6 +20,8 @@ S1mpleTraderV2/
 │   │   └── worker_builder.py
 │   ├── config
 │   │   ├── schemas
+│   │   │   ├── connectors
+│   │   │   │   └── kraken_schema.py
 │   │   │   ├── __init__.py
 │   │   │   ├── app_schema.py
 │   │   │   ├── platform_schema.py
@@ -28,9 +31,11 @@ S1mpleTraderV2/
 │   ├── core
 │   │   ├── interfaces
 │   │   │   ├── __init__.py
+│   │   │   ├── connectors.py
 │   │   │   ├── engine.py
 │   │   │   ├── environment.py
 │   │   │   ├── execution.py
+│   │   │   ├── persistors.py
 │   │   │   ├── portfolio.py
 │   │   │   └── worker.py
 │   │   ├── __init__.py
@@ -47,19 +52,28 @@ S1mpleTraderV2/
 │   │   ├── __init__.py
 │   │   └── loader.py
 │   ├── dtos
-│   │   ├── __init__.py
-│   │   ├── backtest_result.py
-│   │   ├── closed_trade.py
-│   │   ├── critical_event.py
-│   │   ├── engine_cycle_result.py
-│   │   ├── entry_signal.py
-│   │   ├── execution_directive.py
-│   │   ├── risk_defined_signal.py
-│   │   ├── routed_trade_plan.py
-│   │   ├── signal.py
-│   │   ├── trade_plan.py
-│   │   └── trading_context.py
+│   │   ├── execution
+│   │   │   ├── __init__.py
+│   │   │   ├── critical_event.py
+│   │   │   └── execution_directive.py
+│   │   ├── market
+│   │   │   ├── __init__.py
+│   │   │   └── trade_tick.py
+│   │   ├── pipeline
+│   │   │   ├── __init__.py
+│   │   │   ├── entry_signal.py
+│   │   │   ├── risk_defined_signal.py
+│   │   │   ├── routed_trade_plan.py
+│   │   │   ├── signal.py
+│   │   │   └── trade_plan.py
+│   │   ├── state
+│   │   │   ├── __init__.py
+│   │   │   ├── portfolio_state.py
+│   │   │   └── trading_context.py
+│   │   └── __init__.py
 │   ├── environments
+│   │   ├── api_connectors
+│   │   │   └── kraken_connector.py
 │   │   ├── __init__.py
 │   │   ├── backtest_environment.py
 │   │   ├── live_environment.py
@@ -128,8 +142,6 @@ S1mpleTraderV2/
 │   │   │   └── main.py
 │   │   └── ui
 │   │       ├── src
-│   │       │   ├── components
-│   │       │   ├── services
 │   │       │   └── App.tsx
 │   │       └── package.json
 │   └── __init__.py
@@ -156,6 +168,7 @@ S1mpleTraderV2/
 │   │   │   ├── schema.py
 │   │   │   └── worker.py
 │   │   └── __init__.py
+│   ├── exit_planners
 │   ├── order_routers
 │   │   └── __init__.py
 │   ├── regime_filters
@@ -188,6 +201,7 @@ S1mpleTraderV2/
 │   │   │   ├── schema.py
 │   │   │   └── worker.py
 │   │   └── __init__.py
+│   ├── size_planners
 │   ├── structural_context
 │   │   ├── ema_detector
 │   │   │   ├── tests
@@ -209,26 +223,6 @@ S1mpleTraderV2/
 │   ├── parallel_run_service.py
 │   ├── strategy_operator.py
 │   └── variant_test_service.py
-├── source_data
-│   ├── ADA_EUR_15m.csv
-│   ├── AVAX_EUR_15m.csv
-│   ├── BAT_EUR_15m.csv
-│   ├── BNB_EUR_15m.csv
-│   ├── BTC_EUR_15m.csv
-│   ├── DOGE_EUR_15m.csv
-│   ├── DOT_EUR_15m.csv
-│   ├── ETH_EUR_15m.csv
-│   ├── KAS_EUR_15m.csv
-│   ├── Kraken_Trading_History.zip
-│   ├── LINK_EUR_15m.csv
-│   ├── LTC_EUR_15m.csv
-│   ├── OXT_EUR_15m.csv
-│   ├── RLC_EUR_15m.csv
-│   ├── SHIB_EUR_15m.csv
-│   ├── SOL_EUR_15m.csv
-│   ├── STORJ_EUR_15m.csv
-│   ├── TON_EUR_15m.csv
-│   └── XRP_EUR_15m.csv
 ├── tests
 │   ├── backend
 │   │   ├── assembly
@@ -249,7 +243,8 @@ S1mpleTraderV2/
 │   │   │   └── test_data_loader.py
 │   │   ├── environments
 │   │   │   ├── __init__.py
-│   │   │   └── test_backtest_environment.py
+│   │   │   ├── test_backtest_environment.py
+│   │   │   └── test_kraken_connector.py
 │   │   └── __init__.py
 │   ├── services
 │   │   └── test_strategy_operator.py

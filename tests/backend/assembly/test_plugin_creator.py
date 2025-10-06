@@ -31,10 +31,10 @@ def test_plugin_creator_generates_correct_skeleton(tmp_path: Path):
     base_path = plugins_root / plugin_type / plugin_name
 
     expected_files = [
-        base_path / "plugin_manifest.yaml",
+        base_path / "manifest.yaml",
         base_path / "schema.py",
         base_path / "worker.py",
-        base_path / "visualization_schema.py",
+        base_path / "context_schema.py",
         base_path / "tests/test_worker.py",
     ]
 
