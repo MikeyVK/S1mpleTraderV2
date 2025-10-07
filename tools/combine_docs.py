@@ -12,6 +12,6 @@ def merge_markdown_files(input_folder, output_file):
 
 if __name__ == "__main__":
     input_folder = "./docs/system"       # vervang door jouw map
-    output_file = "docs.md" # naam van het resultaat
+    output_file = "docs123.md" # naam van het resultaat
     merge_markdown_files(input_folder, output_file)
     print(f"Alle bestanden samengevoegd in: {output_file}")

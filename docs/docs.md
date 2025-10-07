@@ -1,353 +1,344 @@
 # 0_V2_ARCHITECTURE.md
 
-# S1mpleTrader V2: Architectonische Blauwdruk
-**Versie:** 2.0 · **Status:** Definitief
+# **S1mpleTrader V2: Architectonische Blauwdruk**
+
+Versie: 3.0 (Event-Gedreven Architectuur)  
+Status: Definitief
+
+## **Hoofdstuk 1: Visie & Architectonische Principes**
+
+* **1.1. Visie**  
+  Het creëren van één uniforme, plugin-gedreven architectuur die de volledige levenscyclus van een handelsstrategie ondersteunt: van concept & ontwikkeling, via rigoureuze backtesting en optimalisatie, naar paper trading en uiteindelijk live executie.  
+* **1.2. De Event-Gedreven Architectuur**  
+  De kern van de V2-architectuur is een ontkoppeld, **event-gedreven model** dat robuustheid, schaalbaarheid en onderhoudbaarheid maximaliseert. Een centrale EventBus fungeert als zenuwstelsel, waardoor componenten als gelijkwaardige specialisten samenwerken via strikt gedefinieerde, contract-gedreven events.  
+  **→ Lees de volledige uitwerking in: system/1_EVENT_DRIVEN_ARCHITECTURE.md**
+
+## **Hoofdstuk 2: Architectuur & Componenten**
+
+De applicatie is opgebouwd uit drie strikt gescheiden lagen (Frontend → Service → Backend). Dit hoofdstuk beschrijft de verantwoordelijkheden van elke laag, definieert de functionele categorieën van de componenten, en licht de rol toe van kerncomponenten zoals de PortfolioSupervisor, ContextOrchestrator en de StrategyOperator.
+
+**→ Lees de volledige uitwerking in: system/2_ARCHITECTURE.md**
+
+## **Hoofdstuk 3: De Anatomie van een Plugin**
+
+Een plugin is de fundamentele, zelfstandige en testbare eenheid van logica. Dit hoofdstuk beschrijft de mappenstructuur, het plugin_manifest.yaml (de ID-kaart), het schema.py (het contract) en de worker.py (de logica), en de rol van het BaseWorker-raamwerk.
+
+**→ Lees de volledige uitwerking in: system/3_PLUGIN_ANATOMY.md**
+
+## **Hoofdstuk 4: De Analytische Pijplijn**
+
+De StrategyEngine is de motor van de analytische pijplijn. Dit hoofdstuk beschrijft de interne, procedurele (fase 3-9 van de analytische pijplijn) die wordt uitgevoerd in reactie op een ContextReady-event. Het detailleert hoe een idee stapsgewijs wordt gevalideerd en omgezet in een StrategyProposal, van Regime Context tot Critical Event Detection.
+
+**→ Lees de volledige uitwerking in: system/4_WORKFLOW_AND_ORCHESTRATOR.md**
+
+## **Hoofdstuk 5: Frontend Integratie**
+
+De frontend is de primaire ontwikkelomgeving (IDE) voor de strateeg, ontworpen om de "Bouwen -> Meten -> Leren" cyclus te maximaliseren. Dit hoofdstuk beschrijft de verschillende "Werkruimtes" en legt uit hoe een strikt contract tussen de Pydantic-backend en de TypeScript-frontend zorgt voor een robuuste gebruikerservaring.
+
+**→ Lees de volledige uitwerking in: system/5_FRONTEND_INTEGRATION.md**
+
+## **Hoofdstuk 6: Robuustheid & Operationele Betrouwbaarheid**
+
+Een live trading-systeem moet veerkrachtig zijn. Dit hoofdstuk beschrijft de drie verdedigingslinies: atomische schrijfacties (journaling) voor staatintegriteit, protocollen voor netwerkveerkracht (heartbeat, reconnect, reconciliation) en een Supervisor-model voor automatische crash recovery.
+
+**→ Lees de volledige uitwerking in: system/6_RESILIENCE_AND_OPERATIONS.md**
+
+## **Hoofdstuk 7: Ontwikkelstrategie & Tooling**
+
+Dit hoofdstuk beschrijft de workflow, van de visuele 'Strategy Builder' tot de 'Trade Explorer'. Daarnaast worden de kern-tools behandeld, zoals de gespecialiseerde entrypoints, de gelaagde logging-aanpak en de cruciale rol van de Correlation ID voor traceerbaarheid.
+
+**→ Lees de volledige uitwerking in: system/7_DEVELOPMENT_STRATEGY.md**
+
+## **Hoofdstuk 8: Meta Workflows**
+
+Bovenop de executie van een enkele strategie draaien "Meta Workflows" om geavanceerde analyses uit te voeren. Dit hoofdstuk beschrijft de OptimizationService en VariantTestService, die de kern-executielogica herhaaldelijk en parallel aanroepen om complexe kwantitatieve analyses uit te voeren.
+
+**→ Lees de volledige uitwerking in: system/8_META_WORKFLOWS.md**
+
+## **Hoofdstuk 9: Coding Standaarden & Design Principles**
+
+Een consistente codebase is essentieel. Dit hoofdstuk beschrijft de verplichte standaarden (PEP 8, Type Hinting, Docstrings) en de kern design principles (SOLID, Factory Pattern, DTO's) die de vier kernprincipes van V2 (Plugin First, Scheiding van Zorgen, Configuratie-gedreven, Contract-gedreven) tot leven brengen.
+
+**→ Lees de volledige uitwerking in: system/9_CODING_STANDAARDS_DESIGN_PRINCIPLES.md**
+
+## **Bijlages**
+
+* **Bijlage A: Terminologie**: Een uitgebreid naslagwerk met beschrijvingen van alle belangrijke concepten en componenten.  
+* **Bijlage B: Openstaande Vraagstukken**: Een overzicht van bekende "onbekenden" die tijdens de implementatie verder onderzocht moeten worden.  
+* **Bijlage C: MVP**: De scope en componenten van het Minimum Viable Product.  
+* **Bijlage D: Plugin IDE**: De architectuur en UX voor de web-based IDE voor plugins.
 
 ---
 
-## Hoofdstuk 1: Visie & Kernprincipes
+# 1_EVENT_DRIVEN_ARCHITECTURE.md
 
-* **1.1. Visie**
-  
-  Het creëren van één uniforme, plugin-gedreven architectuur die de volledige levenscyclus van een handelsstrategie ondersteunt: van concept & ontwikkeling, via rigoureuze backtesting en optimalisatie, naar paper trading en uiteindelijk live executie.
+# **S1mpleTrader V2 Architectuur: De Event-Gedreven Run Levenscyclus**
 
-* **1.2. Kernprincipes**
+Versie: 3.1 (Definitief Ontwerp)  
+Status: Goedgekeurd
 
-  * **Plugin First** Alle strategische en contextuele logica wordt ingekapseld in zelfstandige, ontdekbare en onafhankelijk testbare plugins. Dit is de doorontwikkeling van het Strategy Pattern uit V1: waar V1 een set uitwisselbare “specialisten” had, formaliseert V2 dit tot een gestandaardiseerd ecosysteem.
+## **1. Visie & Architectonische Principes**
 
-  * **Scheiding van Zorgen (Separation of Concerns)** Strikte scheiding tussen:
-    - **Strategie-logica:** `StrategyEngine` (weet **hoe** de signaal-gedreven fasen (3-6) worden uitgevoerd).
-    - **Executie-omgeving:** `ExecutionEnvironment` (weet **waar** het gebeurt — backtest, paper, live).
-    - **Assemblage & Bouw:** Het `Assembly Team` (`PluginRegistry`, `WorkerBuilder`, `ContextBuilder`) weet hoe plugins worden beheerd en samengesteld.
-    - **Portfolio:** `Portfolio` (weet alleen **wat** de financiële staat is en fungeert als “dom” grootboek).
+### **1.1. Inleiding & Doel**
 
-  * **Configuratie-gedreven (Configuration-driven)** Samenstelling, gedrag en parametrisering van de actieve plugins worden volledig gedefinieerd in **mens-leesbare `YAML`-bestanden**. De code is de motor; **configuratie is de bestuurder**.
+Dit document beschrijft de architectonische evolutie van S1mpleTrader V2 van een procedureel, hiërarchisch model naar een ontkoppeld, **event-gedreven model**. Dit ontwerp is de blauwdruk voor het beheren van de volledige levenscyclus van trading strategieën en operationele processen.
 
-  * **Contract-gedreven (Contract-driven)** **Pydantic**-schema’s (en, voor de UI, **TypeScript**-interfaces) definiëren de contracten voor alle configuraties, **DTO**-input/output van plugins en data-uitwisseling tussen lagen. Dit borgt voorspelbaarheid, type-veiligheid en voorkomt runtime-fouten door ongeldige data.
+Het doel van deze architectuur is het verhogen van de robuustheid, schaalbaarheid en onderhoudbaarheid, met name in een complexe, multi-strategie, multi-asset en multi-exchange omgeving. De kern van dit ontwerp wordt gevormd door een centrale EventBus die als zenuwstelsel fungeert, waardoor componenten als gelijkwaardige, gespecialiseerde collega's met elkaar samenwerken via strikt gedefinieerde, contract-gedreven events.
 
----
+### **1.2. Het Hybride Model: De Juiste Tool voor de Juiste Taak**
 
-## Hoofdstuk 2: Architectuur & Componenten
+De architectuur hanteert een bewust **hybride model** om onnodige complexiteit te vermijden:
 
-De architectuur is opgebouwd uit drie strikt gescheiden lagen (Frontend → Service → Backend) en wordt aangestuurd door gespecialiseerde entrypoints (`run_web.py`, `run_supervisor.py`, `run_backtest_cli.py`). Dit hoofdstuk beschrijft de verantwoordelijkheden van elke laag en de hoofdcomponenten zoals de `StrategyOperator`, `ExecutionEnvironment`, en het `Assembly Team`.
+* **Event-Gedreven voor de Run Levenscyclus**: De dynamische, asynchrone en real-time flow van een actieve trading run (van marktdata naar beslissing naar executie) wordt volledig afgehandeld via de EventBus. Dit is ideaal voor processen die op onvoorspelbare momenten plaatsvinden en waar meerdere componenten onafhankelijk op moeten reageren.  
+* **Procedureel (Request-Response) voor Synchrone Taken**: Processen die van nature transactioneel en synchroon zijn, blijven procedureel. Dit geldt voor:  
+  * **Configuratie & Validatie**: Het laden en valideren van YAML-bestanden gebeurt synchroon bij de start. Een fout leidt tot een onmiddellijke "fail fast", zonder dat er een event wordt gepubliceerd.  
+  * **Gebruikersinteracties (UI)**: Een gebruiker die een strategie start of een plugin aanmaakt via de UI, doet een directe API-call en verwacht een directe respons (OK of Error).  
+  * **Interne Component Logica**: Complexe componenten zoals de StrategyEngine kunnen intern een voorspelbare, procedurele logica (de 7-fasen pijplijn) hebben, ook al reageren ze als geheel op een extern event.
 
-**→ Lees de volledige uitwerking in: `docs/system/2_ARCHITECTURE.md`**
+## **2. Component Categorieën: Een Strikte Scheiding van Verantwoordelijkheden**
 
----
+Om de architecturale zuiverheid te bewaken, verdelen we de componenten in drie duidelijk gescheiden categorieën:
 
-## Hoofdstuk 3: De Anatomie van een Plugin
+1. **Kernservices**: De fundamentele, langlevende componenten die het platform orkestreren en faciliteren. Ze vormen de ruggengraat van het systeem.  
+2. **De Analytische Pijplijn**: Een gespecialiseerde, stateless en procedurele flow, specifiek ontworpen voor het analyseren van marktdata en het genereren van *niet-deterministische, analytische handelsvoorstellen*.  
+3. **Operationele Agenten**: Een categorie van stateful, portfolio-bewuste componenten die *buiten* de analytische pijplijn opereren. Ze zijn verantwoordelijk voor het uitvoeren van *deterministische, op regels gebaseerde, operationele taken*.
 
-Een plugin is een zelfstandige package met eigen logica, contracten (**Pydantic**-modellen), manifest (`plugin_manifest.yaml`) en metadata. Elke plugin declareert zijn `type` (bv. `regime_context`, `signal_generator`, `execution_planner`, etc.), `dependencies`, en Pydantic-gevalideerde `params`.
- 
-**→ Lees de volledige uitwerking in: `docs/system/3_PLUGIN_ANATOMY.md`**
+## **3. Uitwerking van de Kerncomponenten**
 
----
+### **3.1. Kernservices**
 
-## Hoofdstuk 4: De Quant Workflow: Van Idee tot Inzicht
+* **PortfolioSupervisor (De Operationeel Manager)**: De eigenaar van het portfolio_blueprint.yaml. Beheert de levenscyclus (starten/stoppen) van alle strategieën en agenten. Valideert configuraties, fungeert als de hoogste risicomanager en is de primaire abonnee op StrategyProposalReady-events.  
+* **RunOrchestrator (De Facilitator)**: Een lichtgewicht component, geïnstantieerd *per strategie* door de PortfolioSupervisor. Zijn enige taak is het opzetten van de benodigde specialisten voor één run en het publiceren van de initiële RunStarted-event.  
+* **ContextBootstrapper (De "Voorgloeier")**: Zorgt ervoor dat de ContextOrchestrator een complete, historisch correcte staat heeft *voordat* de eerste live tick wordt verwerkt. Haalt een bulk historische data op en "primed" de context.  
+* **ContextOrchestrator (De State Manager)**: Het **stateful hart** van een actieve run. Beheert de "levende" TradingContext (de enriched_market_data en artefacts). Abonneert zich op MarketDataReceived en publiceert een verrijkte ContextReady voor elke tick.
+* **StrategyOperator (De Analytische Specialist)**: De StrategyOperator is de Service-laag tegenhanger van de StrategyEngine. Het fungeert als een schone, ontkoppelde brug: het abonneert zich op ContextReady, roept procedureel de run()-methode van de StrategyEngine aan, en publiceert het resultaat als een StrategyProposalReady-event. Dit waarborgt de strikte scheiding tussen de lagen.  
+* **ExecutionHandler (De Uitvoerder)**: Een stateless component die reageert op ExecutionApproved-events. Het roept het StrategyPortfolio (in backtest) of de juiste APIConnector (in live/paper) aan om de trade uit te voeren. Na de wijziging publiceert de ExecutionHandler een PortfolioStateChanged-event.  
+* **AggregatePortfolioView (De Hoofd-Accountant)**: Luistert naar alle individuele PortfolioStateChanged-events om een geaggregeerd beeld van de totale performance (live en paper) te vormen en te publiceren.
 
-De kern van de strategie-executie is een systematische, **9-fasen trechter** die een idee valideert en omzet in een `TradeProposal`. Dit hoofdstuk beschrijft elke fase, van `Regime Context` tot de `Critical Event Detector`, en verduidelijkt de rollen van de `StrategyEngine` (de motor) en het `Assembly Team` (de bouwers).
+### **3.2. De Analytische Pijplijn**
 
-**→ Lees de volledige uitwerking in: `docs/system/4_WORKFLOW_AND_ORCHESTRATOR.md`**
+* **StrategyEngine (De Analist)**: Een **stateless** Backend-component die de **procedurele Fase 3-9 pijplijn** uitvoert. Het wordt aangeroepen door de StrategyOperator en produceert analytische voorstellen. Zijn input is primair de marktdata; de portfolio-staat wordt enkel *read-only* gebruikt voor risicoberekeningen.
 
----
+### **3.3. Operationele Agenten**
 
-## Hoofdstuk 5: Frontend Integratie
+* **GridTraderAgent, DCAAgent, RebalancerAgent**: Voorbeelden van stateful, portfolio-bewuste componenten in de Service-laag. Ze worden beheerd door de PortfolioSupervisor en opereren parallel aan de StrategyEngine. Ze abonneren zich direct op events als ContextReady en PortfolioStateChanged om hun deterministische, op regels gebaseerde taken uit te voeren.
 
-De frontend in V2 is de primaire ontwikkelomgeving (IDE) voor de strateeg, ontworpen om de "Bouwen -> Meten -> Leren" cyclus te maximaliseren. Dit hoofdstuk beschrijft hoe de UI zichzelf dynamisch opbouwt op basis van ontdekte plugins en hun schema's. Het detailleert de verschillende "Werkruimtes", van de Strategy Builder tot de Trade Explorer, en legt uit hoe een strikt contract tussen de Pydantic-backend en de TypeScript-frontend zorgt voor een robuuste, naadloze gebruikerservaring.
+### **3.4. Loggers & Recorders**
 
-**→ Lees de volledige uitwerking in: `docs/system/5_FRONTEND_INTEGRATION.md`**
+* **AppLogger**: De standaard logger, geïnjecteerd in alle componenten. Contextuele data (run_id, correlation_id) wordt via de event-payloads doorgegeven en in de logberichten opgenomen voor traceerbaarheid in run.log.json.  
+* **ContextRecorder**: Een losstaande "archivaris" die zich abonneert op ContextReady en StrategyProposalReady om de data vast te leggen voor de "Trade Explorer" UI.  
+* **ResultLogger**: Abonneert zich op RunFinished en BacktestCompleted om de finale resultaten op te slaan in de results/-map.
 
----
+## **4. De Event Map: Contracten op de EventBus**
 
-## Hoofdstuk 6: Robuustheid & Operationele Betrouwbaarheid
+Dit is de definitieve lijst van events die de interactie tussen de componenten sturen.
 
-Een live trading-systeem moet veerkrachtig zijn tegen crashes, corrupte data en netwerkproblemen. Dit hoofdstuk beschrijft de drie verdedigingslinies van de architectuur: atomische schrijfacties (journaling) om de integriteit van de staat te garanderen, protocollen voor netwerkveerkracht (heartbeat, reconnect, reconciliation) en een Supervisor-model voor automatische crash recovery.
+| Event Naam                | Payload (DTO Contract)   | Publisher(s)           | Subscriber(s)                |
+| :-------------------------| :------------------------| :----------------------| :----------------------------|
+| **Run Lifecycle**         |                          |                        |                              |
+| RunStarted                | RunParameters            | PortfolioSupervisor    | ContextBootstrapper,         |
+|                           |                          |                        | ExecutionEnvironmentFactory, |
+|                           |                          |                        | PortfolioFactory             |
+| BootstrapComplete         | BootstrapResult          | ContextBootstrapper    | ExecutionEnvironment         |
+| ShutdownRequested         | ShutdownSignal           | RiskMonitor, UI,       | RunOrchestrator,             |
+|                           |                          | RunOrchestrator        | PortfolioSupervisor          |
+| RunFinished               | RunSummary               | RunOrchestrator        | ResultLogger, UI,            |
+|                           |                          |                        | DatabaseService              |
+| --------------------------| -------------------------| -----------------------| -----------------------------|
+| **Tick Lifecycle**        |                          |                        |                              |
+| MarketDataReceived        | MarketSnapshot           | ExecutionEnvironment   | ContextOrchestrator          |
+| ContextReady              | TradingContext           | ContextOrchestrator    | StrategyOperator,            |
+|                           |                          |                        | Operationele Agenten,        |
+|                           |                          |                        | ContextRecorder,             |
+|                           |                          |                        | LiveDashboardUI              |
+| StrategyProposalReady     | EngineCycleResult        | StrategyOperator       | PortfolioSupervisor,         |
+|                           |                          |                        | ContextRecorder              |
+| ExecutionApproved         | List[ExecutionDirective] | PortfolioSupervisor,   | ExecutionHandler,            |
+|                           |                          |                        | Operationele Agenten,        |
+|                           |                          | Operationele Agenten   | LiveDashboardUI              |
+| --------------------------| -------------------------| -----------------------| -----------------------------|
+| **Portfolio Lifecycle**   |                          |                        |                              |
+| PortfolioStateChanged     | PortfolioState           | ExecutionHandler       | ContextOrchestrator,         |
+|                           |                          |                        | AggregatePortfolioView,      |
+|                           |                          |                        | Operationele Agenten,        |
+|                           |                          |                        | LiveDashboardUI              |
+| AggregatePortfolioUpdated | AggregateMetrics         | AggregatePortfolioView | LiveDashboardUI,             |
+|                           |                          |                        | PortfolioSupervisor          |
+| --------------------------| -------------------------| -----------------------| -----------------------------|
+| **Backtest & Analysis**   |                          |                        |                              |
+| BacktestCompleted         | BacktestResult           | RunOrchestrator        | ResultPresenter (UI),        |
+|                           |                          |                        | DatabaseService              |
+|                           |                          |                        | ResultLogger                 |
 
-**→ Lees de volledige uitwerking in: `docs/system/6_RESILIENCE_AND_OPERATIONS.md`**
+## **5. De Levenscyclus in de Praktijk**
 
----
+**A. Initialisatie (De "Bootstrap Fase")**
 
-## Hoofdstuk 7: Ontwikkelstrategie & Tooling
+1. De quant start een strategie via de UI, wat een StartStrategyRequested-commando triggert.  
+2. De **PortfolioSupervisor** valideert de configuratie, creëert een RunOrchestrator en publiceert **RunStarted**.  
+3. De **ContextBootstrapper** reageert hierop, haalt bulk historische data op, en "primed" de ContextOrchestrator. Zodra de context is opgebouwd, publiceert het **BootstrapComplete**.
 
-De ontwikkelstrategie van V2 is gebaseerd op een snelle, visuele 'Bouwen -> Meten -> Leren' cyclus, met de Web UI als de primaire ontwikkelomgeving (IDE). Dit hoofdstuk beschrijft de workflow, van de visuele 'Strategy Builder' tot de diepgaande 'Trade Explorer'. Daarnaast worden de kern-tools behandeld, zoals de gespecialiseerde entrypoints, de gelaagde logging-aanpak en de cruciale rol van de Correlation ID voor volledige traceerbaarheid van trades.
+**B. De Tick-Loop (De "Hartslag")**
 
-**→ Lees de volledige uitwerking in: `docs/system/7_DEVELOPMENT_STRATEGY.md`**
+4. De **ExecutionEnvironment** (wachtend op BootstrapComplete) begint met het publiceren van **MarketDataReceived**-events.  
+5. De **ContextOrchestrator** vangt elk event op, werkt zijn interne state bij, en publiceert een complete **ContextReady**.  
+6. Zowel de **StrategyOperator** als eventuele **Operationele Agenten** reageren *parallel* op ContextReady en doen hun gespecialiseerde werk.  
+7. De StrategyOperator roept de StrategyEngine aan en publiceert (indien van toepassing) een **StrategyProposalReady**.  
+8. De PortfolioSupervisor ontvangt dit voorstel, past zijn risicomanagement toe, en publiceert (indien goedgekeurd) **ExecutionApproved**.  
+9. De ExecutionHandler ontvangt ExecutionApproved en voert de trade uit. De resulterende wijziging in het StrategyPortfolio leidt ertoe dat de ExecutionHandler een **PortfolioStateChanged**-event publiceert.  
+10. De **AggregatePortfolioView** vangt PortfolioStateChanged op en werkt de totale performance bij.
 
----
+## **6. Ontwerpoplossingen & Scenario Analyse**
 
-## Hoofdstuk 8: Meta Workflows
+### **6.1. Oplossingen voor Complexe Vraagstukken**
 
-Bovenop de executie van een enkele strategie draaien "Meta Workflows" om geavanceerde analyses uit te voeren. Dit hoofdstuk beschrijft de `OptimizationService` en `VariantTestService`, die de kern-executielogica herhaaldelijk en parallel aanroepen om systematisch de beste parameters te vinden of om de robuustheid van strategie-varianten te testen. Dit maakt complexe kwantitatieve analyse een "eerste klas burger" binnen de architectuur.
+* **Multi-Strategie**: Beheerd door de PortfolioSupervisor die per strategie/agent een run_id toekent. Events worden via deze ID onderscheiden op de centrale EventBus.  
+* **Multi-Exchange**: Geabstraheerd door een ExecutionEnvironmentFactory die op basis van een exchange_id de juiste, geïsoleerde APIConnector injecteert. De rest van het systeem blijft agnostisch.  
+* **Gelaagde Performance**: Opgelost door individuele StrategyPortfolio-objecten en een overkoepelende AggregatePortfolioView.
 
-**→ Lees de volledige uitwerking in: `docs/system/8_META_WORKFLOWS.md`**
+### **6.2. Scenario Analyse**
 
----
+* **Grid Trader & DCA Strategie**: Worden geïmplementeerd als **Operationele Agenten**. Ze zijn stateful, portfolio-bewust en opereren buiten de analytische pijplijn. Ze reageren direct op ContextReady en PortfolioStateChanged om hun deterministische logica uit te voeren.  
+* **Portfolio Rebalancer**: Wordt geïmplementeerd als een **Operationele Agent**. Het reageert op AggregatePortfolioUpdated om de portfolio-allocatie te bewaken en te corrigeren.  
+* **Analytische FVG Strategie**: Dit is de kerntaak van de **Analytische Pijplijn**. ContextWorker-plugins bouwen de analytische context. De StrategyOperator gebruikt de StrategyEngine om een voorstel te genereren. Een CrashDetector-plugin (Fase 9) genereert een analytisch CriticalEvent, waarop een RiskMonitor (een aparte service) kan reageren met een operationele beslissing.
 
-## Hoofdstuk 9: Coding Standaarden
+## **7. Integratie in de Documentatie**
 
-Een consistente en kwalitatieve codebase is essentieel. Dit hoofdstuk beschrijft de verplichte standaarden voor het S1mpleTrader V2 project, inclusief PEP 8, volledige type hinting en Google Style Docstrings. Het behandelt de kernprincipes van contract-gedreven ontwikkeling via Pydantic, de gelaagde logging-strategie met Correlation ID voor traceability, en de eis dat alle code vergezeld wordt van tests die via Continue Integratie worden gevalideerd.
-
-**→ Lees de volledige uitwerking in: `docs/system/9_CODING_STANDAARDS.md`**
-
----
-
-## Bijlages
-
-* **`Bijlage A: Terminologie`**: Een uitgebreid naslagwerk met kernachtige beschrijvingen van alle belangrijke concepten, componenten en patronen binnen de S1mpleTrader V2-architectuur.
-* **`Bijlage B: Openstaande Vraagstukken`**: Een overzicht van bekende "onbekenden" en complexe vraagstukken die tijdens de implementatie verder onderzocht moeten worden.
+Dit document (1_EVENT_DRIVEN_ARCHITECTURE.md) wordt de primaire bron voor de run-levenscyclus architectuur. Bestaande documenten (0_V2_ARCHITECTURE.md, 2_ARCHITECTURE.md, 4_WORKFLOW_AND_ORCHESTRATOR.md) zullen worden bijgewerkt om naar dit document te verwijzen en om verouderde, hiërarchische concepten te vervangen door de hier beschreven event-gedreven principes en componentdefinities.
 
 ---
 
 # 2_ARCHITECTURE.md
 
-# 2. Architectuur & Componenten
+# **2\. Architectuur & Componenten**
 
-De applicatie is opgebouwd uit drie strikt gescheiden lagen die een **eenrichtingsverkeer** van afhankelijkheden afdwingen (`Frontend → Service → Backend`). Deze structuur ontkoppelt de lagen, maximaliseert de testbaarheid en garandeert de herbruikbaarheid van de `Backend`-laag als een onafhankelijke "engine".
+Versie: 4.1 (Definitief Ontwerp)  
+Status: Goedgekeurd
 
----
-## 2.1. De Gelaagde Architectuur
+## **2.1. De Gelaagde Architectuur: Een Strikte Definitie**
 
-* **Frontend Laag (`/frontends`)**
-    Verantwoordelijk voor alle gebruikersinteractie (CLI, Web API, Web UI). Vertaalt gebruikersinput naar aanroepen van de **Service**-laag en presenteert de resultaten.
+De applicatie is opgebouwd uit drie strikt gescheiden lagen die een **eenrichtingsverkeer** van afhankelijkheden afdwingen (Frontend → Service → Backend). Deze scheiding is absoluut en dicteert waar elk component "leeft".
 
-* **Service Laag (`/services`)**
-    Fungeert als de **lijm** en orkestreert Backend-componenten tot complete **business workflows**. Hier leven de `StrategyOperator`, `PortfolioSupervisor` en de **Analytische Services** (`OptimizationService`, `VariantTestService`).
+* **Backend Laag (/backend)**: De **"Motor & Gereedschapskist"**. Bevat alle herbruikbare, agnostische bouwstenen (klassen, DTO's, interfaces). Deze laag is volledig onafhankelijk, heeft geen kennis van business workflows, en weet niets van een EventBus. Het is een pure, importeerbare library.  
+* **Service Laag (/services)**: De **"Orkestratielaag"**. Dit is de enige laag die de EventBus kent en beheert. Componenten hier orkestreren complete business workflows door de "gereedschappen" uit de Backend-laag aan te roepen in reactie op events.  
+* **Frontend Laag (/frontends)**: De **"Gebruikersinterface"**. Verantwoordelijk voor alle gebruikersinteractie. Het communiceert uitsluitend met de Service-laag, bijvoorbeeld door API-calls te doen die op hun beurt commando-events publiceren.
 
-* **Backend Laag (`/backend`)**
-    De **engine** van de applicatie. Bevat de `AbstractPluginFactory specialisten`, het `Portfolio` en de `ExecutionEnvironments`. Deze laag is volledig onafhankelijk en ontworpen als een **library**.
+## **2.2. Component Categorieën: Functionele Groepering**
 
-* **ASCII-overzicht**
-    ```
-    +-------------------------------------------------------------+
-    |  Frontend (CLI, Web API, Web UI)                            |
-    +--------------------------+----------------------------------+
-                               |
-                               v
-    +--------------------------+----------------------------------+
-    |  Service (Orchestratie & Business Workflows)                |
-    |  - PortfolioSupervisor, StrategyOperator,                   |
-    |     OptimizationService, VariantTestService                 |
-    +--------------------------+----------------------------------+
-                               |
-                               v
-    +--------------------------+----------------------------------+
-    |  Backend (Engine)                                           |
-    |  - Portfolio, ExecutionEnvironments, Assembly Workers       |
-    +-------------------------------------------------------------+
-    ```
-   
----
+Om de samenhang te verduidelijken, groeperen we componenten in functionele categorieën. Een terugkerend patroon is een Service-laag "Operator" die een corresponderende Backend-laag "Engine" of "Worker" aanstuurt.
 
-## 2.2. Visueel diagram (uitwerking)
+1. **Kernservices (Service Laag)**: De fundamentele, langlevende componenten die het platform orkestreren.  
+2. **De Context Pijplijn (Backend & Service Laag)**: De flow voor het stateful opbouwen van de marktcontext.  
+3. **De Analytische Pijplijn (Backend & Service Laag)**: Een gespecialiseerde flow voor het genereren van analytische handelsvoorstellen.  
+4. **Operationele Agenten (Service Laag)**: Componenten voor deterministische, portfolio-gestuurde taken.  
+5. **De Executie Pijplijn (Backend & Service Laag)**: De flow voor het uitvoeren van goedgekeurde trades.  
+6. **Bouwstenen (Backend Laag)**: De fundamentele, herbruikbare tools en definities.
 
-+---------------------------------------------------------------------------------------------------------+
-|                                    GEBRUIKER (Via Web UI / API)                                         |
-|    (Start runs, analyseert resultaten, beheert portfolio)                                               |
-+-----------------------------------------------------+---------------------------------------------------+
-                                                      |
-           +------------------------------------------+------------------------------------------+
-           |                                                                                     |
-           v                                                                                     v
-+----------+----------------------------------+  +------------------------------------------------+------------+
-|  OPERATIONELE HIËRARCHIE (SERVICE LAAG)     |  |          R&D / OFFLINE ANALYSE (META WORKFLOWS)             |
-|  (Live / Paper Trading)                     |  |                                                             |
-|                                             |  |  +---------------------------+                              |
-|  +---------------------------------------+  |  |  |   OptimizationService /   |                              |
-|  |       PortfolioSupervisor             |  |  |  |    VariantTestService     |                              |
-|  |       (De "Fondsbeheerder")           |  |  |  +------------+--------------+                              |
-|  +------------------+--------------------+  |  |               | (Analyseert configuratiepad)                |
-|                     ^ (5. Events/Directives)|  |               |                                             |
-|                     | (naar boven)          |  |  +------------+------------------------------------------+  |
-|                     |                       |  |  | Scenario A (Micro/Meso)      |   | Scenario B (Macro) |  |
-|  (6. Management Commando's)                 |  |  v                                  v                       |
-|  (naar beneden)     v                       |  |  +-------------------------------+  +--------------------+  |
-|  +------------------+--------------------+  |  |  | Simuleert 1x StrategyOperator |  | Simuleert 1x       |  |
-|  |  StrategyOperator (Specialist) A      |  |  |  +-------------------------------+  | PortfolioSupervisor|  |
-|  |  (Voorheen "WorkflowService")         |  |  |                                     +--------------------+  |
-|  +---------------------------------------+  |  |                                                             |
-|                                             |  +------------------------------------------------+------------+
-|  +---------------------------------------+  |
-|  |  StrategyOperator (Specialist) B      |  |                      Λ
-|  |  (Draait parallel)                    |  |                      |
-|  +---------------------------------------+  |                      | (Gebruikt dezelfde Backend componenten)
-|                                             |                      |
-+--------------------------------------------+----------------------+-------------------------------------+
-                                             | (Roept Backend aan)
-                                             v
-+--------------------------------------------+-------------------------------------------------------------+
-|                                        DE FUNDERING (BACKEND LAAG)                                       |
-|                    (De herbruikbare, agnostische "Motor" & "Gereedschapskist")                           |
-|                                                                                                          |
-|  - StrategyEngine (De 9-fasen motor)            - AssemblyTeam (De bouwers: Registry, Builder)           |
-|  - ExecutionEnvironments (Backtest/Live/Paper)  - Portfolio (De "domme" boekhouder)                      |
-|  - Alle DTO's, Interfaces & Utilities           - DirectiveFlattener (De vertaler)                       |
-|                                                                                                          |
-+----------------------------------------------------------------------------------------------------------+
+## **2.3. Visueel Overzicht: Een Strikte Gelaagde Architectuur**
 
+Dit diagram toont de correcte plaatsing en interactie van de componenten, met respect voor de laag-grenzen.
 
-+--------------------------------------------------------------------------------------------------+
-|                                         FRONTEND LAAG                                            |
-|                  (Web UI / CLI - De "Marketing & Communicatie" afdeling)                         |
-└─────────────────────────────────────────────┬────────────────────────────────────────────────────┘
-                                              │
-           ┌──────────────────────────────────┴──────────────────────────────────┐
-           │ Roept de juiste specialist aan voor de gevraagde dienst...          │
-           v                                                                     v
-+----------┴---------------------------------------------------------------------┴-----------------+
-|                                          SERVICE LAAG                                            |
-| (De "Gereedschapskist" met onafhankelijke specialisten, elk met een eigen taak)                  |
-| ┌───────────────────────────────┐                                                                |
-| │   Configuratie & Management   │                                                                |
-| │      (De Archivarissen)       │                                                                |
-| │-------------------------------|                                                                |
-| │ - BlueprintQueryService       │                                                                |
-| │ - BlueprintEditorService      │                                                                |
-| │ - PluginEnrollmentService     │                                                                |
-| └───────────────────────────────┘                                                                |
-| ┌──────────────────────────┐      ┌───────────────────────────────┐                              |
-| │   Analytische Services   │      │    WORKFLOW SERVICES          │                              |
-| │     (De Onderzoekers)    │      │  (De Fabrieksmanagers)        │                              |
-| │--------------------------│      │-------------------------------│                              |
-| │ - OptimizationService    ├─────>│ - BacktestService             │                              |
-| │ - VariantTestService     │      │ - TradingService (paper/live) │                              |
-| └───────────┬──────────────┘      └────────────┬──────────────────┘                              |
-|             │(roept herhaaldelijk aan)         │ 1. Ontvangt AppConfig                           |
-|             │                                  │ 2. Bouwt de Environment                         |
-|             └────────────────────────────────> │ 3. Instantieert                                 |
-|                                                │    PortfolioSupervisor                          |
-|                                                └────────────┬────────────┘                       |
-|                                                             │                                    |
-|                                                             v                                    |
-|                           ┌─────────────────────────────────────────────────────────┐            |
-|                           │                  OPERATIONELE SERVICES                  │            |
-|                           │                      (De Operators)                     │            |
-|                           │---------------------------------------------------------│            |
-|                           │                PortfolioSupervisor                      │            |
-|                           │        (De Ploegleider, stuurt de werkvloer aan)        │            |
-|                           └─────────────────────────────┬───────────────────────────┘            |
-|                                                         │ Managet een of meerdere...             |
-|                                                         v                                        |
-|                           ┌─────────────────────────────┴───────────────────────────┐            |
-|                           │                   StrategyOperator(s)                   │            |
-|                           │          (De Specialist, voert de 6 Fases uit)          │            |
-|                           └─────────────────────────────────────────────────────────┘            |
-+------------------------------------------------------------------------------------|-------------+
-                                                                                     │
-                  ┌───────────────────────────────────────────────────────────────────────────────┤
-                  │ (De Operationele Services krijgen de Environment geïnjecteerd en gebruiken de │
-                  │  Backend-componenten om hun taak uit te voeren)                               │
-                  v                                                                               v
-+-----------------┴------------------------------------------[ BACKEND LAAG (DE "ENGINE") ]-------┴-------------+
-|                                                                                                               |
-|   ┌──────────────────────┐   wordt gebruikt door   ┌──────────────────────┐                                   |
-|   │     Assembly Team    │<────────────────────────┤   StrategyOperator   │                                   |
-|   │ (Plugin Specialisten)│                         └──────────────────────┘                                   |
-|   └──────────┬───────────┘                                                                                    |
-|              │ Gebruikt                                                                                       |
-|              v                                                                                                |
-|   ┌──────────┴──────────┐                                                                                     |
-|   │       Plugins       │                                                                                     |
-|   └─────────────────────┘                                                                                     |
-|                                                                                                               |
-|   ┌──────────────────────┐   wordt gelezen door   ┌──────────────────────┐                                    |
-|   │      Portfolio       │<───────────────────────┤  PortfolioSupervisor │                                    |
-|   │   (Het Grootboek)    │                        └──────────────────────┘                                    |
-|   └──────────▲───────────┘                                                                                    |
-|              │ Werkt bij                                                                                      |
-|   ┌──────────┴───────────┐                                                                                    |
-|   │ ExecutionEnvironment │ (Bevat de ExecutionHandler die het Portfolio bijwerkt)                             |
-|   │    (Het Chassis)     │                                                                                    |
-|   └──────────────────────┘                                                                                    |
-|                                                                                                               |
-+---------------------------------------------------------------------------------------------------------------+
----
-## 2.3. Gespecialiseerde Entrypoints
+\+------------------------------------------------------------------------------------+  
+|                                   FRONTEND LAAG                                    |  
+\+------------------------------------------+-----------------------------------------+  
+                                           | (API Calls)  
+                                           v  
+\+====================================================================================+  
+|                                     SERVICE LAAG                                   |  
+|                          (Eigenaar van de EventBus & Workflows)                    |  
+|                                                                                    |  
+|   \+-----------------------+      \+------------------+      \+-------------------+   |  
+|   |  PortfolioSupervisor  |      |  ContextOrch.    |      |  Operationele     |   |  
+|   \+-----------------------+      \+------------------+      |      Agenten      |   |  
+|           ^     |                      ^      |                  ^      |          |  
+|           |     | \<Sub/Pub\>            |      | \<Sub/Pub\>        |      | \<Sub/Pub\>|  
+|      \+----v----------------------------v-------------+-----------v---------------+ |  
+|      |                  DE CENTRALE EVENT BUS        | (Leeft in Service Laag) |   |  
+|      \+-------------------^----------------------------^-----------------------+   |  
+|                          | \<Sub/Pub\>                   |  \<Sub/Pub\>            |   |  
+|                          |                             |                       |   |  
+|   \+----------------------v--+      \+-------------------v---+               |   |  
+|   |    StrategyOperator   |      |   ExecutionHandler    |               |   |  
+|   \+-------------------------+      \+-----------------------+               |   |  
+|                                                                            |   |  
+\+====================================================================================+  
+                                           | (gebruikt als library)  
+                                           v  
+\+------------------------------------------------------------------------------------+  
+|                                     BACKEND LAAG                                   |  
+|                (De Gereedschapskist \- Kent de Service Laag NIET)                   |  
+|                                                                                    |  
+|  \- StrategyEngine (Klasse)    \- Portfolio (Klasse)       \- DTO's & Interfaces      |  
+|  \- Assembly Team              \- ExecutionEnvironments    \- APIConnectors (Klasses) |  
+|  \- ConfigLoader (Klasse)                                                           |  
+|                                                                                    |  
+\+------------------------------------------------------------------------------------+
 
-De V2-architectuur stapt af van één generieke `main.py` en introduceert doelgerichte starters in de project root:
+## **2.4. Componenten in Detail**
 
-* **`run_web.py`**: Start de Web UI en de bijbehorende API. Dit is de primaire interface voor strategie-ontwikkeling, analyse en monitoring.
-* **`run_supervisor.py`**: Start de live trading-omgeving op een robuuste, minimalistische manier (de "aan"-knop). Deze entrypoint is ontworpen om de `PortfolioSupervisor` te starten voor het managen van een live portfolio.
-* **`run_backtest_cli.py`**: Dient als "headless" entrypoint voor geautomatiseerde taken. Deze kan elke service aanroepen, van een simpele `StrategyOperator` tot een complexe `OptimizationService` voor CI/CD-workflows.
+Deze sectie beschrijft de verantwoordelijkheden van elk kerncomponent, gegroepeerd per functionele categorie.
 
----
-## 2.4. Componenten in Detail: De Service Laag Hiërarchie
+### **Kernservices (Service Laag)**
 
-De Service-laag is geen verzameling losse componenten, maar een gestructureerde hiërarchie van "Operators" en "Services" met duidelijk afgebakende verantwoordelijkheden. De `ExecutionEnvironment` fungeert hierbij als de cruciale schakelaar die bepaalt of een operator in een Backtest-, Paper- of Live-modus draait.
+#### **PortfolioSupervisor (De Operationeel Manager)**
 
-#### **2.4.1. Niveau 1: De StrategyOperator (De Specialist)**
-* **Laag:** Service
-* **Verantwoordelijkheid:** Het uitvoeren van één enkele strategie (de 6-fasen trechter) voor één instrument. Dit is wat voorheen de `StrategyOrchestrator` werd genoemd; de nieuwe naam benadrukt zijn actieve, operationele rol.
-* **Proces:** De `StrategyOperator` is de "regisseur" van de 6-fasen trechter. Hij is volledig agnostisch over de omgeving; hij ontvangt een geïnitialiseerde `ExecutionEnvironment` en weet niet of hij een backtest of een live trade uitvoert.
+* **Verantwoordelijkheid:** Het actieve, centrale beheer van het gehele trading-portfolio. Dit is de "directiekamer" van het platform. Het leest de portfolio\_blueprint.yaml en is de eigenaar van de levenscyclus van alle actieve strategieën en agenten. Het fungeert als de hoogste risicomanager door te reageren op StrategyProposalReady-events en te beslissen welke trades worden goedgekeurd.  
+* **Backend Gebruik:** Gebruikt de ConfigLoader om de portfolio\_blueprint.yaml en de onderliggende run.yaml-bestanden te laden en valideren. Wijzigingen in de configuratie vanuit de frontend (op portfolio-, run-, of plugin-niveau) triggeren een herlading en validatie via deze component.
 
-#### **2.4.2. Niveau 2: De PortfolioSupervisor (De Ploegleider)**
-* **Laag:** Service
-* **Verantwoordelijkheid:** Het managen van de levenscyclus en het risico van een portfolio van meerdere, gelijktijdig actieve `StrategyOperator`-instanties.
-* **Proces:**
-  * Leest een `portfolio_blueprint.yaml` die definieert welke strategieën (en dus `StrategyOperators`) actief zijn.
-  * Ontvangt "trade-voorstellen" van de individuele `StrategyOperators`.
-  * Past overkoepelend, portfolio-breed risicomanagement toe (bv. "maximale totale exposure").
-  * Alleen goedgekeurde trade-voorstellen worden doorgestuurd naar de `ExecutionHandler` van de gedeelde `ExecutionEnvironment`.
-* **Belang:** Deze component kan, net als elke andere operator, worden uitgevoerd in een `BacktestEnvironment` om een volledige, complexe portfolio-strategie tegen historische data te testen.
+#### **RunOrchestrator (De Facilitator)**
 
-#### **2.4.3. Niveau 3: Analytische Services (De Onderzoekers)**
-* **Laag:** Service (bv. `services/optimization_service.py`)
-* **Verantwoordelijkheid:** Het uitvoeren van grootschalige, analytische experimenten om kwantitatieve vragen te beantwoorden.
-* **Voorbeelden en Proces:**
-  * De **`OptimizationService`** genereert een grote set van configuratie-varianten. Via een volledig gekwalificeerd pad (bv. `"workforce.structural_context.my_plugin.params.length"`) weet het precies welke parameter het moet aanpassen, of dit nu een diepe plugin-parameter is of een hoog-niveau risico-parameter in de `PortfolioSupervisor`.
-  * De **`VariantTestService`** voert een kleine, gedefinieerde set van varianten uit om de prestaties direct te vergelijken.
-* **Executie:** Deze services zijn de enige componenten die de `ParallelRunService` aanroepen om hun experimenten (die een `StrategyOperator` of zelfs een hele `PortfolioSupervisor` kunnen aanroepen) efficiënt en parallel uit te voeren.
+* **Verantwoordelijkheid:** Een lichtgewicht component, geïnstantieerd *per strategie* door de PortfolioSupervisor. Zijn enige taak is het opzetten van de benodigde specialisten voor één run, het 'wiren' van de event-abonnementen, en het publiceren van de initiële RunStarted-event.
 
-#### **2.4.4. De ExecutionEnvironment (Het Chassis / De Wereld)**
-* **Laag:** Backend
-* **Verantwoordelijkheid:** Definieert de "wereld" (Backtest, Paper, Live) waarin de strategie opereert. Het ontkoppelt de strategie-logica volledig van de data- en executiebronnen.
-* **Componenten:**
-  * **`DataSource`**: Levert marktdata (uit een CSV-bestand of een live WebSocket).
-  * **`Clock`**: Genereert de "hartslag" van het systeem.
-  * **`ExecutionHandler`**: Voert `Trade` DTO's uit.
+### **De Context Pijplijn**
 
-#### **2.4.5. Het Portfolio (Het Grootboek)**
-* **Laag:** Backend (`backend/core/portfolio.py`)
-* **Verantwoordelijkheid:** Het "domme" grootboek. Managet kapitaal, posities en openstaande orders. Het is volledig agnostisch over de omgeving en wordt geïnitialiseerd met simpele waarden, niet met een config-object.
-* **Proces:**
-    * Houdt de cash-balans en de totale waarde van het portfolio bij.
-    * Registreert openstaande orders en actieve posities per `correlation_id`.
-* **Output:** Een continu bijgewerkte equity curve en een lijst van `ClosedTrade` DTO's.
+#### **ContextBootstrapper (De "Voorgloeier") (Service Laag)**
 
-#### **2.4.6. Assembly Team (`PluginRegistry`, `WorkerBuilder`, `ContextBuilder`)**
-* **Laag:** Backend
-* **Verantwoordelijkheid:** Het "technische projectbureau". Bestaat uit specialisten die plugins ontdekken, valideren, bouwen en de context-pijplijn (Fase 1 & 2) uitvoeren.
+* **Verantwoordelijkheid:** Zorgt ervoor dat de ContextOrchestrator een complete en historisch correcte staat heeft *voordat* de eerste live tick wordt verwerkt. Dit is cruciaal om te voorkomen dat beslissingen worden genomen op basis van onvolledige data (bv. een Moving Average die nog geen 200 periodes aan data heeft).  
+* **Backend Gebruik:** Gebruikt de relevante APIConnector om een bulk historische data op te halen.
 
----
-## 2.5. Design Principles & Kernconcepten
+#### **ContextOrchestrator (De State Manager) (Service Laag)**
 
-De architectuur is gebouwd op de **SOLID**-principes en een aantal kern-ontwerppatronen die de vier kernprincipes (Plugin First, Scheiding van Zorgen, Configuratie-gedreven, Contract-gedreven) tot leven brengen.
+* **Verantwoordelijkheid:** Dit is het stateful hart van een actieve run. Het beheert de "levende" TradingContext (enriched\_market\_data, artefacts). Het abonneert zich op MarketDataReceived en publiceert een verrijkte ContextReady voor elke tick.  
+* **Backend Gebruik:** Gebruikt de ContextBuilder en het Assembly Team (met name de WorkerBuilder) om de Fase 1-2 ContextWorker-plugins te bouwen en uit te voeren op de DataFrame.
 
-### **De Synergie: Configuratie- & Contract-gedreven Executie**
+### **De Analytische Pijplijn**
 
-Het meest krachtige concept van V2 is de combinatie van configuratie- en contract-gedreven werken. De code is de motor; **de configuratie is de bestuurder, en de contracten zijn de verkeersregels die zorgen dat de bestuurder binnen de lijntjes blijft.**
+#### **StrategyOperator (De Analytische Specialist) (Service Laag)**
 
-* **Configuratie-gedreven:** De *volledige samenstelling* van een strategie (welke plugins, in welke volgorde, met welke parameters) wordt gedefinieerd in een `YAML`-bestand. Dit maakt het mogelijk om strategieën drastisch te wijzigen zonder één regel code aan te passen.
+* **Verantwoordelijkheid:** De StrategyOperator is de Service-laag tegenhanger van de StrategyEngine. Het fungeert als een schone, ontkoppelde brug: het abonneert zich op ContextReady, roept procedureel de run()-methode van de StrategyEngine aan, en publiceert het resultaat als een StrategyProposalReady-event. Dit waarborgt de strikte scheiding tussen de lagen en geeft de StrategyOperator zijn duidelijke, operationele naam terug.  
+* **Backend Gebruik:** Gebruikt een instantie van de StrategyEngine en roept de run() methode aan.
 
-* **Contract-gedreven:** Elk stukje configuratie en data wordt gevalideerd door een strikt **Pydantic-schema**. Dit werkt op twee niveaus:
-  1.  **Algemene Schema's:** De hoofdstructuur van een `run_blueprint.yaml` wordt gevalideerd door een algemeen `app_schema.py`. Dit contract dwingt af dat er bijvoorbeeld altijd een `environment` en een `strategy_pipeline` sectie aanwezig is.
-  2.  **Plugin-Specifieke Schema's:** De parameters voor een specifieke plugin (bv. de `length` van een `EMA`-indicator) worden gevalideerd door de Pydantic-klasse in de `schema.py` van *die ene plugin*.
+#### **StrategyEngine (De Analytische Motor) (Backend Laag)**
 
-Bij het starten van een run, leest de applicatie het `YAML`-bestand en bouwt een gevalideerd `AppConfig`-object. Als een parameter ontbreekt, een verkeerd type heeft, of een plugin wordt aangeroepen die niet bestaat, faalt de applicatie *onmiddellijk* met een duidelijke foutmelding. Dit voorkomt onvoorspelbare runtime-fouten en maakt het systeem extreem robuust en voorspelbaar.
+* **Verantwoordelijkheid:** De stateless, procedurele 9-fasen motor voor het genereren van analytische voorstellen. Het is een pure "ideeënmachine" die opereert op de TradingContext en een EngineCycleResult produceert, volledig agnostisch van de event-bus of de bredere applicatiecontext.
 
-### **SOLID in de Praktijk**
-* **SRP (Single Responsibility Principle):** Elke klasse heeft één duidelijke taak.
-  * ***V2 voorbeeld:*** Een `FVGEntryDetector`-plugin detecteert alleen Fair Value Gaps. Het bepalen van de positiegrootte of het analyseren van de marktstructuur gebeurt in aparte `position_sizer`- of context-plugins.
+### **Operationele Agenten (Service Laag)**
 
-* **OCP (Open/Closed Principle):** Uitbreidbaar zonder bestaande code te wijzigen.
-    * ***V2 voorbeeld:*** Wil je een nieuwe exit-strategie toevoegen? Je maakt simpelweg een nieuwe `exit_planner`-plugin; de `StrategyEngine` hoeft hiervoor niet aangepast te worden.
+#### **GridTraderAgent, RebalancerAgent, etc.**
 
-* **DIP (Dependency Inversion Principle):** Hoge-level modules hangen af van abstracties.
-    * ***V2 voorbeeld:*** De `BacktestService` (Service-laag) hangt af van de `BaseEnvironment`-interface, niet van de specifieke `BacktestEnvironment`. Hierdoor zijn de services volledig herbruikbaar in elke context.
+* **Verantwoordelijkheid:** Het uitvoeren van deterministische, op regels gebaseerde, stateful taken die buiten de analytische pijplijn vallen (bv. grid trading, DCA, portfolio herbalancering). Ze zijn per definitie portfolio-bewust.  
+* **Backend Gebruik:** Lezen PortfolioState DTO's om hun beslissingen te informeren.
 
-### **Kernpatronen**
-* **Factory Pattern:** Het `Assembly Team` (met `WorkerBuilder`) centraliseert het ontdekken, valideren en creëren van alle plugins.
-* **Strategy Pattern:** De "Plugin First"-benadering is de puurste vorm van dit patroon. Elke plugin is een uitwisselbare strategie voor een specifieke taak.
-* **DTO’s (Data Transfer Objects):** Pydantic-modellen (`Signal`, `TradePlan`, `ClosedTrade`) zorgen voor een voorspelbare en type-veilige dataflow tussen alle componenten.
+### **De Executie Pijplijn**
+
+#### **ExecutionHandler (De Uitvoerder) (Service Laag)**
+
+* **Verantwoordelijkheid:** De ExecutionHandler is de Service-laag tegenhanger van de APIConnectors. Het luistert naar ExecutionApproved-events en is verantwoordelijk voor het aanroepen van het StrategyPortfolio (in een backtest) of de juiste APIConnector (in live/paper). **Cruciaal**: nadat de staat van het portfolio is gewijzigd, is het de verantwoordelijkheid van de ExecutionHandler om een PortfolioStateChanged-event te publiceren.  
+* **Backend Gebruik:** Gebruikt een specifieke APIConnector om de order daadwerkelijk te versturen. In een backtest/paper-omgeving gebruikt het een StrategyPortfolio om de staat direct bij te werken.
+
+#### **ExecutionEnvironments & APIConnectors (Backend Laag)**
+
+* **Verantwoordelijkheid:** ExecutionEnvironments zijn de dataleveranciers die MarketSnapshot-DTO's produceren. APIConnectors zijn de "stekkers" die de specifieke logica bevatten om met een exchange, wallet of DEX te communiceren.
+
+### **Bouwstenen (Backend Laag)**
+
+#### **StrategyPortfolio (Het Grootboek)**
+
+* **Verantwoordelijkheid:** Het "domme", agnostische grootboek voor één specifieke run. Managet kapitaal, posities en openstaande orders. Het wordt gemuteerd door de ExecutionHandler en heeft zelf geen kennis van de EventBus.
+
+#### **Assembly Team (PluginRegistry, WorkerBuilder, ContextBuilder)**
+
+* **Verantwoordelijkheid:** Het "technische projectbureau" dat op aanvraag van de Service-laag alle benodigde plugin-workers ontdekt, valideert en bouwt.
 
 ---
 
@@ -365,16 +356,18 @@ Elke plugin is een opzichzelfstaande Python package. Deze structuur garandeert d
 Een typische plugin heeft de volgende structuur:
 
 plugins/[plugin_naam]/
-├── plugin_manifest.yaml  # De ID-kaart (wie ben ik?)
+├── manifest.yaml         # De ID-kaart (wie ben ik?)
 ├── worker.py             # De Logica (wat doe ik?)
 ├── schema.py             # Het Contract (wat heb ik nodig?)
-└── state.json            # (Optioneel) Het Geheugen (wat was mijn vorige staat?)
+├── context_schema.py     # Het visuele context contract (wat kan ik laten zien?)
+└── test/test_worker      # Unit test voor de plugin
 
 
-* `plugin_manifest.yaml`: De "ID-kaart" van de plugin. Dit bestand maakt de plugin vindbaar en begrijpelijk voor de `AbstractPluginFactory`.
+* `manifest.yaml`: De "ID-kaart" van de plugin. Dit bestand maakt de plugin vindbaar en begrijpelijk voor de `PluginRegistry`.
 * `worker.py`: Bevat de Python-klasse met de daadwerkelijke businesslogica van de plugin.
 * `schema.py`: Bevat het Pydantic-model dat de structuur en validatieregels voor de configuratieparameters van de plugin definieert.
-* `state.json`: Dit bestand is **optioneel** en wordt alleen gebruikt door 'stateful' plugins (zoals een Grid Trading manager die zijn openstaande orders moet onthouden). De `StrategyOrchestrator` is verantwoordelijk voor het aanroepen van `load_state()` en `save_state()` op de worker, maar de worker zelf beheert de inhoud van dit bestand.
+* `context_schema.py: Bevat het concrete context model voor de visualisatie van gegevens die de plugin produceert. Het maakt gebruik van de (visualisatie) modellen die het platform beschikbaar stelt in visualization_schema.py.
+* `test/test_worker.py`: Dit bestand bevat de unit tests voor het valideren van de werking van de plugin. Het is een verplicht onderdeel dat de ontwikkelaar zal moeten schrijven en wordt gebruikt bij de enrollment van de plugin. Een 100% score als uitkomst van pytest is noodzakelijk als onderdeel van de succesvolle enrollment van een nieuwe plugin.
 
 ---
 ## 3.2. Formaat Keuzes: `YAML` vs. `JSON`
@@ -390,29 +383,43 @@ De keuze voor een dataformaat hangt af van de primaire gebruiker: **een mens of 
     * **Waarom:** De strikte syntax en universele portabiliteit maken `JSON` de betrouwbare standaard voor communicatie tussen systemen (bv. tussen de Python backend en een TypeScript frontend) en voor het opslaan van gestructureerde data waar absolute betrouwbaarheid vereist is.
 
 ---
-## 3.3. Het Manifest: De Zelfbeschrijvende ID-kaart
+## **3.3. Het manifest: de zelfbeschrijvende ID-kaart van de plugin**
 
-Het `plugin_manifest.yaml` is de kern van het "plugin discovery" mechanisme. Het stelt de `AbstractPluginFactory` in staat om een plugin volledig te begrijpen, te valideren en correct te categoriseren **zonder de Python-code te hoeven inspecteren**.
+Het plugin_manifest.yaml is de kern van het "plugin discovery" mechanisme. Het stelt het **Assembly Team** (specifiek de PluginRegistry) in staat om een plugin volledig te begrijpen, valideren en correct te categoriseren **zonder de Python-code te hoeven inspecteren**. Dit manifest is een strikt contract, afgedwongen door het PluginManifest Pydantic-model, dat alle cruciale metadata van een plugin vastlegt.
 
-Dit manifest is een contract dat de volgende cruciale informatie vastlegt:
+### **Core Identity**
 
-* **`name`**: De unieke, machine-leesbare naam van de plugin (bv. `market_structure_detector`).
-* **`version`**: Semantische versie (bv. "1.0.1") om dependency management mogelijk te maken.
-* **`type`**: De belangrijkste categorie-aanduiding. Dit veld bepaalt in welke van de workflow-fasen van de `StrategyOrchestrator` de plugin thuishoort. Mogelijke waarden zijn:
-    * `regime_context`
-    * `structural_context`
-    * `signal_generator`
-    * `signal_refiner`
-    * `execution_planner`
-    * `exit_planner`
-    * `size_planner`
-    * `portfolio_overlay`
-* **`entry_class`**: De exacte naam van de hoofdklasse in het `worker.py` bestand (bv. `MarketStructureDetector`).
-* **`schema_path`**: Het pad naar het Python-bestand dat het Pydantic-schema bevat (meestal `schema.py`).
-* **`params_class`**: De exacte naam van de Pydantic-klasse in het `schema.py` bestand (bv. `MarketStructureParams`).
-* **`stateful`**: Een boolean (`true` / `false`) die aangeeft of de plugin een `state.json`-bestand gebruikt.
-* **`dependencies`**: Een lijst van datavelden die de plugin verwacht als input. Voor een `ContextWorker` is dit een lijst van kolomnamen (bv. `['high', 'low', 'close']`) die aanwezig moeten zijn in de DataFrame. De `AbstractPluginFactory` valideert hierop voordat de plugin wordt uitgevoerd.
+De **core_identity**-sectie definieert de technische identiteit en versie van het manifest-schema zelf. Deze velden zorgen ervoor dat het systeem het bestand correct kan interpreteren en toekomstige wijzigingen in de manifest-structuur kan beheren.
 
+* **apiVersion**: Identificeert de schemaversie van het manifest. Dit heeft een vaste waarde zoals s1mpletrader.io/v1 om aan te geven welke versie van de specificatie wordt gevolgd.  
+* **kind**: Specificeert dat dit bestand een PluginManifest is, wat het type van het document definieert.
+
+### **Identification**
+
+De **identification**-sectie bevat alle beschrijvende metadata die de plugin identificeert voor zowel het systeem als de gebruiker.
+
+* **name**: De unieke, machine-leesbare naam van de plugin (bv. market_structure_detector).  
+* **display_name**: De naam zoals deze in de gebruikersinterface wordt getoond (bv. Market Structure Detector).  
+* **type**: De belangrijkste categorie die bepaalt in welke van de negen workflow-fasen de plugin thuishoort (bv. structural_context).  
+* **version**: De semantische versie van de plugin (bv. 1.0.1), wat essentieel is voor dependency management.  
+* **description**: Een korte, duidelijke beschrijving van de functionaliteit van de plugin.  
+* **author**: De naam van de ontwikkelaar of het team achter de plugin.
+
+### **Dependencies**
+
+De **dependencies**-sectie definieert het dat-contract van de plugin, met name voor dataverrijkingsplugins (ContextWorker).
+
+* **requires**: Een lijst van datakolommen die de plugin als **input** verwacht (bv. ['high', 'low', 'close']). De DependencyValidator controleert of aan deze vereisten wordt voldaan door voorgaande plugins.  
+* **provides**: Een lijst van nieuwe datakolommen die de plugin als **output** toevoegt aan de data (bv. ['is_swing_high']).
+
+### **Permissions**
+
+De **permissions**-sectie fungeert als een beveiligingscontract dat expliciet aangeeft welke potentieel risicovolle operaties de plugin nodig heeft. Standaard heeft een plugin geen toegang tot externe bronnen.
+
+* **network_access**: Een 'allowlist' van netwerkbestemmingen die de plugin mag benaderen (bv. ['https://api.kraken.com']).  
+* **filesystem_access**: Een 'allowlist' van bestanden of mappen waartoe de plugin toegang heeft.
+
+---
 ## 3.4. De Worker & het BaseWorker Raamwerk
 
 De `worker.py` bevat de daadwerkelijke logica. Om de ontwikkeling te versnellen en de consistentie te borgen, biedt de architectuur een set aan basisklassen in `backend/core/base_worker.py`.
@@ -432,245 +439,236 @@ De `BaseEntryPlanner` handelt automatisch de creatie van de `EntrySignal` DTO af
 
 # 4_WORKFLOW_AND_ORCHESTRATOR.md
 
-# 4. De Quant Workflow & Orkestratie
+# **4. De Quant Workflow & De Analytische Pijplijn**
 
-Dit document beschrijft de volledige "data-assemblagelijn" van de S1mpleTrader V2 architectuur. De kern is een gelaagde workflow die een handelsidee systematisch transformeert, valideert en omzet in een uitvoerbaar handelsplan.
+Versie: 3.0 (Bijgewerkt)  
+Status: Definitief
 
----
-## 4.1. De Workflow Trechter: Een Praktijkvoorbeeld
+## **4.1. Introductie: Een Gescheiden Pijplijn**
 
-       ┌───────────────────────────────────────────┐
-       │        RUWE DATAFRAME (OHLCV)             │
-       └────────────────────┬──────────────────────┘
-                            │
-                            v
-┌──────────────────────────────────────────────────────────────────┐
+Dit document beschrijft de volledige workflow van data-analyse tot handelsvoorstel. Deze workflow is bewust opgesplitst in twee conceptueel verschillende, opeenvolgende processen:
+
+1. **De Context Pijplijn (Fase 1-2):** De eerste twee fasen (Regime Context en Structurele Context) zijn de verantwoordelijkheid van de stateful **ContextOrchestrator**. Deze fasen verrijken de ruwe marktdata en bereiden de complete, state-bewuste TradingContext voor. Dit proces wordt voor elke tick uitgevoerd en eindigt met het publiceren van een ContextReady-event.  
+2. **De Analytische Pijplijn (Fase 3-9):** De daaropvolgende zeven fasen vormen de kern van de **StrategyEngine**. In reactie op de ContextReady-event, voert de StrategyEngine zijn interne, stateless en procedurele **7-fasen trechter** uit. Het doel is niet om definitieve beslissingen te nemen, maar om een *analytisch voorstel* (EngineCycleResult) te produceren. Dit voorstel wordt vervolgens gepubliceerd als een StrategyProposalReady-event.
+
+Deze scheiding zorgt ervoor dat de StrategyEngine zich puur kan richten op zijn analytische kerntaak, opererend op een perfect voorbereide dataset, zonder zich bezig te hoeven houden met het complexe beheer van de staat.
+
+## **4.2. De 9-Fasen Trechter/pijplijn: Een Praktijkvoorbeeld**
+
+   ┌───────────────────────────────────────────┐  
+   │        RUWE DATAFRAME (OHLCV)             │  
+   └────────────────────┬──────────────────────┘  
+                        │  
+                        v
+
+┌──────────────────────────────────────────────────────────────────┐  
 │ Fase 1: REGIME CONTEXT (De "Weerman")                            │
-│ Plugin: regime_context                                           │
-│ Taak:   Voegt macro-context toe (bv. regime='trending').         │
-└────────────────────┬─────────────────────────────────────────────┘
-│
-v
-┌───────────────────────────────────────────┐
-│   VERRIJKTE DATAFRAME (enriched_df)       │
-└────────────────────┬──────────────────────┘
-│
-v
-┌──────────────────────────────────────────────────────────────────┐
-│ Fase 2: STRUCTURELE CONTEXT (De "Cartograaf")                    │
-│ Plugin: structural_context                                       │
-│ Taak:   Voegt micro-context toe (bv. is_mss, support_level).     │
-└────────────────────┬─────────────────────────────────────────────┘
-│
-v
-┌───────────────────────────────────────────┐
-│   FINALE ENRICHED DATAFRAME               │
-└────────────────────┬──────────────────────┘
-│ (Start StrategyEngine Loop)
-│
-v
-┌──────────────────────────────────────────────────────────────────┐
-│ Fase 3: SIGNAAL GENERATIE (De "Verkenner")                       │
-│ Plugin: signal_generator                                         │
-│ Taak:   Detecteert een specifieke, actiegerichte gebeurtenis.    │
-└────────────────────┬─────────────────────────────────────────────┘
-│
-│ DTO: Signal
-│ -------------------------------
-│ { correlation_id, timestamp, asset,
-│   direction, signal_type }
-│
-v
-┌──────────────────────────────────────────────────────────────────┐
-│ Fase 4: SIGNAAL VERFIJNING (De "Kwaliteitscontroleur")           │
-│ Plugin: signal_refiner                                           │
-│ Taak:   Keurt Signal goed of af op basis van secundaire criteria.│
-└────────────────────┬─────────────────────────────────────────────┘
-│
-│ DTO: Signal (of None)
-│ -------------------------------
-│ { ... (inhoud blijft gelijk) }
-│
-v
-┌──────────────────────────────────────────────────────────────────┐
-│ Fase 5: ENTRY PLANNING (De "Timing Expert")                      │
-│ Plugin: entry_planner                                            │
-│ Taak:   Bepaalt de precieze entry-prijs.                         │
-└────────────────────┬─────────────────────────────────────────────┘
-│
-│ DTO: EntrySignal
-│ -------------------------------
-│ { correlation_id (gepromoot),
-│   signal: Signal (genest),
-│   + entry_price }
-│
-v
-┌──────────────────────────────────────────────────────────────────┐
-│ Fase 6: EXIT PLANNING (De "Strateeg")                            │
-│ Plugin: exit_planner                                             │
-│ Taak:   Berekent de initiële stop-loss en take-profit.           │
-└────────────────────┬─────────────────────────────────────────────┘
-│
-│ DTO: RiskDefinedSignal
-│ -------------------------------
-│ { correlation_id (gepromoot),
-│   entry_signal: EntrySignal (genest),
-│   + sl_price, tp_price }
-│
-v
+│ Plugin: regime_context                                           │  
+│ Taak: Voegt macro-context toe (bv. regime='trending').           │  
+└────────────────────┬─────────────────────────────────────────────┘  
+│  
+v  
+┌───────────────────────────────────────────┐  
+│ VERRIJKTE DATAFRAME (enriched_df)         │  
+└────────────────────┬──────────────────────┘  
+│  
+v  
+┌──────────────────────────────────────────────────────────────────┐  
+│ Fase 2: STRUCTURELE CONTEXT (De "Cartograaf")                    │  
+│ Plugin: structural_context                                       │  
+│ Taak: Voegt micro-context toe (bv. is_mss, support_level).       │  
+└────────────────────┬─────────────────────────────────────────────┘  
+│  
+v  
+┌───────────────────────────────────────────┐  
+│ FINALE ENRICHED DATAFRAME                 │
+└────────────────────┬──────────────────────┘  
+│ (Start StrategyEngine Loop)  
+│  
+v  
+┌──────────────────────────────────────────────────────────────────┐  
+│ Fase 3: SIGNAAL GENERATIE (De "Verkenner")                       │  
+│ Plugin: signal_generator                                         │  
+│ Taak: Detecteert een specifieke, actiegerichte gebeurtenis.      │  
+└────────────────────┬─────────────────────────────────────────────┘  
+│  
+│ DTO: Signal  
+│ -------------------------------  
+│ { correlation_id, timestamp, asset,  
+│ direction, signal_type }  
+│  
+v  
+┌──────────────────────────────────────────────────────────────────┐  
+│ Fase 4: SIGNAAL VERFIJNING (De "Kwaliteitscontroleur")           │  
+│ Plugin: signal_refiner                                           │  
+│ Taak: Keurt Signal goed of af op basis van secundaire criteria.  │  
+└────────────────────┬─────────────────────────────────────────────┘  
+│  
+│ DTO: Signal (of None)  
+│ -------------------------------  
+│ { ... (inhoud blijft gelijk) }  
+│  
+v  
+┌──────────────────────────────────────────────────────────────────┐  
+│ Fase 5: ENTRY PLANNING (De "Timing Expert")                      │  
+│ Plugin: entry_planner                                            │  
+│ Taak: Bepaalt de precieze entry-prijs.                           │  
+└────────────────────┬─────────────────────────────────────────────┘  
+│  
+│ DTO: EntrySignal  
+│ -------------------------------  
+│ { correlation_id (gepromoot),  
+│ signal: Signal (genest),  
+│ + entry_price }  
+│  
+v  
+┌──────────────────────────────────────────────────────────────────┐  
+│ Fase 6: EXIT PLANNING (De "Strateeg")                            │  
+│ Plugin: exit_planner                                             │  
+│ Taak: Berekent de initiële stop-loss en take-profit.             │  
+└────────────────────┬─────────────────────────────────────────────┘  
+│  
+│ DTO: RiskDefinedSignal  
+│ -------------------------------  
+│ { correlation_id (gepromoot),  
+│ entry_signal: EntrySignal (genest),  
+│ + sl_price, tp_price }  
+│  
+v  
 ┌──────────────────────────────────────────────────────────────────┐
 │ Fase 7: SIZE PLANNING (De "Logistiek Manager")                   │
 │ Plugin: size_planner                                             │
-│ Taak:   Berekent de definitieve positiegrootte.                  │
+│ Taak: Berekent de definitieve positiegrootte.                    │
 └────────────────────┬─────────────────────────────────────────────┘
-│
-│ DTO: TradePlan
-│ -------------------------------
-│ { correlation_id (gepromoot),
-│   risk_defined_signal: RiskDefinedSignal (genest),
-│   + position_value_quote, position_size_asset }
-│
-v
+│  
+│ DTO: TradePlan  
+│ -------------------------------  
+│ { correlation_id (gepromoot),  
+│ risk_defined_signal: RiskDefinedSignal (genest),  
+│ + position_value_quote, position_size_asset }  
+│  
+v  
 ┌──────────────────────────────────────────────────────────────────┐
 │ Fase 8: ORDER ROUTING (De "Verkeersleider")                      │
 │ Plugin: order_router                                             │
-│ Taak:   Vertaalt het plan naar technische executie-instructies.  │
+│ Taak: Vertaalt het plan naar technische executie-instructies.    │
 └────────────────────┬─────────────────────────────────────────────┘
-│
-│ DTO: RoutedTradePlan
-│ -------------------------------
-│ { correlation_id (gepromoot),
-│   trade_plan: TradePlan (genest),
-│   + order_type, time_in_force, ... }
-│
-v
+│  
+│ DTO: RoutedTradePlan  
+│ -------------------------------  
+│ { correlation_id (gepromoot),  
+│ trade_plan: TradePlan (genest),  
+│ + order_type, time_in_force, ... }  
+│  
+v  
 ┌──────────────────────────────────────────────────────────────────┐
 │ Fase 9: CRITICAL EVENT DETECTION (De "Waakhond")                 │
 │ Plugin: critical_event_detector                                  │
-│ Taak:   Detecteert systeem-brede risico's (bv. max drawdown).    │
+│ Taak: Detecteert systeem-brede risico's (bv. max drawdown).      │
 └────────────────────┬─────────────────────────────────────────────┘
-│
-│ DTO: CriticalEvent
-│ -------------------------------
-│ { correlation_id, event_type, timestamp }
-│
-v
-┌───────────────────────────────────────────┐
-│        FINAAL TRADEPROPOSAL DTO           │
-│ { routed_trade_plan?, critical_event? }   │
-└────────────────────┬──────────────────────┘
-│
-v
-[ Naar de Workflow Service & ExecutionHandler ]
-
+│  
+│ DTO: CriticalEvent  
+│ -------------------------------  
+│ { correlation_id, event_type, timestamp }  
+│  
+v  
+┌─────────────────────────────────────────────┐
+│ FINAAL EngineCycleResult DTO                │
+│ { routed_trade_plans?, critical_events? }   │
+└────────────────────┬────────────────────────┘
+│  
+v  
+[ Publiceert StrategyProposalReady Event ]  
 Elk handelsidee wordt systematisch gevalideerd door een vaste, logische trechter. We volgen een concreet voorbeeld: een **"Market Structure Shift + FVG Entry"** strategie.
 
 #### **Fase 1: Regime Context (De "Weerman")**
-* **Doel:** Wat is de algemene "weersverwachting" van de markt? Deze fase classificeert de marktomstandigheid zonder data weg te gooien.
-* **Input:** De ruwe `DataFrame` met OHLCV-data.
-* **Proces (voorbeeld):** Een `ADXContext`-plugin (`type: regime_context`) berekent de ADX-indicator en voegt een nieuwe kolom `regime` toe. Deze kolom krijgt de waarde 'trending' als `ADX > 25` en 'ranging' als `ADX < 25`.
-* **Output:** Een verrijkte `DataFrame`. Er wordt geen data verwijderd; er wordt alleen een contextuele "tag" toegevoegd aan elke rij.
+
+* **Categorie:** ContextWorker-plugin  
+* **Doel:** Wat is de algemene "weersverwachting" van de markt? Deze fase classificeert de marktomstandigheid zonder data weg te gooien.  
+* **Input:** De ruwe DataFrame met OHLCV-data uit de TradingContext.  
+* **Proces (voorbeeld):** Een ADXContext-plugin (type: regime_context) berekent de ADX-indicator en voegt een nieuwe kolom regime toe aan de DataFrame. Deze kolom krijgt de waarde 'trending' als ADX > 25 en 'ranging' als ADX < 25.  
+* **Output:** Een verrijkte DataFrame. Er wordt geen data verwijderd; er wordt alleen een contextuele "tag" toegevoegd aan elke rij.
 
 #### **Fase 2: Structurele Context (De "Cartograaf")**
-* **Doel:** De markt "leesbaar" maken. Waar is de trend en wat zijn de belangrijke zones?
-* **Input:** De verrijkte `DataFrame` uit Fase 1.
-* **Proces (voorbeeld):** Een `MarketStructureDetector`-plugin (`type: structural_context`) analyseert de prijs en voegt twee nieuwe kolommen toe: `trend_direction` (met waarden als `bullish` of `bearish`) en `is_mss` (een `True`/`False` vlag op de candle waar een Market Structure Shift plaatsvindt).
-* **Output:** De finale `enriched_df`. We hebben nu "slimme" data met meerdere lagen context, klaar voor de `StrategyEngine`.
+
+* **Categorie:** ContextWorker-plugin  
+* **Doel:** De markt "leesbaar" maken. Waar is de trend en wat zijn de belangrijke zones?  
+* **Input:** De verrijkte DataFrame uit Fase 1.  
+* **Proces (voorbeeld):** Een MarketStructureDetector-plugin (type: structural_context) analyseert de prijs en voegt twee nieuwe kolommen toe: trend_direction (met waarden als bullish of bearish) en is_mss (een True/False vlag op de candle waar een Market Structure Shift plaatsvindt).  
+* **Output:** De finale enriched_df. We hebben nu "slimme" data met meerdere lagen context, klaar voor de StrategyEngine.
+
+## ***De controle wordt overgedragen aan de StrategyEngine na ontvangst van de ContextReady-event.***
 
 #### **Fase 3: Signaal Generatie (De "Verkenner")**
-* **Doel:** Waar is de precieze, actiegerichte trigger? We zoeken naar een Fair Value Gap (FVG) ná een Market Structure Shift.
-* **Input:** De `enriched_df` (via het `TradingContext` object).
-* **Proces (voorbeeld):** Een `FVGEntryDetector`-plugin (`type: signal_generator`) scant de data. Wanneer het een rij tegenkomt waar `is_mss` `True` is, begint het te zoeken naar een FVG. Als het er een vindt, genereert het een signaal.
-* **Output:** Een **`Signal` DTO**. Dit object krijgt een unieke `correlation_id` (UUID) en bevat de essentie: `{asset: 'BTC/EUR', timestamp: '...', direction: 'long', signal_type: 'fvg_entry'}`.
+
+* **Categorie:** StrategyWorker-plugin (signal_generator)  
+* **Doel:** Waar is de precieze, actiegerichte trigger? We zoeken naar een Fair Value Gap (FVG) ná een Market Structure Shift.  
+* **Input:** De enriched_df (via het TradingContext object).  
+* **Proces (voorbeeld):** Een FVGEntryDetector-plugin scant de data. Wanneer het een rij tegenkomt waar is_mss True is, begint het te zoeken naar een FVG. Als het er een vindt, genereert het een signaal.  
+* **Output:** Een **Signal DTO**. Dit object krijgt een unieke correlation_id (UUID) en bevat de essentie: {asset: 'BTC/EUR', timestamp: '...', direction: 'long', signal_type: 'fvg_entry'}.
 
 #### **Fase 4: Signaal Verfijning (De "Kwaliteitscontroleur")**
-* **Doel:** Is er bevestiging voor het signaal? We willen volume zien bij de FVG-entry.
-* **Input:** Het `Signal` DTO en het `TradingContext`.
-* **Proces (voorbeeld):** Een `VolumeSpikeRefiner`-plugin (`type: signal_refiner`) controleert het volume op de timestamp van het `Signal`. Als het volume te laag is, wordt het signaal afgekeurd.
-* **Output:** Het **gevalideerde `Signal` DTO** of `None`. De `correlation_id` blijft behouden.
+
+* **Categorie:** StrategyWorker-plugin (signal_refiner)  
+* **Doel:** Is er bevestiging voor het signaal? We willen volume zien bij de FVG-entry.  
+* **Input:** Het Signal DTO en het TradingContext.  
+* **Proces (voorbeeld):** Een VolumeSpikeRefiner-plugin (type: signal_refiner) controleert het volume op de timestamp van het Signal. Als het volume te laag is, wordt het signaal afgekeurd.  
+* **Output:** Het **gevalideerde Signal DTO** of None. De correlation_id blijft behouden.
 
 #### **Fase 5: Entry Planning (De "Timing Expert")**
-* **Doel:** Wat is de precieze entry-prijs voor ons goedgekeurde signaal?
-* **Input:** Het gevalideerde `Signal` DTO.
-* **Proces (voorbeeld):** Een `LimitEntryPlanner`-plugin (`type: entry_planner`) bepaalt dat de entry een limietorder moet zijn op de 50% retracement van de FVG.
-* **Output:** Een **`EntrySignal` DTO**. Dit DTO *nest* het originele `Signal` en verrijkt het met `{ entry_price: 34500.50 }`. De `correlation_id` wordt gepromoot naar het top-level voor gemakkelijke toegang.
+
+* **Categorie:** StrategyWorker-plugin (entry_planner)  
+* **Doel:** Wat is de precieze entry-prijs voor ons goedgekeurde signaal?  
+* **Input:** Het gevalideerde Signal DTO.  
+* **Proces (voorbeeld):** Een LimitEntryPlanner-plugin (type: entry_planner) bepaalt dat de entry een limietorder moet zijn op de 50% retracement van de FVG.  
+* **Output:** Een **EntrySignal DTO**. Dit DTO *nest* het originele Signal en verrijkt het met { entry_price: 34500.50 }. De correlation_id wordt gepromoot naar het top-level voor gemakkelijke toegang.
 
 #### **Fase 6: Exit Planning (De "Strateeg")**
-* **Doel:** Wat is het initiële plan voor risico- en winstmanagement?
-* **Input:** Het `EntrySignal` DTO.
-* **Proces (voorbeeld):** Een `LiquidityTargetExit`-plugin (`type: exit_planner`) plaatst de stop-loss onder de laatste swing low en de take-profit op de volgende major liquidity high.
-* **Output:** Een **`RiskDefinedSignal` DTO**. Nest het `EntrySignal` en voegt `{ sl_price: 34200.0, tp_price: 35100.0 }` toe.
+
+* **Categorie:** StrategyWorker-plugin (exit_planner)  
+* **Doel:** Wat is het initiële plan voor risico- en winstmanagement?  
+* **Input:** Het EntrySignal DTO.  
+* **Proces (voorbeeld):** Een LiquidityTargetExit-plugin (type: exit_planner) plaatst de stop-loss onder de laatste swing low en de take-profit op de volgende major liquidity high.  
+* **Output:** Een **RiskDefinedSignal DTO**. Nest het EntrySignal en voegt { sl_price: 34200.0, tp_price: 35100.0 } toe.
 
 #### **Fase 7: Size Planning (De "Logistiek Manager")**
-* **Doel:** Wat is de definitieve positiegrootte, gegeven ons risicoplan en kapitaal?
-* **Input:** Het `RiskDefinedSignal` DTO en het `Portfolio` (via `TradingContext`).
-* **Proces (voorbeeld):** Een `FixedRiskSizer`-plugin (`type: size_planner`) berekent de positiegrootte zodat het risico (`entry_price - sl_price`) exact 1% van de totale equity van het portfolio is.
-* **Output:** Een **`TradePlan` DTO**. Dit DTO nest het `RiskDefinedSignal` en bevat de finale, berekende `{ position_value_quote: 1000.0, position_size_asset: 0.0289 }`. Dit is het complete *strategische* plan.
+
+* **Categorie:** StrategyWorker-plugin (size_planner)  
+* **Doel:** Wat is de definitieve positiegrootte, gegeven ons risicoplan en kapitaal?  
+* **Input:** Het RiskDefinedSignal DTO en het Portfolio (via context.portfolio_state).  
+* **Proces (voorbeeld):** Een FixedRiskSizer-plugin (type: size_planner) berekent de positiegrootte zodat het risico (entry_price - sl_price) exact 1% van de totale equity van het portfolio is.  
+* **Output:** Een **TradePlan DTO**. Dit DTO nest het RiskDefinedSignal en bevat de finale, berekende { position_value_quote: 1000.0, position_size_asset: 0.0289 }. Dit is het complete *strategische* plan.
 
 #### **Fase 8: Order Routing (De "Verkeersleider")**
-* **Doel:** Hoe moet dit strategische plan *technisch* worden uitgevoerd?
-* **Input:** Het `TradePlan` DTO.
-* **Proces (voorbeeld):** Een `DefaultRouter`-plugin (`type: order_router`) vertaalt het plan naar concrete order-instructies.
-* **Output:** Een **`RoutedTradePlan` DTO**. Dit nest het `TradePlan` en voegt de *tactische* executie-instructies toe, zoals `{ order_type: 'limit', time_in_force: 'GTC' }`. Dit is de definitieve opdracht voor de `ExecutionHandler`.
+
+* **Categorie:** StrategyWorker-plugin (order_router)  
+* **Doel:** Hoe moet dit strategische plan *technisch* worden uitgevoerd?  
+* **Input:** Het TradePlan DTO.  
+* **Proces (voorbeeld):** Een DefaultRouter-plugin (type: order_router) vertaalt het plan naar concrete order-instructies.  
+* **Output:** Een **RoutedTradePlan DTO**. Dit nest het TradePlan en voegt de *tactische* executie-instructies toe, zoals { order_type: 'limit', time_in_force: 'GTC' }. Dit is de definitieve opdracht voor de ExecutionHandler.
 
 #### **Fase 9: Critical Event Detection (De "Waakhond")**
-* **Doel:** Zijn er systeem-brede risico's die onmiddellijke actie vereisen, los van nieuwe trades?
-* **Input:** De volledige `TradingContext` en de lijst van `RoutedTradePlan`'s.
-* **Proces (voorbeeld):** Een `MaxDrawdownDetector`-plugin (`type: critical_event_detector`) controleert de equity curve van het `Portfolio`. Als de drawdown een drempel overschrijdt, genereert het een event.
-* **Output:** Een **`CriticalEvent` DTO** (bv. `{ event_type: 'MAX_DRAWDOWN_BREACHED' }`) of `None`.
 
-**Finale Output: Het `TradeProposal` DTO**
-De `StrategyEngine` verpakt de outputs van Fase 8 en 9 in één enkel `TradeProposal`-object. Dit object wordt teruggestuurd naar de `Workflow Service`, die het interpreteert en de juiste acties onderneemt (bv. de `RoutedTradePlan` naar de `ExecutionHandler` sturen of de run stoppen bij een `CriticalEvent`).
+* **Categorie:** StrategyWorker-plugin (critical_event_detector)  
+* **Doel:** Zijn er systeem-brede risico's die onmiddellijke actie vereisen, los van nieuwe trades?  
+* **Input:** De volledige TradingContext en de lijst van RoutedTradePlan's.  
+* **Proces (voorbeeld):** Een MaxDrawdownDetector-plugin (type: critical_event_detector) controleert de equity curve van het Portfolio. Als de drawdown een drempel overschrijdt, genereert het een event.  
+* **Output:** Een lijst van **CriticalEvent DTO's** (bv. { event_type: 'MAX_DRAWDOWN_BREACHED' }).
 
----
-## 4.2. Rolverdeling: De Manager en de Motor
+## **4.3. Rolverdeling in de Event-Gedreven Architectuur**
 
-### **De Workflow Service (bv. `BacktestService`) (De Manager)**
-Een service zoals de `BacktestService` is de **"manager"** van een enkele run. Hij is de eigenaar van de setup-logica en bereidt de fabriek voor.
+Waar voorheen sprake was van een strikte hiërarchie, werken de componenten nu als samenwerkende specialisten.
 
-* **Plek:** `Service`-laag.
-* **Verantwoordelijkheid:** Het end-to-end voorbereiden en starten van een strategie-executie.
+* **ContextOrchestrator (De State Manager)**: Dit is de stateful "voorbereider". Het ontvangt MarketDataReceived-events, roept de Fase 1 & 2 ContextWorker-plugins aan om de TradingContext op te bouwen en te verrijken, en publiceert vervolgens de ContextReady-event.  
+* **StrategyEngine (De Analist)**: Dit component is de stateless "motor" van de analytische pijplijn (Fase 3-9). Het abonneert zich op ContextReady. Na ontvangst doorloopt het de procedurele DTO-trechter (van Signal tot RoutedTradePlan) en publiceert het eindresultaat als een StrategyProposalReady-event. Het is een pure, analytische machine.  
+* **PortfolioSupervisor (De Operationeel Manager)**: Dit is de beslissende "poortwachter". Het abonneert zich op StrategyProposalReady-events. Het ontvangt de voorstellen van de StrategyEngine, toetst deze aan overkoepelende, portfolio-brede risicoregels, en beslist of de trades daadwerkelijk uitgevoerd mogen worden.
 
-#### **Procesflow van de Service:**
-1.  **Initialisatie:** Ontvangt de `AppConfig` van de frontend of CLI.
-2.  **Bouwfase:** Instantieert alle benodigde, langlevende backend-componenten:
-    * De `ExecutionEnvironment` (bv. `BacktestEnvironment`).
-    * Het `Portfolio` (geïnitialiseerd met simpele waarden, niet de config).
-    * Het `Assembly Team` (`PluginRegistry`, `WorkerBuilder`, `ContextBuilder`).
-3.  **Assemblage:** Gebruikt het `Assembly Team` om de `StrategyEngine` te bouwen, en injecteert een "toolbox" met alle benodigde, geïnstantieerde plugin-workers.
-4.  **Context Preparatie (Fase 1 & 2):** Roept de `ContextBuilder` aan om de `enriched_df` te genereren.
-5.  **Startschot:** Creëert het finale `TradingContext` DTO (met de `enriched_df`, `Portfolio`, etc.) en roept de `run()`-methode van de `StrategyEngine` aan, waarmee de controle wordt overgedragen.
+## **4.4. De Feedback Loops: Technisch vs. Strategisch**
 
-### **De `StrategyEngine` (De Motor)**
-De `StrategyEngine` is de **"motor"** van de executie-loop (Fase 3-9). Hij weet niets van de setup, maar is een expert in het efficiënt doorlopen van de signaal-pijplijn.
+De architectuur faciliteert nog steeds twee cruciale cycli:
 
-* **Plek:** `Backend`-laag.
-* **Verantwoordelijkheid:** Het uitvoeren van de event-loop, gestuurd door de `Clock`, en het doorlopen van de DTO-trechter van `Signal` tot `TradeProposal`.
-* **Procesflow van de Engine:**
-    1.  **Start:** De `run()`-methode wordt aangeroepen door de `Service`.
-    2.  **Event Loop:** Voor elke `tick` van de `Clock`:
-        * Vraagt alle `signal_generator` plugins om een lijst van `Signal` DTO's.
-        * Voor elk `Signal`, leidt het door de volledige trechter (Fase 4-8), waarbij elke stap de DTO verder nest en verrijkt via de `BaseWorker`-automatisering.
-        * Roept de `critical_event_detector` plugins aan (Fase 9).
-        * `yield` elk `TradeProposal` terug naar de `Service`.
-
-### **Het `Assembly Team` (De Technische Projectmanager)**
-Het `Assembly Team` (`PluginRegistry`, `WorkerBuilder`, `ContextBuilder`) is het **"technische projectbureau"**. Het weet niets over de fasen, maar is expert in het beheren en bouwen van plugins.
-
-* **Plek:** `Backend`-laag.
-* **Verantwoordelijkheid:** Het ontdekken, bouwen en technisch orkestreren van de context-pijplijn.
-* **Taken in Detail:**
-    * **Plugin Discovery:** Scant de `plugins/`-map en bouwt het `PluginRegistry`.
-    * **Worker Constructie:** Bouwt op aanvraag van de `Workflow Service` alle benodigde, gevalideerde plugin-instanties.
-    * **Orkestratie van Context:** Voert de `context_pipeline` (Fase 1 & 2) uit.
-
----
-## 4.3. De Feedback Loops: Technisch vs. Strategisch
-
-De architectuur faciliteert twee cruciale cycli:
-
-1.  **De Technische Feedback Loop (Real-time):** Dit gebeurt ***binnen*** **een run**. De staat van het `Portfolio` (het "domme" grootboek) wordt via het `TradingContext` object gebruikt als input voor plugins in latere fasen (bv. de `SizePlanner` in Fase 7).
-2.  **De Strategische "Supercharged" Ontwikkelcyclus (Human-in-the-loop):** Dit is de cyclus die *jij* als strateeg doorloopt ***tussen*** **de runs**, volgens het **"Bouwen -> Meten -> Leren"** principe. Je analyseert de resultaten van een backtest in de Web UI (**Meten**), ontdekt een zwakte (**Leren**), past de `YAML`-configuratie aan in de Strategy Builder (**Bouwen**) en start direct een nieuwe run.
+1. **De Technische Feedback Loop (Real-time):** Dit gebeurt ***binnen*** **een run**, via de EventBus. Een PortfolioStateChanged-event, gepubliceerd door de ExecutionHandler, wordt opgevangen door de ContextOrchestrator. Deze gebruikt de nieuwe PortfolioState om de *volgende* TradingContext te bouwen, die vervolgens weer wordt gebruikt als input voor de StrategyEngine. Dit creëert een continue, real-time feedback-cyclus.  
+2. **De Strategische "Supercharged" Ontwikkelcyclus (Human-in-the-loop):** Dit is de cyclus die *jij* als strateeg doorloopt ***tussen*** **de runs**, volgens het **"Bouwen -> Meten -> Leren"** principe. Je analyseert de resultaten van een backtest in de Web UI (**Meten**), ontdekt een zwakte (**Leren**), past de YAML-configuratie aan in de Strategy Builder (**Bouwen**) en start direct een nieuwe run.
 
 ---
 
@@ -714,7 +712,7 @@ Elk van deze secties representeert een "werkruimte" binnen de applicatie, met ee
 
 * **User Goal:** Het intuïtief en foutloos samenstellen van een complete handelsstrategie (`run.yaml`) door plugins te combineren.
 * **UI Componenten:**
-    * **Visuele Pijplijn:** Een grafische weergave van de 6-fasen trechter. Elke fase is een "slot" waar een of meerdere plugins in gesleept kunnen worden.
+    * **Visuele Pijplijn:** Een grafische weergave van de analytische pijplijn, opgedeeld in de logische fasen (bv. `Context`, `Signaal`, `Risico`, etc.) zoals gedefinieerd in de architectuur.
     * **Plugin Bibliotheek:** Een zijbalk toont alle beschikbare plugins, slim gegroepeerd op basis van het `type`-veld uit hun manifest (bv. `regime_filters`, `signal_generators`).
     * **Configuratie Paneel:** Dit is waar de magie gebeurt. Wanneer een plugin in een slot wordt geplaatst, verschijnt er een paneel met een **automatisch gegenereerd formulier**.
         * **Voorbeeld:** Als de `schema.py` van een EMA-plugin `length: int = Field(default=20, gt=1)` definieert, genereert de UI een numeriek inputveld, vooraf ingevuld met "20", met een validatieregel die afdwingt dat de waarde groter dan 1 moet zijn. Foutieve input wordt onmogelijk gemaakt.
@@ -743,7 +741,7 @@ Elk van deze secties representeert een "werkruimte" binnen de applicatie, met ee
         * **Optimization Results:** Een interactieve tabel (sorteren, filteren, zoeken) met de resultaten van een optimalisatierun, om snel de beste parameter-sets te vinden.
         * **Comparison Arena:** Een grafische vergelijking van varianten, met overlappende equity curves en een heatmap van key metrics om de robuustheid te beoordelen.
         * **Trade Explorer:** De meest krachtige analyse-tool. Hier kan de gebruiker door individuele trades van een *enkele* run klikken en op een grafiek precies zien wat de context was op het moment van de trade: welke indicatoren waren actief, waar lag de marktstructuur, waarom werd de entry getriggerd, etc.
-* **Backend Interactie:** De UI roept de `StrategyOrchestrator`, `OptimizationService` en `VariantTestService` aan. De resultaten worden opgehaald via de `VisualizationService`, die kant-en-klare "visualisatie-pakketten" (JSON-data voor grafieken en tabellen) levert.
+* **Backend Interactie:** De UI roept de `StrategyOperator`, `OptimizationService` en `VariantTestService` aan. De resultaten worden opgehaald via de `VisualizationService`, die kant-en-klare "visualisatie-pakketten" (JSON-data voor grafieken en tabellen) levert.
 
 ### **Werkruimte 4 & 5: PAPER TRADING & LIVE MONITORING**
 
@@ -812,9 +810,9 @@ Een live-systeem is afhankelijk van een stabiele verbinding met externe databron
         * **Principe:** Na een reconnect is de interne staat van het `Portfolio`-object **onbetrouwbaar**. Het systeem moet uitgaan van de "single source of truth": de exchange zelf.
         * **Proces:** De `ExecutionHandler` voert een **reconciliation**-procedure uit. Het roept de REST API van de exchange aan met de vragen: "Geef mij de status van al mijn openstaande orders" en "Geef mij al mijn huidige posities". Het vergelijkt dit antwoord met de data in het `Portfolio`-object en corrigeert eventuele discrepanties.
 
-    3.  **`StrategyOrchestrator` (met Circuit Breaker):**
+    3.  **`StrategyOperator` (met Circuit Breaker):**
         * **Principe:** Als de `LiveDataSource` na een configureerbaar aantal pogingen geen verbinding kan herstellen, moet het systeem in een veilige modus gaan om verdere schade te voorkomen.
-        * **Proces:** De `DataSource` stuurt een `CONNECTION_LOST`-event naar de `Orchestrator`. De `Orchestrator` activeert dan de **Circuit Breaker**:
+        * **Proces:** De `DataSource` stuurt een `CONNECTION_LOST`-event naar de `Operator`. De `Operator` activeert dan de **Circuit Breaker**:
             * Het stopt onmiddellijk met het verwerken van nieuwe signalen.
             * Het stuurt een kritieke alert (via e-mail, Telegram, etc.) naar de gebruiker.
             * Het kan (optioneel) proberen alle open posities te sluiten als laatste redmiddel.
@@ -822,12 +820,12 @@ Een live-systeem is afhankelijk van een stabiele verbinding met externe databron
 ---
 ## 6.3. Applicatie Crash Recovery (Supervisor Model)
 
-* **Probleem:** Het hoofdproces van de `StrategyOrchestrator` kan crashen door een onverwachte bug in een plugin of een geheugenprobleem.
+* **Probleem:** Het hoofdproces van de `StrategyOperator` kan crashen door een onverwachte bug in een plugin of een geheugenprobleem.
 * **Architectonische Oplossing:** We scheiden het *starten* van de applicatie van de *applicatie zelf* door middel van een **Supervisor (Watchdog)**-proces, aangestuurd door `run_supervisor.py`.
 
 * **Gedetailleerde Workflow:**
     1.  **Entrypoint `run_supervisor.py`:** Dit is het enige script dat je handmatig start in een live-omgeving.
-    2.  **Supervisor Proces:** Dit script start een extreem lichtgewicht en robuust "supervisor"-proces. Zijn enige taak is het spawnen van een *kind-proces* voor de daadwerkelijke `StrategyOrchestrator` en het monitoren van dit kind-proces.
+    2.  **Supervisor Proces:** Dit script start een extreem lichtgewicht en robuust "supervisor"-proces. Zijn enige taak is het spawnen van een *kind-proces* voor de daadwerkelijke `StrategyOperator` en het monitoren van dit kind-proces.
     3.  **Herstart & Herstel Cyclus:**
         * Als het `Orchestrator`-proces onverwacht stopt, detecteert de `Supervisor` dit.
         * De `Supervisor` start de `Orchestrator` opnieuw.
@@ -864,7 +862,7 @@ De gehele workflow, van het bouwen van een strategie tot het analyseren van de r
 * **Proces:**
     1.  De gebruiker opent de "Strategy Builder" in de Web UI.
     2.  In een zijbalk verschijnen alle beschikbare plugins, opgehaald via een API en gegroepeerd per `type` (bv. `signal_generators`).
-    3.  De gebruiker sleept plugins naar de "slots" in een visuele weergave van de 6-fasen trechter.
+    3.  De gebruiker sleept plugins naar de "slots" in een visuele weergave van de 9-fasen (fase 1-2 en fase 3-9) trechter/pijplijn.
     4.  Voor elke geplaatste plugin genereert de UI automatisch een configuratieformulier op basis van de `schema.py` van de plugin. Input wordt direct in de browser gevalideerd.
     5.  Bij het opslaan wordt de configuratie als `YAML` op de server aangemaakt.
 
@@ -892,7 +890,7 @@ De applicatie kent drie manieren om gestart te worden, elk met een eigen doel:
 
 ### **7.3.2. Testen als Integraal Onderdeel**
 * **Unit Tests per Plugin:** Elke plugin-map krijgt een `tests/test_worker.py`. Deze test laadt een stukje voorbeeld-data, draait de `worker.py` erop, en valideert of de output (bv. de nieuwe kolom of de `Signal` DTO) correct is. Dit gebeurt volledig geïsoleerd.
-* **Integratietests:** Testen de samenwerking tussen de `StrategyOrchestrator` en de `Assembly`-componenten.
+* **Integratietests:** Testen de samenwerking tussen de service laag componenten en de `Assembly`-componenten.
 * **End-to-End Tests:** Een klein aantal tests die via `run_backtest_cli.py` een volledige backtest draaien op een vaste dataset en controleren of het eindresultaat (de PnL) exact overeenkomt met een vooraf berekende waarde.
 
 ### **7.3.3. Gelaagde Logging & Debugging**
@@ -924,9 +922,9 @@ Dit document beschrijft de architectuur en de rol van de "Meta Workflows". Dit z
 ---
 ## 8.1. Concept: De Orchestrator als Werknemer
 
-De `StrategyOrchestrator` is de motor die in staat is om **één enkele** strategie-configuratie uit te voeren. Meta Workflows zijn services in de `Service`-laag die deze motor herhaaldelijk en systematisch aanroepen om complexe, kwantitatieve vragen te beantwoorden.
+De run levenscyclus (aangestuurd door componenten als de `PortfolioSupervisor`, `RunOrchestrator` en `StrategyOperator`) is de motor die in staat is om **één enkele** strategie-configuratie uit te voeren. Meta Workflows zijn services in de `Service`-laag die deze motor herhaaldelijk en systematisch aanroepen om complexe, kwantitatieve vragen te beantwoorden.
 
-Ze fungeren als "onderzoekleiders" die de `StrategyOrchestrator` als een werknemer behandelen, en leunen zwaar op de `ParallelRunService` om duizenden backtests efficiënt en parallel uit te voeren. Waar optimalisatie in V1 een ad-hoc script was, wordt het in V2 een **"eerste klas burger"** van de architectuur.
+Ze fungeren als "onderzoekleiders" die de `StrategyOperator` als een werknemer behandelen, en leunen zwaar op de `ParallelRunService` om duizenden backtests efficiënt en parallel uit te voeren. Waar optimalisatie in V1 een ad-hoc script was, wordt het in V2 een **"eerste klas burger"** van de architectuur.
 
 ---
 ## 8.2. De `OptimizationService` (Het Onderzoekslab)
@@ -945,7 +943,7 @@ Ze fungeren als "onderzoekleiders" die de `StrategyOrchestrator` als een werknem
 
 3.  **Executie (Het Robotleger):**
     * De `ParallelRunService` start een pool van workers (één per CPU-kern).
-    * Elke worker ontvangt één configuratie, start een `StrategyOrchestrator` en voert een volledige backtest uit.
+    * Elke worker ontvangt één configuratie, initieert een volledige, opzichzelfstaande run levenscyclus en voert een volledige backtest uit.
 
 4.  **Output (De Analyse):**
     * De `OptimizationService` verzamelt alle `BacktestResult`-objecten.
@@ -984,7 +982,7 @@ Deze service is een cruciale, herbruikbare `Backend`-component. Zowel de `Optimi
 
 ---
 
-# 9_CODING_STANDAARDS.md
+# 9_CODING_STANDAARDS_DESIGN_PRINCIPLES.md
 
 # 9. Coding Standaarden
 
@@ -1037,6 +1035,54 @@ Elk bestand, elke klasse en elke functie moet een duidelijke docstring hebben.
         return df
     ```
 
+### **9.1.3. Naamgevingsconventies**
+Naast de algemene [PEP 8]-richtlijnen hanteren we een aantal strikte, aanvullende conventies om de leesbaarheid en de architectonische zuiverheid van de code te vergroten.
+
+* **Interfaces (Contracten):**
+
+  * **Principe:** Elke abstracte klasse (`ABC`) of Protocol die een contract definieert, moet worden voorafgegaan door een hoofdletter `I`.
+
+  * **Doel:** Dit maakt een onmiddellijk en ondubbelzinnig onderscheid tussen een abstract contract en een concrete implementatie. Het dwingt het "Dependency Inversion Principle" af door voor ontwikkelaars visueel te maken wanneer ze tegen een abstractie programmeren.
+
+  * **Voorbeeld:**
+
+        ```Python
+        # Het contract (de abstractie)
+        class IAPIConnector(Protocol):
+            ...
+
+        # De concrete implementatie
+        class KrakenAPIConnector(IAPIConnector):
+            ...
+        ```
+
+* **Klassen, Functies en Variabelen:**
+
+  * **We volgen strikt de [PEP 8]-standaard:**
+
+   `PascalCase` voor alle klassen (bv. `StrategyOperator`, `DataPersistor`).
+
+   `snake_case` voor alle functies, methodes, variabelen en modules (bv. `get_historical_trades`, `_prepare_components`).
+
+* **Interne Attributen en Methodes:**
+
+  * **Principe:** Attributen of methodes die niet bedoeld zijn voor gebruik buiten de klasse (beschouwd als "private" of "protected"), moeten worden voorafgegaan door een enkele underscore (_).
+
+  * **Doel:** Dit communiceert duidelijk de publieke API van een klasse en helpt onbedoelde afhankelijkheden van interne implementatiedetails te voorkomen.
+
+  * **Voorbeeld:**
+
+        ```Python
+        class StrategyOperator:
+            def __init__(self):
+                self._app_config = ... # Intern, wordt niet van buitenaf benaderd
+
+            def run(self): # Publieke methode
+                self._prepare_components() # Interne hulpmethode
+
+            def _prepare_components(self):
+                ...
+        ```
 ---
 ## 9.2. Contract-Gedreven Ontwikkeling
 
@@ -1068,12 +1114,114 @@ Elk bestand, elke klasse en elke functie moet een duidelijke docstring hebben.
 ## 9.5. Overige Standaarden
 
 * **Internationalisatie (i18n):**
-    * **Principe:** Alle user-facing strings (labels in de UI, rapportages, log-berichten voor de gebruiker) moeten via een internationalisatie-laag lopen, niet hardcoded in de code staan.
-    * **Implementatie:** Een centrale `Translator`-klasse laadt `YAML`-bestanden uit de `/locales` map. Code gebruikt vertaalsleutels (bv. `log.backtest.complete`).
-    * **Interactie met Logger:** De `Translator` wordt één keer geïnitialiseerd en geïnjecteerd in de `LogFormatter`. De formatter is de enige component binnen het logsysteem die sleutels vertaalt naar leesbare berichten. Componenten die direct output genereren (zoals `Presenters`) krijgen de `Translator` ook apart geïnjecteerd.
+    * **Principe:** *Alle* tekst die direct of indirect aan een gebruiker kan worden getoond, moet via de internationalisatie-laag lopen. Hardgecodeerde, gebruikersgerichte strings in de Python-code zijn niet toegestaan.
+    * **Implementatie:** Een centrale `Translator`-klasse laadt `YAML`-bestanden uit de `/locales` map. Code gebruikt vertaalsleutels in "dot-notation" (bv. `log.backtest.complete`).
+    * **Scope van de Regel:** Deze regel is van toepassing op, maar niet beperkt tot, de volgende onderdelen:
+      1. * **Log Berichten:** Alle log-berichten die bedoeld zijn om de gebruiker te informeren over de voortgang of status van de applicatie (voornamelijk [INFO]-niveau en hoger). Foutmeldingen voor ontwikkelaars ([DEBUG]-niveau) mogen wel hardcoded zijn.
+        **Correct:** `logger.info('run.starting', pair=pair_name)`
+        **Incorrect:** `logger.info(f'Starting run for {pair_name}...')`
+      2. * **ConfigPydantic Veldbeschrijvingen:** Alle `description` velden binnen Pydantic-modellen (DTO's, configuratie-schema's). Deze beschrijvingen kunnen direct in de UI of in documentatie worden getoond.
+        **Correct:** `equity: float = Field(..., description="portfolio_state.equity.desc")`
+        **Incorrect:** `equity: float = Field(..., description="The total current value...")`
+      3. * **Plugin Manifesten:** Alle beschrijvende velden in een plugin_manifest.yaml, zoals description en display_name. De PluginQueryService moet deze velden door de Translator halen voordat ze naar de frontend worden gestuurd.
+    * **Interactie met Logger:** De `Translator` wordt één keer geïnitialiseerd en geïnjecteerd in de `LogFormatter`. De formatter is de enige component binnen het logsysteem die sleutels vertaalt naar leesbare berichten. Componenten die direct output genereren (zoals UI `Presenters`) krijgen de `Translator` ook apart geïnjecteerd.
 
-* **Configuratie Formaat:** `YAML` is de standaard voor alle door mensen geschreven configuratie. `JSON` wordt gebruikt voor machine-naar-machine data-uitwisseling.
+### **9.5.1. Structuur van i18n Dotted Labels**
+Om de `locales/*.yaml` bestanden georganiseerd en onderhoudbaar te houden, hanteren we een strikte, hiërarchische structuur voor alle vertaalsleutels. De structuur volgt over het algemeen het pad van de component of het datamodel waar de tekst wordt gebruikt.
 
+  * **Principe:** component_of_laag.specifieke_context.naam_van_de_tekst
+
+  **Voorbeelden van de Structuur:**
+    1. **Log Berichten:**
+    De sleutel begint met de naam van de module of de belangrijkste klasse waarin de log wordt aangeroepen.
+
+    **Structuur:** component_name.actie_of_gebeurtenis
+
+    **Voorbeelden:**
+
+    ```YAML
+    # Voor backend/assembly/plugin_registry.py
+    plugin_registry:
+    scan_start: "Scanning for plugins in '{path}'..."
+    scan_complete: "Scan complete. Found {count} valid plugins."
+
+    # Voor services/strategy_operator.py
+    strategy_operator:
+    run_start: "StrategyOperator run starting..."
+    critical_event: "Critical event detected: {event_type}"
+    Pydantic Veldbeschrijvingen (description):
+
+    De sleutel weerspiegelt het pad naar het veld binnen het DTO of schema. De sleutel eindigt altijd op .desc om aan te geven dat het een beschrijving is.
+    ```  
+
+    **Structuur:** schema_naam.veld_naam.desc
+
+    **Voorbeelden:**
+
+    ```YAML
+    # Voor backend/dtos/portfolio_state.py
+    portfolio_state:
+    equity:
+        desc: "The total current value of the portfolio."
+    available_cash:
+        desc: "The amount of cash available for new positions."
+
+    # Voor een plugin's schema.py
+    ema_detector_params:
+    period:
+        desc: "The lookback period for the EMA calculation."
+    Plugin Manifesten (plugin_manifest.yaml):
+
+    Voor de beschrijvende velden van een plugin gebruiken we een structuur die de plugin uniek identificeert.
+    ```
+
+    **Structuur:** plugins.plugin_naam.veld_naam
+
+    **Voorbeelden:**
+
+    ```YAML
+    plugins:
+    ema_detector:
+        display_name: "EMA Detector"
+        description: "Calculates and adds an Exponential Moving Average."
+    fvg_entry_detector:
+        display_name: "FVG Entry Detector"
+        description: "Detects a Fair Value Gap after a Market Structure Shift."
+
+    * **Configuratie Formaat:** `YAML` is de standaard voor alle door mensen geschreven configuratie. `JSON` wordt gebruikt voor machine-naar-machine data-uitwisseling.
+    ```
+
+---
+## 9.6. Design Principles & Kernconcepten
+
+De architectuur is gebouwd op de **SOLID**-principes en een aantal kern-ontwerppatronen die de vier kernprincipes (Plugin First, Scheiding van Zorgen, Configuratie-gedreven, Contract-gedreven) tot leven brengen.
+
+### **De Synergie: Configuratie- & Contract-gedreven Executie**
+
+Het meest krachtige concept van V2 is de combinatie van configuratie- en contract-gedreven werken. De code is de motor; **de configuratie is de bestuurder, en de contracten zijn de verkeersregels die zorgen dat de bestuurder binnen de lijntjes blijft.**
+
+* **Configuratie-gedreven:** De *volledige samenstelling* van een strategie (welke plugins, in welke volgorde, met welke parameters) wordt gedefinieerd in een `YAML`-bestand. Dit maakt het mogelijk om strategieën drastisch te wijzigen zonder één regel code aan te passen.
+
+* **Contract-gedreven:** Elk stukje configuratie en data wordt gevalideerd door een strikt **Pydantic-schema**. Dit werkt op twee niveaus:
+  1.  **Algemene Schema's:** De hoofdstructuur van een `run_blueprint.yaml` wordt gevalideerd door een algemeen `app_schema.py`. Dit contract dwingt af dat er bijvoorbeeld altijd een `environment` en een `strategy_pipeline` sectie aanwezig is.
+  2.  **Plugin-Specifieke Schema's:** De parameters voor een specifieke plugin (bv. de `length` van een `EMA`-indicator) worden gevalideerd door de Pydantic-klasse in de `schema.py` van *die ene plugin*.
+
+Bij het starten van een run, leest de applicatie het `YAML`-bestand en bouwt een gevalideerd `AppConfig`-object. Als een parameter ontbreekt, een verkeerd type heeft, of een plugin wordt aangeroepen die niet bestaat, faalt de applicatie *onmiddellijk* met een duidelijke foutmelding. Dit voorkomt onvoorspelbare runtime-fouten en maakt het systeem extreem robuust en voorspelbaar.
+
+### **SOLID in de Praktijk**
+* **SRP (Single Responsibility Principle):** Elke klasse heeft één duidelijke taak.
+  * ***V2 voorbeeld:*** Een `FVGEntryDetector`-plugin detecteert alleen Fair Value Gaps. Het bepalen van de positiegrootte of het analyseren van de marktstructuur gebeurt in aparte `position_sizer`- of context-plugins.
+
+* **OCP (Open/Closed Principle):** Uitbreidbaar zonder bestaande code te wijzigen.
+    * ***V2 voorbeeld:*** Wil je een nieuwe exit-strategie toevoegen? Je maakt simpelweg een nieuwe `exit_planner`-plugin; de `StrategyEngine` hoeft hiervoor niet aangepast te worden.
+
+* **DIP (Dependency Inversion Principle):** Hoge-level modules hangen af van abstracties.
+    * ***V2 voorbeeld:*** De `BacktestService` (Service-laag) hangt af van de `BaseEnvironment`-interface, niet van de specifieke `BacktestEnvironment`. Hierdoor zijn de services volledig herbruikbaar in elke context.
+
+### **Kernpatronen**
+* **Factory Pattern:** Het `Assembly Team` (met `WorkerBuilder`) centraliseert het ontdekken, valideren en creëren van alle plugins.
+* **Strategy Pattern:** De "Plugin First"-benadering is de puurste vorm van dit patroon. Elke plugin is een uitwisselbare strategie voor een specifieke taak.
+* **DTO’s (Data Transfer Objects):** Pydantic-modellen (`Signal`, `TradePlan`, `ClosedTrade`) zorgen voor een voorspelbare en type-veilige dataflow tussen alle componenten.
 
 ---
 
@@ -1083,7 +1231,7 @@ Elk bestand, elke klasse en elke functie moet een duidelijke docstring hebben.
 
 Dit document dient als een uitgebreid naslagwerk voor alle kerntbegrippen, componenten en patronen binnen de S1mpleTrader V2-architectuur.
 
-**6-Fasen Trechter:** De fundamentele, sequentiële workflow die elk handelsidee valideert (`Regime` -> `Context` -> `Signaal` -> `Verfijning` -> `Constructie` -> `Overlay`).
+**9-Fasen Trechter/pijplijn:** De fundamentele, sequentiële en procedurele workflow binnen de ContextBuilder (fase 1-2) en StrategyEngine (fase 3-9).die een handelsidee stapsgewijs valideert en verrijkt, van `RegimeContext` tot `CriticalEventDetection`.
 **Assembly Team:** De conceptuele naam voor de verzameling backend-componenten (`PluginRegistry`, `WorkerBuilder`, `ContextPipelineRunner`) die samen de technische orkestratie van plugins verzorgen.
 **Atomic Writes (Journaling):** Het robuuste state-saving mechanisme dat dataverlies bij een crash voorkomt door eerst naar een tijdelijk `.journal`-bestand te schrijven.
 **Backend-for-Frontend (BFF):** Een gespecialiseerde API-laag die data levert in het exacte formaat dat de Web UI nodig heeft, wat de frontend-code versimpelt.
@@ -1092,7 +1240,8 @@ Dit document dient als een uitgebreid naslagwerk voor alle kerntbegrippen, compo
 **Clock:** De component binnen een `ExecutionEnvironment` die de "hartslag" van het systeem genereert, ofwel gesimuleerd (voor backtests) of real-time.
 **Configuratie-gedreven:** Het kernprincipe dat het gedrag van de applicatie wordt bestuurd door `YAML`-configuratiebestanden, niet door hardgecodeerde logica.
 **Contract-gedreven:** Het kernprincipe dat alle data-uitwisseling wordt gevalideerd door strikte schema's (Pydantic voor de backend, TypeScript voor de frontend).
-**Context Pipeline:** De door de `ContextPipelineRunner` beheerde executie van `ContextWorker`-plugins (Fase 1 & 2), die de ruwe marktdata verrijkt tot een `enriched_df`.
+**ContextOrchestrator:** Het "stateful hart" van een actieve run in de Service-laag. Het beheert de "levende" `TradingContext` door marktdata te verrijken met de Fase 1-2 `ContextWorker`-plugins en publiceert een `ContextReady`-event voor elke tick.
+**ContextBuilder:** De door de `ContextPipelineRunner` beheerde executie van `ContextWorker`-plugins (Fase 1 & 2), die de ruwe marktdata verrijkt tot een `enriched_df`.
 **ContextWorker:** Een type plugin dat als doel heeft data of context toe te voegen aan de `DataFrame` (bv. het berekenen van een indicator zoals RSI of ADX).
 **Correlation ID:** Een unieke identifier (UUID) die wordt toegewezen aan een `Signal` DTO om de volledige levenscyclus van een trade traceerbaar te maken door alle logs heen.
 **DTO (Data Transfer Object):** Een Pydantic `BaseModel` (bv. `Signal`, `Trade`, `ClosedTrade`) dat dient als een strikt contract voor data die tussen componenten wordt doorgegeven.
@@ -1103,19 +1252,22 @@ Dit document dient als een uitgebreid naslagwerk voor alle kerntbegrippen, compo
 **Feedback Loop (Technisch):** De real-time feedback *binnen* een run, waarbij de staat van het `Portfolio` wordt gebruikt als input voor de `Portfolio Overlay`-plugins.
 **Heartbeat:** Een mechanisme in de `LiveDataSource` om de gezondheid van een live dataverbinding te monitoren door te controleren op periodieke signalen van de server.
 **Manifest (`plugin_manifest.yaml`):** De "ID-kaart" van een plugin. Dit `YAML`-bestand bevat alle metadata die de `PluginRegistry` nodig heeft om de plugin te ontdekken en te begrijpen.
-**Meta Workflows:** Hoog-niveau services (`OptimizationService`, `VariantTestService`) die de `StrategyOrchestrator` herhaaldelijk aanroepen voor complexe analyses.
+**Meta Workflows:** Hoog-niveau services (`OptimizationService`, `VariantTestService`) die de `StrategyOperator` herhaaldelijk aanroepen voor complexe analyses.
 **OptimizationService:** De service die een grote parameterruimte systematisch doorzoekt door duizenden backtests parallel uit te voeren.
 **ParallelRunService:** Een herbruikbare backend-component die het efficiënt managen van een `multiprocessing`-pool voor parallelle backtests verzorgt.
 **Plugin:** De fundamentele, zelfstandige en testbare eenheid van logica in het systeem, bestaande uit een `manifest`, `worker` en `schema`.
 **PluginRegistry:** De specialistische klasse binnen het `Assembly Team` die verantwoordelijk is voor het scannen van de `plugins/`-map en het valideren van alle manifesten.
 **Portfolio:** De backend-component die fungeert als het "domme grootboek" en de financiële staat van het systeem (kapitaal, posities, orders) bijhoudt.
+**PortfolioSupervisor:** De "operationeel manager" in de Service-laag. Dit is de eigenaar van de levenscyclus van alle actieve strategieën en agenten en de hoogste risicomanager die handelsvoorstellen goed- of afkeurt.
 **Pydantic:** De Python-bibliotheek die wordt gebruikt voor datavalidatie en het definiëren van de data-contracten via `BaseModel`-klassen.
+**RunOrchestrator:** Een lichtgewicht "facilitator" in de Service-laag, geïnstantieerd per strategie. Zijn enige taak is het opzetten van de benodigde specialisten voor één run en het publiceren van de initiële `RunStarted`-event.
 **Schema (`schema.py`):** Het bestand binnen een plugin dat het Pydantic-model bevat dat de configuratieparameters van die specifieke plugin definieert en valideert.
 **State Reconciliation:** Het cruciale proces na een netwerk-reconnect waarbij de interne `Portfolio`-staat wordt gesynchroniseerd met de 'single source of truth': de exchange.
 **Strategy Builder:** De "werkruimte" in de Web UI waar een gebruiker visueel een strategie kan samenstellen door plugins te selecteren en te configureren.
-**StrategyOrchestrator:** De "regisseur" in de Service-laag. Deze component is verantwoordelijk voor het uitvoeren van de 6-fasen trechter voor één enkele strategie-configuratie.
+**StrategyEngine:** De stateless "analytische motor" in de Backend-laag. Voert het analytische gedeelte van de 9-fasen trechter uit (Fase 3-9) in reactie op een aanroep en produceert een `EngineCycleResult` (een analytisch voorstel) zonder kennis van de EventBus.
+**StrategyOperator:** Een "analytische specialist" en schone brug in de Service-laag. Het abonneert zich op ContextReady, roept procedureel de StrategyEngine (uit de Backend-laag) aan, en publiceert het resultaat als een StrategyProposalReady-event.
 **StrategyWorker:** Een type plugin dat wordt gebruikt in de besluitvormingsfases (3-6) van de trechter en die opereert op DTO's in plaats van de `DataFrame`.
-**Supervisor Model:** Het crash-recovery mechanisme voor live trading, waarbij een lichtgewicht "watchdog"-proces de `StrategyOrchestrator` monitort en herstart.
+**Supervisor Model:** Het crash-recovery mechanisme voor live trading, waarbij een lichtgewicht "watchdog"-proces de `StrategyOperator` monitort en herstart.
 **Trade Explorer:** De "werkruimte" in de Web UI die een diepgaande visuele analyse van de trades en de context van een enkele backtest-run mogelijk maakt.
 **TypeScript:** De programmeertaal die voor de frontend wordt gebruikt om een type-veilig contract met de Pydantic-backend te garanderen via automatisch gegenereerde interfaces.
 **VariantTestService:** De service die een klein, gedefinieerd aantal strategie-varianten "head-to-head" met elkaar vergelijkt onder identieke marktomstandigheden.
@@ -1129,11 +1281,11 @@ Dit document dient als een uitgebreid naslagwerk voor alle kerntbegrippen, compo
 Bijlage B: Openstaande Vraagstukken & Onderzoekspunten
 Dit document bevat een lijst van bekende "onbekenden" en complexe vraagstukken die tijdens de detailimplementatie van de V2-architectuur verder onderzocht en opgelost moeten worden. Ze worden hier vastgelegd om te verzekeren dat ze niet vergeten worden.
 
-B.1. State Management voor Stateful Plugins
+B.1. State Management voor Stateful Plugins (Status: Gedeeltelijk ontworpen)
 
 Vraagstuk: Hoe persisteren, beheren en herstellen we de staat van stateful plugins (bv. een Grid Trading-strategie die zijn openstaande grid-levels moet onthouden) op een robuuste manier, met name na een applicatiecrash?
 
-Zie ook: docs/system/6_RESILIENCE_AND_OPERATIONS.md
+Zie ook: docs/system/6_RESILIENCE_AND_OPERATIONS.md (paragraaf 6.1.1)
 
 B.2. Data Synchronisatie in Live Omgevingen
 
@@ -1143,11 +1295,112 @@ B.3. Performance en Geheugengebruik
 
 Vraagstuk: Wat is de meest efficiënte strategie voor het beheren van geheugen bij grootschalige Multi-Time-Frame (MTF) analyses, met name wanneer dit over meerdere assets parallel gebeurt? Hoe voorkomen we onnodige duplicatie van data in het geheugen?
 
-B.4. Debugging en Traceability
+B.4. Debugging en Traceability (Status: Ontworpen)
 
 Vraagstuk: Welke tools of modi moeten we ontwikkelen om het debuggen van complexe, parallelle runs te faciliteren? Hoe kan een ontwikkelaar eenvoudig de volledige levenscyclus van één specifieke trade volgen (traceability) door alle lagen en plugins heen?
 
-Zie ook: Het concept van een Correlation ID in docs/development/KanBan/product_backlog.csv.
+Zie ook: docs/system/7_DEVELOPMENT_STRATEGY.md (paragraaf 9.3.2)
+
+---
+
+# D_BIJLAGE_PLUGIN_IDE.md
+
+# **Bijlage D: De Plugin Development Experience & IDE**
+
+**Versie:** 1.0 · **Status:** Concept
+
+Dit document beschrijft de architectuur en de gebruikerservaring (UX) voor de web-based Integrated Development Environment (IDE) voor plugins binnen S1mpleTrader V2. Het doel van deze IDE is om het ontwikkelen van plugins te transformeren van een puur technische taak naar een laagdrempelige, creatieve en domein-specifieke functie voor kwantitatieve analisten ("quants").
+
+---
+
+## **F.1. Kernfilosofie: Abstractie & Glijdende Schaal**
+
+De fundamentele uitdaging van elk plugin-systeem is de balans tussen gebruiksgemak en de kracht van code. Om dit op te lossen, hanteren we twee kernprincipes:
+
+1. **Abstractie van Complexiteit**: De quant wordt volledig ontlast van de onderliggende technische en beveiligingscomplexiteit van het platform. Concepten als `Protocols`, `sandboxing`, `Pydantic-validatie` en `code signing` zijn de verantwoordelijkheid van het platform en worden onzichtbaar op de achtergrond afgehandeld.  
+2. **Glijdende Schaal van Abstractie**: De IDE is geen "one-size-fits-all" oplossing. Het biedt een gelaagd model met verschillende abstractieniveaus. De quant kan zelf kiezen hoe diep hij in de code wil duiken, afhankelijk van zijn vaardigheden en de complexiteit van de strategie die hij wil bouwen.
+
+---
+
+## **F.2. De MVP: De "Slimme Boilerplate Generator"**
+
+De eerste, meest cruciale stap is het bouwen van een Minimum Viable Product (MVP) dat het grootste pijnpunt voor de ontwikkelaar oplost: het handmatig aanmaken van de repetitieve boilerplate-code.
+
+### **F.2.1. De "Nieuwe Plugin" Wizard**
+
+Het hart van de MVP is een eenvoudig, gebruiksvriendelijk formulier in de Web IDE dat de ontwikkelaar door de creatie van een nieuwe plugin leidt. De focus ligt op de *intentie* van de plugin, niet op de technische implementatie.
+
+**Velden in het Formulier:**
+
+* **Display Naam**  
+  * **UI Element**: Tekstveld.  
+  * **Doel**: De mens-leesbare naam van de plugin zoals deze overal in de UI (strategie-bouwer, rapporten, grafieken) zal verschijnen.  
+  * **Voorbeeld**: `Snelle EMA Crossover`  
+* **Technische Naam**  
+  * **UI Element**: *Read-only* tekstveld dat dynamisch wordt bijgewerkt.  
+  * **Doel**: De `snake_case` identifier die intern wordt gebruikt voor map- en bestandsnamen. Dit veld wordt automatisch afgeleid van de Display Naam, waardoor de quant `snake_case` niet hoeft te kennen.  
+  * **Voorbeeld**: `snelle_ema_crossover`  
+* **Plugin Type**  
+  * **UI Element**: Dropdown-menu.  
+  * **Doel**: Bepaalt de rol van de plugin in de strategie-pijplijn.  
+  * **Abstractie**: De opties in de dropdown zijn mensvriendelijke, vertaalde beschrijvingen (bv. "Signaal Generator (De Verkenner)"), niet de technische `enum`\-waarden (`signal_generator`). Het platform vertaalt de keuze van de gebruiker op de achtergrond naar de juiste technische waarde.  
+* **Beschrijving & Auteur (Optioneel)**  
+  * **UI Element**: Tekstvelden.  
+  * **Doel**: Verrijken de `plugin_manifest.yaml` en de docstrings direct bij de creatie.
+
+### **F.2.2. De Template-gedreven `PluginCreator`**
+
+Op de backend wordt een `PluginCreator` in de `assembly` module verantwoordelijk voor het genereren van de bestanden. Deze service gebruikt een set van template-bestanden (`.tpl`) die de volledige, correcte en linter-vriendelijke boilerplate bevatten, inclusief:
+
+* Een `plugin_manifest.yaml` met een standaard restrictief `permissions` blok.  
+* Een `worker.py` met de correcte klasse-definitie en interface.  
+* Lege `schema.py` en `context_schema.py` bestanden.  
+* Een `tests/test_worker.py` met een placeholder-test.
+
+Voor de MVP stopt de verantwoordelijkheid van de IDE hier. De ontwikkelaar opent de gegenereerde bestanden in zijn favoriete lokale IDE (bv. VS Code) om de daadwerkelijke logica te schrijven en de tests uit te voeren via de command-line.
+
+---
+
+## **F.3. De Toekomstvisie: Een Gelaagde Web IDE**
+
+Na de MVP wordt de Web IDE uitgebreid tot een volwaardige ontwikkelomgeving door de volgende drie lagen van abstractie aan te bieden voor het bewerken van de `worker.py` en `test_worker.py`.
+
+### **Laag 1: De "No-Code" Strategie Bouwer**
+
+* **Concept**: Het bouwen van een strategie door logische "LEGO-blokjes" op een visueel canvas met elkaar te verbinden.  
+* **Interface**: Een drag-and-drop interface met een bibliotheek van door het platform aangeboden functies (Indicatoren, Vergelijkingen, Signaal Acties).  
+* **Voorbeeld**: `[EMA(10)]` \-\> `[Kruist Boven]` \-\> `[EMA(50)]` \-\> `[Genereer Long Signaal]`.  
+* **Testen**: Volledig geautomatiseerd via een scenario-bouwer ("Gegeven *dit* scenario, verwacht ik *deze* uitkomst").  
+* **Doelgroep**: Quants zonder programmeerervaring; snelle prototyping van veelvoorkomende strategieën.
+
+### **Laag 2: De "Low-Code" Scripting Helper**
+
+* **Concept**: Een "Mad Libs" benadering waarbij de ontwikkelaar alleen de kernlogica invult in een gestructureerd script-venster, terwijl het platform de complexiteit van de S1mpleTrader-architectuur (DTO's, interfaces) volledig abstraheert.  
+* **Interface**: Een formulier-achtige editor die de ontwikkelaar begeleidt. Indicatoren worden aangevraagd via een UI, en de kernlogica wordt geschreven in een klein Python-script dat gebruik maakt van simpele, door het platform aangeboden functies zoals `generate_signal()`.  
+* **Testen**: Begeleid via een "Test Data Generator" UI en een "Assertie Helper" formulier.  
+* **Doelgroep**: De gemiddelde quant die basis Python kent en zich puur wil focussen op de `if-then` logica van zijn strategie.
+
+### **Laag 3: De "Pro-Code" Embedded IDE**
+
+* **Concept**: Een volwaardige, in de browser geïntegreerde code-editor (zoals de Monaco Editor van VS Code) voor maximale vrijheid.  
+* **Interface**: Een complete, in-browser IDE met syntax highlighting, IntelliSense voor S1mpleTrader-specifieke code, real-time linting, en de mogelijkheid om de `worker.py` en `test_worker.py` bestanden direct te bewerken.  
+* **Testen**: Handmatig schrijven van `pytest` code in een apart tabblad van de editor.  
+* **Doelgroep**: Ervaren ontwikkelaars of quants die zeer complexe, unieke strategieën willen bouwen die niet passen in de gestructureerde mallen van de hogere lagen.
+
+---
+
+## **F.4. Architectuur voor Plugin Internationalisatie (i18n)**
+
+Om een uitwisselbaar ecosysteem te ondersteunen, moet de IDE de creatie van meertalige plugins faciliteren.
+
+* **Structuur**: Elke plugin krijgt een eigen `locales/` map met `en.yaml`, `nl.yaml`, etc.  
+* **Abstractie in de IDE**:  
+  * De wizard voor het aanmaken van parameters (`schema.py`) en visualisaties (`context_schema.py`) zal geen code tonen, maar UI-formulieren.  
+  * Voor elke parameter of visueel element (bv. een lijn in een grafiek) zal de UI, naast de technische configuratie, tekstvelden aanbieden voor "Display Label" en "Hulptekst".  
+  * Op de achtergrond schrijft de `PluginEditorService` deze teksten niet hardcoded weg, maar genereert het de correcte `key-value` paren in de respectievelijke `locales/*.yaml` bestanden.  
+* **Resultaat**: De quant vult simpele tekstvelden in, en het platform zorgt automatisch voor de volledige i18n-infrastructuur. Dit maakt het voor hem triviaal om zijn plugin meertalig te maken, wat essentieel is voor de bruikbaarheid binnen de bredere S1mpleTrader community.
+
+
 
 ---
 

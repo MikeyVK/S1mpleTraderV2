@@ -27,3 +27,13 @@ data_coverage:
     desc: "The timestamp of the latest trade in the data block."
   trade_count:
     desc: "The total number of trades within this data block."
+
+history_build_request:
+  pair:
+    desc: "The trading pair to build the historical archive for (e.g., 'XRP/EUR')."
+  start_date:
+    desc: "The earliest date (inclusive) to fetch historical data for."
+
+data_sync_request:
+  pair:
+    desc: "The trading pair to synchronize the latest data for (e.g., 'BTC/EUR')."

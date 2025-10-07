@@ -106,6 +106,7 @@ pandas-stubs
 numpy
 scipy
 pyarrow
+pyarrow-stubs
 openpyxl
 
 # --- Configuration ---
@@ -208,6 +209,9 @@ __all__ = [
     "ClosedTrade",
     "TradingContext",
     "BacktestResult",
+    "DataCoverage",
+    "TradeTick",
+    # from .core
     # from .environments
     "BacktestEnvironment",
 #    "LiveEnvironment",
@@ -237,6 +241,8 @@ from .dtos import (
     ClosedTrade,
     TradingContext,
     BacktestResult,
+    DataCoverage,
+    TradeTick,
 )
 from .environments import (
     BacktestEnvironment,
@@ -360,18 +366,20 @@ class DependencyValidator:
 
             manifest, _ = plugin_data
 
+            # <<< CORRECTIE DEEL 1: Itereer over de 'requires' lijst >>>
             # Controleer de dependencies van de huidige plugin.
-            if manifest.dependencies:
-                for dep in manifest.dependencies:
+            if manifest.dependencies and manifest.dependencies.requires:
+                for dep in manifest.dependencies.requires:
                     if dep not in available_columns:
                         raise ValueError(
                             f"Dependency '{dep}' for plugin '{plugin_name}' not met. "
                             f"Available columns: {sorted(list(available_columns))}"
                         )
 
+            # <<< CORRECTIE DEEL 2: Update met de 'provides' lijst >>>
             # Voeg de output van deze plugin toe aan de set van beschikbare kolommen.
-            if manifest.provides:
-                available_columns.update(manifest.provides)
+            if manifest.dependencies and manifest.dependencies.provides:
+                available_columns.update(manifest.dependencies.provides)
 
         return True
 
@@ -454,14 +462,10 @@ class PluginCreator:
     """
 
     def __init__(self, plugins_root: Path, logger: LogEnricher):
-        """Initializes the PluginCreator.
-
-        Args:
-            plugins_root (Path): The root directory where all plugins are stored.
-            logger (LogEnricher): The logger instance, passed via dependency injection.
-        """
+        """Initializes the PluginCreator."""
         self._logger = logger
         self.plugins_root = plugins_root
+        # Het pad naar de templates is relatief aan DIT bestand
         self.template_root = Path(__file__).parent / "templates"
 
         if not self.plugins_root.is_dir():
@@ -473,15 +477,7 @@ class PluginCreator:
             raise FileNotFoundError(f"Template directory not found at: {self.template_root}")
 
     def create(self, name: str, plugin_type: str) -> bool:
-        """Creates a new plugin skeleton from templates.
-
-        Args:
-            name (str): The name of the new plugin (e.g., "my_test_plugin").
-            plugin_type (str): The type of the plugin (e.g., "signal_generator").
-
-        Returns:
-            bool: True if creation was successful, False otherwise.
-        """
+        """Creates a new plugin skeleton from templates."""
         plugin_path = self.plugins_root / plugin_type / name
         tests_path = plugin_path / "tests"
 
@@ -489,20 +485,22 @@ class PluginCreator:
             self._logger.info(f"Creating plugin '{name}' at: {plugin_path}")
             tests_path.mkdir(parents=True, exist_ok=True)
 
+            # Gecorrigeerde paden voor de template bestanden
             template_files = {
-                "manifest.yaml.tpl": "plugin_manifest.yaml",
-                "schema.py.tpl": "schema.py",
-                "worker.py.tpl": "worker.py",
-                "visualization_schema.py.tpl": "visualization_schema.py",
-                "test/test_worker.py.tpl": "tests/test_worker.py"
+                "manifest.yaml.tpl": plugin_path / "manifest.yaml",
+                "schema.py.tpl": plugin_path / "schema.py",
+                "worker.py.tpl": plugin_path / "worker.py",
+                "context_schema.py.tpl": plugin_path / "context_schema.py",
+                "test/test_worker.py.tpl": tests_path / "test_worker.py"
             }
 
-            for template_name, target_name in template_files.items():
+            for template_name, target_path in template_files.items():
                 source_path = self.template_root / template_name
-                target_path = plugin_path / target_name
+                
+                if not source_path.is_file():
+                    self._logger.error(f"Template file not found: {source_path}")
+                    raise FileNotFoundError(f"Template file not found: {source_path}")
 
-                # TODO: Implement actual template rendering (e.g., with Jinja2)
-                # For now, we are just copying the files.
                 shutil.copy(source_path, target_path)
 
             self._logger.info(f"Successfully created plugin '{name}'.")
@@ -579,16 +577,19 @@ class PluginRegistry:
                 manifest = PluginManifest(**manifest_data)
 
                 # Controleer op dubbele namen
-                if manifest.name in self._registry:
+                plugin_name = manifest.identification.name
+
+                # Controleer op dubbele namen
+                if plugin_name in self._registry:
                     self._logger.warning(
-                        f"Duplicate plugin name '{manifest.name}' found at '{manifest_path}'. "
+                        f"Duplicate plugin name '{plugin_name}' found at '{manifest_path}'. "
                         "Skipping."
                     )
                     continue
 
                 # Voeg de gevalideerde manifest toe aan de registry
                 plugin_directory = manifest_path.parent
-                self._registry[manifest.name] = (manifest, plugin_directory)
+                self._registry[plugin_name] = (manifest, plugin_directory)
 
             except yaml.YAMLError as e:
                 self._logger.warning(f"Could not parse manifest at '{manifest_path}': {e}")
@@ -1017,6 +1018,10 @@ class KrakenAPIConnectorConfig(BaseModel):
     )
 
 --- END FILE: backend/config/schemas/connectors/kraken_schema.py ---
+
+--- START FILE: backend/config/schemas/connectors/__init__.py ---
+
+--- END FILE: backend/config/schemas/connectors/__init__.py ---
 
 --- START FILE: backend/core/base_worker.py ---
 # backend/core/base_worker.py
@@ -2144,7 +2149,7 @@ class ExecutionHandler(ABC):
 --- END FILE: backend/core/interfaces/execution.py ---
 
 --- START FILE: backend/core/interfaces/persistors.py ---
-# backend/core/interfaces/persistors.py
+# In bestand: backend/core/interfaces/persistors.py
 """
 Contains the abstract contracts (Protocols) for all data persistence components.
 
@@ -2156,46 +2161,30 @@ Contains the abstract contracts (Protocols) for all data persistence components.
 """
 from typing import Protocol, List
 from backend.dtos.market.trade_tick import TradeTick
+from backend.dtos.market.data_coverage import DataCoverage
 
 class IDataPersistor(Protocol):
     """
     An interface for any component that can read from and write to a durable
     data storage.
-
-    This protocol ensures that high-level services, like the
-    `DataCollectionService`, can store and retrieve historical market data
-    without needing to know the underlying storage technology (e.g., file
-    format or database type).
     """
-
     def get_last_timestamp(self, pair: str) -> int:
         """
-        Retrieves the timestamp of the most recently stored trade for a pair.
-
-        This is crucial for the data collection process to know from which
-        point in time it should start fetching new data.
-
-        Args:
-            pair (str): The trading pair to check.
-
-        Returns:
-            The UNIX timestamp (in nanoseconds) of the last known trade,
-            or 0 if no data exists for the pair.
+        Retrieves the timestamp (in nanoseconds) of the most recently stored
+        trade for a given pair. Returns 0 if no data exists.
         """
-        ...
-
+        ... # pylint: disable=unnecessary-ellipsis
     def save_trades(self, pair: str, trades: List[TradeTick]) -> None:
         """
         Saves a list of TradeTick DTOs to the persistent storage.
-
-        The implementation should handle appending the new data to the
-        existing dataset for the given pair.
-
-        Args:
-            pair (str): The trading pair the data belongs to.
-            trades (List[TradeTick]): The list of TradeTick DTOs to be saved.
         """
-        ...
+        ... # pylint: disable=unnecessary-ellipsis
+
+    def get_data_coverage(self, pair: str) -> List[DataCoverage]:
+        """
+        Returns a list of contiguous data blocks available for a given pair.
+        """
+        ... # pylint: disable=unnecessary-ellipsis
 
 --- END FILE: backend/core/interfaces/persistors.py ---
 
@@ -2434,6 +2423,148 @@ class DataLoader:
 
 --- END FILE: backend/data/__init__.py ---
 
+--- START FILE: backend/data/persistors/parquet_persistor.py ---
+# In bestand: backend/data/persistors/parquet_persistor.py
+"""
+Contains the concrete implementation of the IDataPersistor interface using
+a partitioned Parquet dataset.
+"""
+from pathlib import Path
+from typing import Any, List, Optional
+
+import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
+
+from backend.core.interfaces.persistors import IDataPersistor
+from backend.dtos.market.data_coverage import DataCoverage
+from backend.dtos.market.trade_tick import TradeTick
+
+
+class ParquetPersistor(IDataPersistor):
+    """
+    An implementation of IDataPersistor that uses a partitioned Parquet dataset,
+    optimizing for performance and scalability with large time-series data.
+    """
+
+    def __init__(self, data_dir: Path):
+        self._data_dir = data_dir
+        self._data_dir.mkdir(parents=True, exist_ok=True)
+
+    def _get_dataset_path(self, pair: str) -> Path:
+        """Constructs the root directory path for a given trading pair's dataset."""
+        return self._data_dir / pair
+
+    def _read_data(self, pair: str) -> Optional[pd.DataFrame]:
+        """Reads a partitioned Parquet dataset for a pair into a single DataFrame."""
+        dataset_path = self._get_dataset_path(pair)
+        if not dataset_path.is_dir():
+            return None
+        try:
+            dataset = pq.ParquetDataset(dataset_path)
+            df = dataset.read().to_pandas() # type: ignore
+            return df if not df.empty else None
+        except (IOError, ValueError, pa.ArrowInvalid):
+            return None
+
+    def get_last_timestamp(self, pair: str) -> int:
+        """Efficiently retrieves the last timestamp from a partitioned dataset."""
+        dataset_path = self._get_dataset_path(pair)
+        if not dataset_path.is_dir():
+            return 0
+        try:
+            dataset = pq.ParquetDataset(dataset_path)
+            if not dataset.fragments:
+                return 0
+
+            # --- DE FIX: Gebruik de correcte API voor Parquet metadata ---
+
+            # 1. Bepaal de index van de 'timestamp' kolom in het schema.
+            try:
+                timestamp_col_index = dataset.schema.names.index('timestamp')
+            except ValueError:
+                # Kolom 'timestamp' bestaat niet in het schema.
+                return 0
+
+            timestamps: List[Any] = []
+            # 2. Itereer door de fragmenten en hun row groups.
+            for frag in dataset.fragments:
+                for i in range(frag.num_row_groups):
+                    row_group_meta = frag.metadata.row_group(i)
+                    # 3. Vraag de metadata voor de specifieke kolom op.
+                    column_meta = row_group_meta.column(timestamp_col_index)
+
+                    # 4. Controleer of statistieken bestaan en haal .max op.
+                    if column_meta.statistics and column_meta.statistics.has_max_min: # type: ignore
+                        timestamps.append(column_meta.statistics.max)
+
+            if not timestamps:
+                return 0
+
+            max_ts = max(timestamps)
+            # Converteer de waarde (die een Arrow-native type kan zijn)
+            # naar een nanoseconde integer.
+            return int(pd.Timestamp(max_ts).value)
+
+        except (IOError, ValueError, pa.ArrowInvalid, KeyError, IndexError):
+            # Vang ook een mogelijke IndexError op als de kolomindex niet gevonden wordt.
+            return 0
+
+
+    def save_trades(self, pair: str, trades: List[TradeTick]) -> None:
+        """Saves trades to a partitioned Parquet dataset by year and month."""
+        if not trades:
+            return
+
+        dataset_path = self._get_dataset_path(pair)
+
+        new_df = pd.DataFrame([trade.model_dump() for trade in trades])
+        if new_df.empty:
+            return
+
+        new_df['timestamp'] = pd.to_datetime(new_df['timestamp'], utc=True)
+        new_df['year'] = new_df['timestamp'].dt.year
+        new_df['month'] = new_df['timestamp'].dt.month
+
+        table = pa.Table.from_pandas(new_df, preserve_index=False)
+
+        pq.write_to_dataset( # type: ignore
+            table,
+            root_path=dataset_path,
+            partition_cols=['year', 'month'],
+            existing_data_behavior='overwrite_or_ignore'
+        )
+
+    def get_data_coverage(self, pair: str) -> List[DataCoverage]:
+        """Analyzes the data file and returns a list of contiguous data blocks."""
+        df = self._read_data(pair)
+        if df is None:
+            return []
+
+        df.sort_values(by='timestamp', inplace=True)
+
+        gap_threshold = pd.Timedelta(seconds=60)
+        time_diffs = df['timestamp'].diff()
+        gap_indices = df.index[time_diffs > gap_threshold].tolist()
+
+        block_starts = df.index[[0] + gap_indices].tolist()
+        block_ends = df.index[[i - 1 for i in gap_indices] + [len(df) - 1]].tolist()
+
+        coverage_blocks: List[DataCoverage] = []
+        for start_idx, end_idx in zip(block_starts, block_ends):
+            block_df = df.loc[start_idx:end_idx]
+
+            coverage_blocks.append(
+                DataCoverage(
+                    start_time=block_df['timestamp'].iloc[0],
+                    end_time=block_df['timestamp'].iloc[-1],
+                    trade_count=len(block_df)
+                )
+            )
+        return coverage_blocks
+
+--- END FILE: backend/data/persistors/parquet_persistor.py ---
+
 --- START FILE: backend/dtos/__init__.py ---
 # backend/dtos/__init__.py
 """
@@ -2457,6 +2588,7 @@ __all__ = [
     "ExecutionDirective",
     # market
     "TradeTick",
+    "DataCoverage",
     # state
     "PortfolioState",
     "TradingContext",
@@ -2602,6 +2734,45 @@ from .critical_event import CriticalEvent
 
 --- END FILE: backend/dtos/execution/__init__.py ---
 
+--- START FILE: backend/dtos/market/data_coverage.py ---
+# In bestand: backend/dtos/market/data_coverage.py
+"""
+Contains the DTO for representing a contiguous block of historical data.
+
+@layer: Backend (DTO/Market)
+@dependencies: [pydantic, pandas]
+@responsibilities:
+    - Defines the standardized data structure for reporting on the availability
+      of historical market data in the persistence layer.
+"""
+from pydantic import BaseModel, ConfigDict, Field
+import pandas as pd
+
+class DataCoverage(BaseModel):
+    """
+    A data contract representing a single, contiguous block of historical data.
+
+    This DTO is returned by the IDataPersistor's get_data_coverage method to
+    provide a clear summary of the available data, which can be used to
+    validate backtest ranges or identify gaps in the data history.
+    """
+    start_time: pd.Timestamp = Field(
+        ...,
+        description="data_coverage.start_time.desc"
+    )
+    end_time: pd.Timestamp = Field(
+        ...,
+        description="data_coverage.end_time.desc"
+    )
+    trade_count: int = Field(
+        ...,
+        description="data_coverage.trade_count.desc"
+    )
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+--- END FILE: backend/dtos/market/data_coverage.py ---
+
 --- START FILE: backend/dtos/market/trade_tick.py ---
 # backend/dtos/common.py
 """
@@ -2656,9 +2827,11 @@ class TradeTick(BaseModel):
 --- START FILE: backend/dtos/market/__init__.py ---
 __all__ = [
     "TradeTick",
+    "DataCoverage",
 ]
 
 from .trade_tick import TradeTick
+from .data_coverage import DataCoverage
 
 --- END FILE: backend/dtos/market/__init__.py ---
 
@@ -3037,6 +3210,19 @@ class EngineCycleResult(BaseModel):
 
 --- END FILE: backend/dtos/results/engine_cycle_result.py ---
 
+--- START FILE: backend/dtos/results/__init__.py ---
+__all__ = [
+    "ClosedTrade",
+    "EngineCycleResult",
+    "BacktestResult",
+]
+
+from .closed_trade import ClosedTrade
+from .engine_cycle_result import EngineCycleResult
+from .backtest_result import BacktestResult
+
+--- END FILE: backend/dtos/results/__init__.py ---
+
 --- START FILE: backend/dtos/state/portfolio_state.py ---
 # backend/dtos/portfolio_state.py
 """
@@ -3136,49 +3322,81 @@ Contains the data class for the TradingContext.
     - Defines a standardized data structure to hold all shared, contextual
       information available during a single run.
 """
+
 from __future__ import annotations
-from typing import Dict, Any, TYPE_CHECKING
-from pydantic import BaseModel, ConfigDict
+
+from typing import Any, Dict, TYPE_CHECKING
+
 import pandas as pd
+from pydantic import BaseModel, ConfigDict, PrivateAttr
 
 from backend.core.context_recorder import ContextRecorder
 
-# Gebruik TYPE_CHECKING om de circulaire import tijdens runtime te voorkomen
+# Use TYPE_CHECKING to avoid runtime circular imports.
 if TYPE_CHECKING:
     from backend.core.interfaces import Tradable
 
+def _new_struct_registry() -> Dict[str, Any]:
+    """Typed factory for the structural context registry."""
+    return {}
 
 class TradingContext(BaseModel):
-    """
-    A container for all shared data available during a single run.
-    This object is the single source of truth for the state of the world
-    at the time a plugin is executed.
+    """Container for all shared data available during a single run.
+
+    This object represents the single source of truth for contextual data made
+    available to plugins at the time of execution.
 
     Attributes:
-        enriched_df (pd.DataFrame): The fully enriched DataFrame, containing all
-                                    indicator and context columns.
-        portfolio (Tradable): A reference to the active portfolio object.
-        context_recorder (ContextRecorder): The recorder for logging detailed context.
-        structural_context_registry (Dict[str, Any]): A registry for complex,
-                                                      non-tabular context data.
+        enriched_df: Fully enriched DataFrame, containing all indicator and context columns.
+        portfolio: Reference to the active portfolio object.
+        context_recorder: Recorder used to persist detailed context for inspection.
     """
+
     enriched_df: pd.DataFrame
-    # --- DE FIX: Gebruik een forward reference (string) voor Tradable ---
-    portfolio: "Tradable"
+    portfolio: "Tradable"  # Forward reference to avoid runtime import cycles.
     context_recorder: ContextRecorder
-    structural_context_registry: Dict[str, Any] = {}
 
-    def register_structural_data(self, source_plugin: str, data: Any):
-        """Allows a plugin to register a complex data structure."""
-        self.structural_context_registry[source_plugin] = data
-
-    def get_structural_data(self, source_plugin: str) -> Any | None:
-        """Allows a later plugin to retrieve a complex data structure."""
-        return self.structural_context_registry.get(source_plugin)
-
-    model_config = ConfigDict(
-        arbitrary_types_allowed=True
+    # Runtime-only registry for complex, non-tabular context data.
+    # Not part of the model schema / validation / serialization.
+    _structural_context_registry: Dict[str, Any] = PrivateAttr(
+        default_factory=_new_struct_registry
     )
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    # --- Public API -------------------------------------------------------
+
+    def register_structural_data(self, source_plugin: str, data: Any) -> None:
+        """Register a complex, non-tabular data structure for later retrieval.
+
+        Args:
+            source_plugin: Identifier of the producing plugin.
+            data: Arbitrary, non-tabular structure to store.
+        """
+        self._structural_context_registry[source_plugin] = data
+
+    def get_structural_data(self, source_plugin: str, default: Any | None = None) -> Any | None:
+        """Retrieve previously registered complex data by plugin identifier.
+
+        Args:
+            source_plugin: Identifier of the producing plugin.
+            default: Value returned if no entry exists (defaults to None).
+
+        Returns:
+            The stored data for the given plugin identifier, or `default` if not present.
+        """
+        return self._structural_context_registry.get(source_plugin, default)
+
+    def has_structural_data(self, source_plugin: str) -> bool:
+        """Check whether complex data was registered for the given plugin.
+
+        Args:
+            source_plugin: Identifier of the producing plugin.
+
+        Returns:
+            True if data is present, False otherwise.
+        """
+        return source_plugin in self._structural_context_registry
 
 --- END FILE: backend/dtos/state/trading_context.py ---
 
@@ -3346,7 +3564,6 @@ Contains the concrete implementation of an APIConnector for the Kraken exchange.
     - Fetches raw market data and translates it into application-specific DTOs.
     - Handles API-specific details like pagination, error parsing, and retries.
 """
-
 import time
 from typing import cast, List, Dict, Any, Optional
 import requests
@@ -3370,43 +3587,39 @@ class KrakenAPIConnector(IAPIConnector):
         self.session = requests.Session()
         self.session.headers.update({'User-Agent': 'S1mpleTraderV2'})
 
-    def _request(self, endpoint: str, params: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+    def _request(self, endpoint: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Executes a single, robust request to a public Kraken API endpoint,
         including the full retry logic.
-
-        Args:
-            endpoint (str): The API endpoint to call (e.g., "/Trades").
-            params (Optional[Dict[str, Any]]): A dictionary of query parameters.
-
-        Returns:
-            A dictionary with the parsed JSON response on success, or None on failure.
         """
         attempt = 1
         while attempt <= self.config.retries.max_attempts:
             try:
                 log_msg = (
-                    f"Requesting '{endpoint}' (attempt {attempt}/{self.config.retries.max_attempts})"
+                    f"Requesting '{endpoint}' (attempt {attempt}/"
+                    f"{self.config.retries.max_attempts})"
                 )
                 self.logger.info(log_msg)
                 response = self.session.get(f"{self.config.base_url}{endpoint}", params=params)
                 response.raise_for_status()
-                
+
                 data = cast(Dict[str, Any], response.json())
                 if data.get('error'):
-                    self.logger.error(f"Kraken API error for endpoint '{endpoint}': {data['error']}")
-                    return None # API error is a final failure, no retry
-                
+                    self.logger.error(
+                        f"Kraken API error for endpoint '{endpoint}': {data['error']}"
+                    )
+                    return {}
+
                 return data
 
             except requests.RequestException as e:
                 self.logger.error(f"HTTP Request failed (attempt {attempt}): {e}")
                 if attempt == self.config.retries.max_attempts:
                     self.logger.error("Max retries reached. Aborting request.")
-                    return None
+                    return {}
                 time.sleep(self.config.retries.delay_seconds)
                 attempt += 1
-        return None
+        return {}
 
     def get_historical_trades(
         self, pair: str, since: int, until: Optional[int] = None, limit: Optional[int] = None
@@ -3414,26 +3627,33 @@ class KrakenAPIConnector(IAPIConnector):
         all_trades: List[TradeTick] = []
         current_since_ns = str(since)
 
+        # Hou de timestamp van de allerlaatste trade bij om duplicaten te voorkomen
+        last_processed_timestamp_ns = since
+
         while True:
             data = self._request("/Trades", params={'pair': pair, 'since': current_since_ns})
+            result = cast(Dict[str, Any], data.get('result', {}))
 
-            if not data:
+            if not result:
                 break
 
-            result = cast(Dict[str, Any], data.get('result', {}))
             pair_key = next(iter(result.keys()), None)
             trade_data = cast(List[List[Any]], result.get(pair_key, [])) if pair_key else []
 
             if not trade_data:
                 break
-            
-            # De 'last' timestamp is de timestamp van de LAATSTE trade in de batch
-            last_trade_in_batch_ns = result.get('last')
+
+            last_api_timestamp_ns = result.get('last')
 
             for trade in trade_data:
                 try:
                     timestamp_obj = pd.to_datetime(float(trade[2]), unit='s', utc=True)
                     trade_timestamp_ns = int(timestamp_obj.value)
+
+                    # **DE ECHTE FIX: Sla trades over die we al hebben verwerkt.**
+                    # Dit is de meest robuuste manier om duplicaten te voorkomen.
+                    if trade_timestamp_ns <= last_processed_timestamp_ns:
+                        continue
 
                     if until and trade_timestamp_ns > until:
                         return all_trades
@@ -3446,17 +3666,77 @@ class KrakenAPIConnector(IAPIConnector):
                         order_type=order_type, misc=str(trade[5])
                     )
                     all_trades.append(tick)
+
+                    # Update de laatst geziene timestamp
+                    last_processed_timestamp_ns = trade_timestamp_ns
+
                 except (ValidationError, IndexError, ValueError) as e:
                     self.logger.warning(f"Skipping invalid trade data: {trade}. Error: {e}")
-            
-            # Waterdichte stop-conditie: als de 'last' niet verandert, stoppen we.
-            if last_trade_in_batch_ns == current_since_ns:
+
+            if last_api_timestamp_ns == current_since_ns:
                 break
-            
-            current_since_ns = last_trade_in_batch_ns
-            time.sleep(1) # Rate limit tussen succesvolle page fetches
+
+            current_since_ns = last_api_timestamp_ns
+            time.sleep(1)
 
         return all_trades
+
+    def get_historical_ohlcv(
+        self,
+        pair: str,
+        timeframe: str,
+        since: int,
+        until: Optional[int] = None,
+        limit: Optional[int] = None
+    ) -> pd.DataFrame:
+        """
+        Fetches historical OHLCV (candlestick) data from the data source.
+        """
+        # Kraken API gebruikt 'interval' voor timeframe. Standaard is 1 minuut.
+        # We moeten onze timeframe string (bv. '15m') omzetten naar minuten.
+        interval_map = {
+            '1m': 1, '5m': 5, '15m': 15, '30m': 30, '1h': 60, '4h': 240, '1d': 1440,
+            '1w': 10080
+        }
+        interval = interval_map.get(timeframe.lower())
+
+        if interval is None:
+            raise ValueError(
+                f"Unsupported timeframe: {timeframe}. "
+                f"Supported values are: {list(interval_map.keys())}"
+            )
+
+        params: Dict[str, Any] = {
+            'pair': pair,
+            'interval': interval,
+            'since': since
+        }
+
+        data = self._request("/OHLC", params=params)
+        result = cast(Dict[str, Any], data.get('result', {}))
+
+        if not result:
+            return pd.DataFrame() # Retourneer een lege DataFrame bij geen resultaat
+
+        pair_key = next(iter(result.keys()), None)
+        ohlcv_data = cast(List[List[Any]], result.get(pair_key, [])) if pair_key else []
+
+        if not ohlcv_data:
+            return pd.DataFrame()
+
+        # Definieer de kolomnamen volgens de Kraken API documentatie
+        columns = ["timestamp", "open", "high", "low", "close", "vwap", "volume", "count"]
+        df = pd.DataFrame(ohlcv_data, columns=columns)
+
+        # Converteer data naar de juiste types
+        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='s', utc=True)
+        df.set_index('timestamp', inplace=True)
+
+        numeric_columns = ["open", "high", "low", "close", "vwap", "volume"]
+        df[numeric_columns] = df[numeric_columns].astype(float)
+        df['count'] = df['count'].astype(int)
+
+        return df
 
 --- END FILE: backend/environments/api_connectors/kraken_connector.py ---
 
@@ -3989,6 +4269,14 @@ plugin_registry:
 
 worker_builder:
   build_success: "Successfully built worker '{name}'."
+
+data_coverage:
+  start_time:
+    desc: "The timestamp of the earliest trade in the data block."
+  end_time:
+    desc: "The timestamp of the latest trade in the data block."
+  trade_count:
+    desc: "The total number of trades within this data block."
 --- END FILE: locales/en.yaml ---
 
 --- START FILE: locales/nl.yaml ---
@@ -4882,8 +5170,7 @@ def test_context_builder_returns_copy_of_dataframe():
 --- END FILE: tests/backend/assembly/test_context_builder.py ---
 
 --- START FILE: tests/backend/assembly/test_dependency_validator.py ---
-# tests/backend/assembly/test_dependency_validator.py
-"""Unit tests for the DependencyValidator."""
+# In bestand: tests/backend/assembly/test_dependency_validator.py
 
 from typing import List, Optional
 from pathlib import Path
@@ -4892,27 +5179,34 @@ from pytest_mock import MockerFixture
 
 from backend.assembly.dependency_validator import DependencyValidator
 from backend.assembly.plugin_registry import PluginRegistry
-from backend.config.schemas.plugin_manifest_schema import PluginManifest
+from backend.config.schemas.plugin_manifest_schema import PluginManifest, CoreIdentity, PluginIdentification, Dependencies, Permissions
 
-# CORRECTIE: Type hints toegevoegd voor duidelijkheid en linter.
 def create_mock_manifest(
     name: str,
     dependencies: Optional[List[str]] = None,
     provides: Optional[List[str]] = None
 ) -> PluginManifest:
-    """Creates a mock PluginManifest for testing purposes."""
+    """Creates a mock PluginManifest with the correct nested structure."""
     return PluginManifest(
-        name=name, version="1.0", type="structural_context",
-        description="A test plugin.",
-        entry_class="Dummy", schema_path="dummy.py", params_class="DummyParams",
-        dependencies=dependencies or [],
-        provides=provides or []
+        core_identity=CoreIdentity(apiVersion="s1mpletrader.io/v1", kind="PluginManifest"),
+        identification=PluginIdentification(
+            name=name,
+            display_name=f"{name.replace('_', ' ').title()}",
+            type="structural_context",
+            version="1.0.0",
+            description="A test plugin.",
+            author="Test Author"
+        ),
+        dependencies=Dependencies(requires=dependencies or [], provides=provides or []),
+        permissions=Permissions(network_access=[], filesystem_access=[])
     )
 
 def test_valid_pipeline_succeeds(mocker: MockerFixture):
     """Tests that a logically correct pipeline validates successfully."""
     # Arrange
     mock_registry = mocker.MagicMock(spec=PluginRegistry)
+    
+    # Gebruik de bijgewerkte create_mock_manifest functie
     mock_registry.get_plugin_data.side_effect = {
         "ema_50": (create_mock_manifest("ema_50", ["close"], ["EMA_50"]), Path("path1")),
         "rsi_14": (create_mock_manifest("rsi_14", ["close"], ["RSI_14"]), Path("path2")),
@@ -5098,10 +5392,10 @@ def test_plugin_creator_generates_correct_skeleton(tmp_path: Path):
     base_path = plugins_root / plugin_type / plugin_name
 
     expected_files = [
-        base_path / "plugin_manifest.yaml",
+        base_path / "manifest.yaml",
         base_path / "schema.py",
         base_path / "worker.py",
-        base_path / "visualization_schema.py",
+        base_path / "context_schema.py",
         base_path / "tests/test_worker.py",
     ]
 
@@ -5128,8 +5422,7 @@ def test_plugin_creator_generates_correct_skeleton(tmp_path: Path):
 --- END FILE: tests/backend/assembly/test_plugin_creator.py ---
 
 --- START FILE: tests/backend/assembly/test_plugin_registry.py ---
-# tests/backend/assembly/test_plugin_registry.py
-"""Unit tests for the PluginRegistry."""
+# In bestand: tests/backend/assembly/test_plugin_registry.py
 
 import yaml
 from pathlib import Path
@@ -5142,44 +5435,56 @@ def test_plugin_registry_discovers_and_validates_plugins(tmp_path: Path):
     """
     Tests if the registry correctly finds valid plugins and ignores invalid ones.
     """
-    # Arrange (De Voorbereiding)
-    # 1. Maak een tijdelijke, realistische plugin-structuur aan.
+    # Arrange
     plugins_root = tmp_path / "plugins"
     
-    # Een valide plugin
+    # Een valide plugin (nu met de correcte, geneste YAML-structuur)
     valid_plugin_path = plugins_root / "structural_context" / "valid_plugin"
     valid_plugin_path.mkdir(parents=True)
     valid_manifest = {
-        "name": "valid_plugin", "version": "1.0", "type": "structural_context",
-        "description": "A valid test plugin.", "entry_class": "ValidWorker",
-        "schema_path": "schema.py", "params_class": "ValidParams"
+        "core_identity": {
+            "apiVersion": "s1mpletrader.io/v1",
+            "kind": "PluginManifest"
+        },
+        "identification": {
+            "name": "valid_plugin",
+            "display_name": "Valid Plugin",
+            "type": "structural_context",
+            "version": "1.0.0",
+            "description": "A valid test plugin.",
+            "author": "Test Author"
+        },
+        "dependencies": {"requires": [], "provides": []},
+        "permissions": {"network_access": [], "filesystem_access": []}
     }
     with open(valid_plugin_path / "plugin_manifest.yaml", "w") as f:
         yaml.dump(valid_manifest, f)
 
-    # Een plugin met een ongeldig manifest (mist 'type')
+    # Een plugin met een ongeldig manifest (mist 'identification')
     invalid_plugin_path = plugins_root / "structural_context" / "invalid_plugin"
     invalid_plugin_path.mkdir(parents=True)
-    invalid_manifest = {"name": "invalid_plugin", "version": "1.0"}
+    invalid_manifest = {
+        "core_identity": {
+            "apiVersion": "s1mpletrader.io/v1",
+            "kind": "PluginManifest"
+        }
+    }
     with open(invalid_plugin_path / "plugin_manifest.yaml", "w") as f:
         yaml.dump(invalid_manifest, f)
         
-    # 2. Configureer het systeem om onze tijdelijke map te gebruiken.
     mock_config = MagicMock(spec=PlatformConfig)
     mock_config.plugins_root_path = str(plugins_root)
     mock_logger = MagicMock()
 
-    # Act (De Actie)
+    # Act
     registry = PluginRegistry(platform_config=mock_config, logger=mock_logger)
 
-    # Assert (De Controle)
+    # Assert
     all_manifests = registry.get_all_manifests()
     assert len(all_manifests) == 1, "Should only register the one valid plugin."
     assert "valid_plugin" in all_manifests, "The valid plugin should be registered."
     assert "invalid_plugin" not in all_manifests, "The invalid plugin should be ignored."
-    
-    # Controleer of er een waarschuwing is gelogd voor het ongeldige manifest.
-    assert mock_logger.warning.call_count > 0
+    assert mock_logger.warning.call_count > 0, "A warning should be logged for the invalid manifest."
 
 --- END FILE: tests/backend/assembly/test_plugin_registry.py ---
 
@@ -5720,6 +6025,137 @@ def test_data_loader_raises_error_for_nonexistent_file(mocker: MockerFixture):
 
 --- END FILE: tests/backend/data/test_data_loader.py ---
 
+--- START FILE: tests/backend/data/test_parquet_persistor.py ---
+# In bestand: tests/backend/data/test_parquet_persistor.py
+"""
+Unit tests for the ParquetPersistor implementation.
+
+@layer: Tests (Backend/Data)
+@dependencies: [pytest, pandas, pyarrow]
+@responsibilities:
+    - Verify that trades are correctly saved to a Parquet file.
+    - Verify that the last timestamp is correctly retrieved from an existing file.
+    - Verify that the component handles non-existent files gracefully.
+"""
+from pathlib import Path
+import pandas as pd
+import pytest
+
+from backend.dtos.market.trade_tick import TradeTick
+# De klasse die we gaan testen (bestaat nog niet)
+from backend.data.persistors.parquet_persistor import ParquetPersistor
+from backend.dtos.market.data_coverage import DataCoverage
+
+@pytest.fixture
+def sample_trades() -> list[TradeTick]:
+    """Provides a list of sample TradeTick DTOs for testing."""
+    return [
+        TradeTick(price=1.0, volume=10.0, timestamp=pd.to_datetime("2023-01-01 10:00:00", utc=True), side='buy', order_type='market'),
+        TradeTick(price=1.1, volume=5.0, timestamp=pd.to_datetime("2023-01-01 10:01:00", utc=True), side='sell', order_type='limit'),
+        TradeTick(price=1.2, volume=12.0, timestamp=pd.to_datetime("2023-01-01 10:02:00", utc=True), side='buy', order_type='market'),
+    ]
+
+def test_save_trades_and_get_last_timestamp(tmp_path: Path, sample_trades: list[TradeTick]):
+    """
+    Tests the core workflow: saving trades and then retrieving the last timestamp.
+    """
+    # Arrange
+    data_dir = tmp_path
+    pair = "BTC_EUR"
+    persistor = ParquetPersistor(data_dir=data_dir)
+    
+    # Test 1: get_last_timestamp for a non-existent dataset
+    assert persistor.get_last_timestamp(pair) == 0, "Should return 0 if no dataset exists."
+
+    # Test 2: save_trades
+    persistor.save_trades(pair, sample_trades)
+
+    # <<< DE FIX (DEEL 1): Controleer op de MAP, niet het bestand >>>
+    expected_dataset_path = data_dir / pair
+    assert expected_dataset_path.is_dir(), "Parquet dataset directory should be created."
+    
+    # <<< DE FIX (DEEL 2): Lees uit de MAP >>>
+    df = pd.read_parquet(expected_dataset_path) # pyright: ignore
+    assert len(df) == 3
+    # Sorteren is nodig omdat de leesvolgorde van partities niet gegarandeerd is
+    df.sort_values('timestamp', inplace=True)
+    assert df['price'].iloc[-1] == 1.2
+
+    # Test 3: get_last_timestamp for an existing dataset
+    last_ts_ns = sample_trades[-1].timestamp.value
+    assert persistor.get_last_timestamp(pair) == last_ts_ns, "Should return the latest timestamp."
+
+def test_get_data_coverage_for_non_existent_file(tmp_path: Path):
+    """
+    Tests that get_data_coverage returns an empty list for a non-existent pair.
+    """
+    # Arrange
+    persistor = ParquetPersistor(data_dir=tmp_path)
+
+    # Act
+    coverage = persistor.get_data_coverage("NON_EXISTENT_PAIR")
+
+    # Assert
+    assert coverage == []
+
+def test_get_data_coverage_for_single_block(tmp_path: Path, sample_trades: list[TradeTick]):
+    """
+    Tests that get_data_coverage correctly identifies a single contiguous block.
+    """
+    # Arrange
+    pair = "BTC_EUR"
+    persistor = ParquetPersistor(data_dir=tmp_path)
+    persistor.save_trades(pair, sample_trades)
+
+    # Act
+    coverage = persistor.get_data_coverage(pair)
+
+    # Assert
+    assert len(coverage) == 1
+    assert isinstance(coverage[0], DataCoverage)
+    assert coverage[0].start_time == sample_trades[0].timestamp
+    assert coverage[0].end_time == sample_trades[-1].timestamp
+    assert coverage[0].trade_count == len(sample_trades)
+
+def test_get_data_coverage_with_gap(tmp_path: Path):
+    """
+    Tests that get_data_coverage correctly identifies two separate blocks of data.
+    """
+    # Arrange
+    pair = "ETH_EUR"
+    persistor = ParquetPersistor(data_dir=tmp_path)
+
+    trades_part1 = [
+        TradeTick(price=1.0, volume=10.0, timestamp=pd.to_datetime("2023-01-01 10:00:00", utc=True), side='buy', order_type='market'),
+        TradeTick(price=1.1, volume=5.0, timestamp=pd.to_datetime("2023-01-01 10:01:00", utc=True), side='sell', order_type='limit'),
+    ]
+    
+    # Een "gat" in de data van meer dan een minuut
+    trades_part2 = [
+        TradeTick(price=1.2, volume=12.0, timestamp=pd.to_datetime("2023-01-01 10:03:00", utc=True), side='buy', order_type='market'),
+        TradeTick(price=1.3, volume=8.0, timestamp=pd.to_datetime("2023-01-01 10:04:00", utc=True), side='sell', order_type='limit'),
+    ]
+    
+    persistor.save_trades(pair, trades_part1 + trades_part2)
+
+    # Act
+    coverage = persistor.get_data_coverage(pair)
+
+    # Assert
+    assert len(coverage) == 2, "Should detect two separate blocks of data."
+    
+    # Controleer Block 1
+    assert coverage[0].start_time == trades_part1[0].timestamp
+    assert coverage[0].end_time == trades_part1[-1].timestamp
+    assert coverage[0].trade_count == 2
+    
+    # Controleer Block 2
+    assert coverage[1].start_time == trades_part2[0].timestamp
+    assert coverage[1].end_time == trades_part2[-1].timestamp
+    assert coverage[1].trade_count == 2
+
+--- END FILE: tests/backend/data/test_parquet_persistor.py ---
+
 --- START FILE: tests/backend/data/__init__.py ---
 
 --- END FILE: tests/backend/data/__init__.py ---
@@ -5794,6 +6230,8 @@ from unittest.mock import MagicMock, call
 from pytest_mock import MockerFixture
 import requests
 
+import pandas as pd
+
 from backend.environments.api_connectors.kraken_connector import KrakenAPIConnector
 from backend.dtos.market.trade_tick import TradeTick
 from backend.config.schemas.connectors.kraken_schema import KrakenAPIConnectorConfig, KrakenAPIRetryConfig
@@ -5806,6 +6244,17 @@ MOCK_KRAKEN_SUCCESS_RESPONSE = {
             ["60000.20", "0.05", 1617225601.5678, "s", "l", ""]
         ],
         "last": "1617225601567800000"
+    }
+}
+
+MOCK_KRAKEN_OHLCV_SUCCESS_RESPONSE = {
+    "error": [],
+    "result": {
+        "XXBTZEUR": [
+            [1617225600, "60000.1", "60005.0", "59990.5", "60002.0", "60001.0", "10.5", 150],
+            [1617226500, "60002.1", "60010.0", "60000.0", "60008.0", "60007.0", "12.0", 180],
+        ],
+        "last": 1617226500
     }
 }
 
@@ -5872,7 +6321,8 @@ def test_get_historical_trades_respects_time_window(mocker: MockerFixture):
     mock_response_page2 = MagicMock()
     mock_response_page2.json.return_value = { "error": [], "result": { "XXBTZEUR": [["3500.0", "3.5", 3500.0, "s", "l", ""]], "last": str(3500 * 1_000_000_000) } }
 
-    mock_get = mocker.patch('requests.Session.get', side_effect=[mock_response_page1, mock_response_page2])
+    mock_get = mocker.patch(
+        'requests.Session.get', side_effect=[mock_response_page1, mock_response_page2])
     mocker.patch('time.sleep')
 
     connector = KrakenAPIConnector(logger=mock_logger, config=mock_config)
@@ -5885,7 +6335,8 @@ def test_get_historical_trades_respects_time_window(mocker: MockerFixture):
 
 def test_get_historical_trades_retries_on_network_error(mocker: MockerFixture):
     mock_logger = MagicMock()
-    mock_config = KrakenAPIConnectorConfig(retries=KrakenAPIRetryConfig(max_attempts=3, delay_seconds=1))
+    mock_config = KrakenAPIConnectorConfig(
+        retries=KrakenAPIRetryConfig(max_attempts=3, delay_seconds=1))
 
     mock_success_response = MagicMock()
     mock_success_response.json.return_value = MOCK_KRAKEN_SUCCESS_RESPONSE
@@ -5894,7 +6345,9 @@ def test_get_historical_trades_retries_on_network_error(mocker: MockerFixture):
         requests.RequestException("First network error"),
         requests.RequestException("Second network error"),
         mock_success_response,
-        MagicMock(json=MagicMock(return_value={"error": [], "result": {"last": MOCK_KRAKEN_SUCCESS_RESPONSE["result"]["last"]}}))
+        MagicMock(json=MagicMock(
+            return_value={"error": [],
+                          "result": {"last": MOCK_KRAKEN_SUCCESS_RESPONSE["result"]["last"]}}))
     ])
     mocker.patch('time.sleep')
 
@@ -5904,6 +6357,32 @@ def test_get_historical_trades_retries_on_network_error(mocker: MockerFixture):
     assert mocked_get.call_count == 4
     assert len(trades) == 2
     assert mock_logger.error.call_count == 2
+
+def test_get_historical_ohlcv_success(mocker: MockerFixture):
+    """
+    Tests if the connector correctly fetches and parses OHLCV data into a DataFrame.
+    """
+    # Arrange
+    mock_logger = MagicMock()
+    mock_config = KrakenAPIConnectorConfig()
+
+    mock_response = MagicMock()
+    mock_response.json.return_value = MOCK_KRAKEN_OHLCV_SUCCESS_RESPONSE
+    mocker.patch('requests.Session.get', return_value=mock_response)
+
+    connector = KrakenAPIConnector(logger=mock_logger, config=mock_config)
+
+    # Act
+    df = connector.get_historical_ohlcv(pair="XXBTZEUR", timeframe="15m", since=0)
+
+    # Assert
+    assert isinstance(df, pd.DataFrame)
+    assert len(df) == 2
+    assert list(df.columns) == ["open", "high", "low", "close", "vwap", "volume", "count"]
+    assert isinstance(df.index, pd.DatetimeIndex)
+    assert df.index.name == "timestamp"
+    assert df.iloc[0]['open'] == 60000.1
+    assert df.iloc[1]['close'] == 60008.0
 
 --- END FILE: tests/backend/environments/test_kraken_connector.py ---
 
@@ -6195,7 +6674,7 @@ def merge_markdown_files(input_folder, output_file):
 
 if __name__ == "__main__":
     input_folder = "./docs/system"       # vervang door jouw map
-    output_file = "docs.md" # naam van het resultaat
+    output_file = "docs123.md" # naam van het resultaat
     merge_markdown_files(input_folder, output_file)
     print(f"Alle bestanden samengevoegd in: {output_file}")
 --- END FILE: tools/combine_docs.py ---

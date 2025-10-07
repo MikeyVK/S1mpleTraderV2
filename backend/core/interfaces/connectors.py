@@ -27,6 +27,18 @@ class IAPIConnector(Protocol):
     retrieval and live trading operations.
     """
 
+    def get_available_pairs(self) -> List[str]:
+        """Fetches a list of all available trading pairs from the data source.
+
+        This method is used to discover which assets are supported by the
+        connector, allowing for validation and dynamic UI generation.
+
+        Returns:
+            List[str]: A list of strings, where each string is a trading pair
+                in the format expected by the API (e.g., ['BTC/EUR', 'XRP/EUR']).
+        """
+        ...
+
     # --- Historical Data Acquisition ---
 
     def get_historical_trades(self,

@@ -1,11 +1,10 @@
-s1mpletrader/
+S1mpleTraderV2/
 ├── backend
 │   ├── assembly
 │   │   ├── templates
 │   │   │   ├── test
 │   │   │   │   ├── __init__.py
 │   │   │   │   └── test_worker.py.tpl
-│   │   │   ├── tests
 │   │   │   ├── __init__.py
 │   │   │   ├── context_schema.py.tpl
 │   │   │   ├── manifest.yaml.tpl
@@ -21,6 +20,7 @@ s1mpletrader/
 │   ├── config
 │   │   ├── schemas
 │   │   │   ├── connectors
+│   │   │   │   ├── __init__.py
 │   │   │   │   └── kraken_schema.py
 │   │   │   ├── __init__.py
 │   │   │   ├── app_schema.py
@@ -49,6 +49,8 @@ s1mpletrader/
 │   │   ├── portfolio.py
 │   │   └── strategy_engine.py
 │   ├── data
+│   │   ├── persistors
+│   │   │   └── parquet_persistor.py
 │   │   ├── __init__.py
 │   │   └── loader.py
 │   ├── dtos
@@ -58,6 +60,7 @@ s1mpletrader/
 │   │   │   └── execution_directive.py
 │   │   ├── market
 │   │   │   ├── __init__.py
+│   │   │   ├── data_coverage.py
 │   │   │   └── trade_tick.py
 │   │   ├── pipeline
 │   │   │   ├── __init__.py
@@ -142,6 +145,8 @@ s1mpletrader/
 │   │   │   └── main.py
 │   │   └── ui
 │   │       ├── src
+│   │       │   ├── components
+│   │       │   ├── services
 │   │       │   └── App.tsx
 │   │       └── package.json
 │   └── __init__.py
@@ -168,7 +173,6 @@ s1mpletrader/
 │   │   │   ├── schema.py
 │   │   │   └── worker.py
 │   │   └── __init__.py
-│   ├── exit_planners
 │   ├── order_routers
 │   │   └── __init__.py
 │   ├── regime_filters
@@ -201,7 +205,6 @@ s1mpletrader/
 │   │   │   ├── schema.py
 │   │   │   └── worker.py
 │   │   └── __init__.py
-│   ├── size_planners
 │   ├── structural_context
 │   │   ├── ema_detector
 │   │   │   ├── tests
@@ -240,7 +243,8 @@ s1mpletrader/
 │   │   │   └── test_strategy_engine.py
 │   │   ├── data
 │   │   │   ├── __init__.py
-│   │   │   └── test_data_loader.py
+│   │   │   ├── test_data_loader.py
+│   │   │   └── test_parquet_persistor.py
 │   │   ├── environments
 │   │   │   ├── __init__.py
 │   │   │   ├── test_backtest_environment.py

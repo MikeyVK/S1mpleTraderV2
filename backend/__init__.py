@@ -22,6 +22,8 @@ __all__ = [
     "BacktestResult",
     "DataCoverage",
     "TradeTick",
+    "DataSyncRequest",
+    "HistoryBuildRequest",
     # from .core
     # from .environments
     "BacktestEnvironment",
@@ -54,6 +56,8 @@ from .dtos import (
     BacktestResult,
     DataCoverage,
     TradeTick,
+    DataSyncRequest,
+    HistoryBuildRequest,
 )
 from .environments import (
     BacktestEnvironment,
