@@ -17,8 +17,8 @@ from backend.core.enums import PipelinePhase
 
 class RunDataConfig(BaseModel):
     """Defines the data settings specific to this run."""
-    trading_pair: str
-    timeframe: str
+    trading_pair: str = Field(..., description="run_blueprint.data.trading_pair.desc")
+    timeframe: str = Field(..., description="run_blueprint.data.timeframe.desc")
 
 class TaskboardConfig(RootModel[Dict[PipelinePhase, List[str]]]):
     """
@@ -26,18 +26,28 @@ class TaskboardConfig(RootModel[Dict[PipelinePhase, List[str]]]):
     This is a flexible dictionary where keys must be valid PipelinePhase members.
     By inheriting from RootModel, this class instance acts directly as a dictionary.
     """
+    root: Dict[PipelinePhase, List[str]] = Field(
+        ...,
+        description="run_blueprint.taskboard.desc"
+    )
 
 class WorkerDefinition(BaseModel):
     """
     Defines the user-provided parameters for a single plugin.
     The system will validate this 'params' dict against the plugin's own schema.py.
     """
-    params: Dict[str, Any] = Field(default_factory=dict)
+    params: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="run_blueprint.workforce.worker.params.desc"
+    )
 
 class RunBlueprint(BaseModel):
     """
     The main Pydantic model that validates a complete run_blueprint.yaml file.
     """
-    data: RunDataConfig
-    taskboard: TaskboardConfig
-    workforce: Dict[str, WorkerDefinition] = Field(default_factory=dict)
+    data: RunDataConfig = Field(..., description="run_blueprint.data.desc")
+    taskboard: TaskboardConfig = Field(..., description="run_blueprint.taskboard.desc")
+    workforce: Dict[str, WorkerDefinition] = Field(
+        default_factory=dict,
+        description="run_blueprint.workforce.desc"
+    )

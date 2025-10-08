@@ -211,6 +211,13 @@ __all__ = [
     "BacktestResult",
     "DataCoverage",
     "TradeTick",
+    "SynchronizationCommand",
+    "ExtendHistoryCommand",
+    "FillGapsCommand",
+    "FetchPeriodCommand",
+    "PairsQuery",
+    "CoverageQuery",
+    "RangeQuery",
     # from .core
     # from .environments
     "BacktestEnvironment",
@@ -243,6 +250,13 @@ from .dtos import (
     BacktestResult,
     DataCoverage,
     TradeTick,
+    SynchronizationCommand,
+    ExtendHistoryCommand,
+    FillGapsCommand,
+    FetchPeriodCommand,
+    PairsQuery,
+    CoverageQuery,
+    RangeQuery,
 )
 from .environments import (
     BacktestEnvironment,
@@ -774,7 +788,7 @@ Contains the final, composed Pydantic model for a complete application run.
     - Composes platform-level and run-level configurations into a single,
       unified, and immutable AppConfig object.
 """
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from .platform_schema import PlatformConfig
 from .run_schema import RunBlueprint
 
@@ -784,54 +798,167 @@ class AppConfig(BaseModel):
     combines platform-wide settings (PlatformConfig) with the blueprint for a
     specific run (RunBlueprint), creating a single source of truth.
     """
-    platform: PlatformConfig
-    run: RunBlueprint
+    platform: PlatformConfig = Field(
+        ...,
+        description="app_config.platform.desc"
+    )
+    run: RunBlueprint = Field(
+        ...,
+        description="app_config.run.desc"
+    )
 
 --- END FILE: backend/config/schemas/app_schema.py ---
 
+--- START FILE: backend/config/schemas/connectors_schema.py ---
+# In bestand: backend/config/schemas/connectors_schema.py
+"""
+Contains Pydantic models that define the structure of the connectors.yaml file.
+
+This schema is the single source of truth for defining and validating all
+API connector configurations used by the platform.
+
+@layer: Backend (Config/Schemas)
+@dependencies: [pydantic, .connectors.kraken_schema]
+"""
+from typing import Dict, Union, Annotated
+from pydantic import BaseModel, Field, RootModel
+
+from backend.config.schemas.connectors.kraken_schema import (
+    KrakenPublicConfig,
+    KrakenPrivateConfig,
+)
+
+# Use a Tagged Union to allow Pydantic to automatically select the correct
+# model based on the 'type' field in the YAML.
+AnyConnectorConfig = Annotated[
+    Union[KrakenPublicConfig, KrakenPrivateConfig],
+    Field(discriminator="type"),
+]
+
+class ConnectorDefinition(BaseModel):
+    """
+    Defines a single, named connector instance. The 'type' field determines
+    which specific configuration schema will be used for validation.
+    """
+    type: str = Field(
+        ...,
+        description="connectors.definition.type.desc"
+    )
+    config: AnyConnectorConfig = Field(
+        ...,
+        description="connectors.definition.config.desc"
+    )
+
+
+class ConnectorsConfig(RootModel[Dict[str, ConnectorDefinition]]):
+    """
+    The root model for the entire connectors.yaml file.
+    It represents a dictionary where each key is a unique, user-defined name
+    for a connector instance, and the value is its validated definition.
+    """
+    root: Dict[str, ConnectorDefinition] = Field(
+        ...,
+        description="connectors.root.desc"
+    )
+
+--- END FILE: backend/config/schemas/connectors_schema.py ---
+
 --- START FILE: backend/config/schemas/platform_schema.py ---
-# backend/config/schemas/platform_schema.py
+# In bestand: backend/config/schemas/platform_schema.py
 """
 Contains Pydantic models that define the structure of the platform.yaml file.
-This is the foundational contract for the entire application's configuration.
 
-@layer: Backend (Config)
-@dependencies: [Pydantic]
-@responsibilities:
-    - Defines the schema for global, platform-wide settings.
+This schema defines the global, platform-wide settings and acts as a single
+source of truth for the application's core configuration, reflecting the
+main architectural layers.
+
+@layer: Backend (Config/Schemas)
+@dependencies: [pydantic, backend.core.enums]
 """
-
-# --- Sub-models ---
-
 from typing import Dict, List, Literal
 from pydantic import BaseModel, Field
 from backend.core.enums import LogLevel
 
-class PlatformDataConfig(BaseModel):
-    """Defines the structure for the 'data' section."""
-    source_dir: str = "source_data"
-
-class PortfolioConfig(BaseModel):
-    """Defines the structure for the 'portfolio' section."""
-    initial_capital: float = 10000.0
-    fees_pct: float = 0.001
+# --- Sub-models for Logical Grouping ---
 
 class LoggingConfig(BaseModel):
     """Defines the structure for the 'logging' section."""
-    profile: Literal['developer', 'analysis'] = 'analysis'
-    profiles: Dict[str, List[LogLevel]] # Gebruikt de LogLevel Enum
+    profile: Literal['developer', 'analysis'] = Field(
+        default='analysis',
+        description="platform_config.core.logging.profile.desc"
+    )
+    profiles: Dict[str, List[LogLevel]] = Field(
+        default_factory=dict,
+        description="platform_config.core.logging.profiles.desc"
+    )
 
-# --- Main model ---
+class CoreConfig(BaseModel):
+    """Defines core platform settings."""
+    language: Literal['en', 'nl'] = Field(
+        default='en',
+        description="platform_config.core.language.desc"
+    )
+    plugins_root_path: str = Field(
+        default="plugins",
+        description="platform_config.core.plugins_root_path.desc"
+    )
+    logging: LoggingConfig = Field(default_factory=LoggingConfig)
+
+class DataCollectionLimits(BaseModel):
+    """Defines safety limits for historical data collection."""
+    max_history_days: int = Field(
+        default=365 * 5,
+        gt=0,
+        description="platform_config.services.data_collection.max_history_days.desc"
+    )
+    warn_history_days: int = Field(
+        default=365,
+        gt=0,
+        description="platform_config.services.data_collection.warn_history_days.desc"
+    )
+
+class DataCollectionConfig(BaseModel):
+    """Groups all settings related to the DataCollectionService."""
+    limits: DataCollectionLimits = Field(default_factory=DataCollectionLimits)
+
+class ServicesConfig(BaseModel):
+    """Groups all service-layer configurations."""
+    data_collection: DataCollectionConfig = Field(default_factory=DataCollectionConfig)
+
+class DataConfig(BaseModel):
+    """Defines settings related to data sources and storage."""
+    source_dir: str = Field(
+        default="source_data",
+        description="platform_config.data.source_dir.desc"
+    )
+
+class PortfolioDefaults(BaseModel):
+    """Defines the default financial parameters for portfolios."""
+    initial_capital: float = Field(
+        default=10000.0,
+        gt=0,
+        description="platform_config.portfolio.defaults.initial_capital.desc"
+    )
+    fees_pct: float = Field(
+        default=0.001,
+        ge=0,
+        description="platform_config.portfolio.defaults.fees_pct.desc"
+    )
+
+class PortfolioConfig(BaseModel):
+    """Groups all portfolio-related configurations."""
+    defaults: PortfolioDefaults = Field(default_factory=PortfolioDefaults)
+
+# --- Main Platform Configuration Model ---
 
 class PlatformConfig(BaseModel):
     """
     The main Pydantic model that validates the entire platform.yaml file.
-    It defines only the highest-level, essential configurations.
+    It composes all other configuration models into a logical, hierarchical structure.
     """
-    language: Literal['en', 'nl'] = 'nl'
-    plugins_root_path: str = "plugins" # De enige verantwoordelijkheid t.o.v. plugins
-
-    data: PlatformDataConfig = Field(default_factory=PlatformDataConfig)
+    core: CoreConfig = Field(default_factory=CoreConfig)
+    services: ServicesConfig = Field(default_factory=ServicesConfig)
+    data: DataConfig = Field(default_factory=DataConfig)
     portfolio: PortfolioConfig = Field(default_factory=PortfolioConfig)
 
 --- END FILE: backend/config/schemas/platform_schema.py ---
@@ -918,10 +1045,10 @@ class Permissions(BaseModel):
 
 class PluginManifest(BaseModel):
     """The complete, validated Pydantic model for a plugin's manifest.yaml."""
-    core_identity: CoreIdentity
-    identification: PluginIdentification
-    dependencies: Dependencies
-    permissions: Permissions
+    core_identity: CoreIdentity = Field(..., description="manifest.core_identity.desc")
+    identification: PluginIdentification = Field(..., description="manifest.identification.desc")
+    dependencies: Dependencies = Field(..., description="manifest.dependencies.desc")
+    permissions: Permissions = Field(..., description="manifest.permissions.desc")
 
 --- END FILE: backend/config/schemas/plugin_manifest_schema.py ---
 
@@ -945,8 +1072,8 @@ from backend.core.enums import PipelinePhase
 
 class RunDataConfig(BaseModel):
     """Defines the data settings specific to this run."""
-    trading_pair: str
-    timeframe: str
+    trading_pair: str = Field(..., description="run_blueprint.data.trading_pair.desc")
+    timeframe: str = Field(..., description="run_blueprint.data.timeframe.desc")
 
 class TaskboardConfig(RootModel[Dict[PipelinePhase, List[str]]]):
     """
@@ -954,21 +1081,31 @@ class TaskboardConfig(RootModel[Dict[PipelinePhase, List[str]]]):
     This is a flexible dictionary where keys must be valid PipelinePhase members.
     By inheriting from RootModel, this class instance acts directly as a dictionary.
     """
+    root: Dict[PipelinePhase, List[str]] = Field(
+        ...,
+        description="run_blueprint.taskboard.desc"
+    )
 
 class WorkerDefinition(BaseModel):
     """
     Defines the user-provided parameters for a single plugin.
     The system will validate this 'params' dict against the plugin's own schema.py.
     """
-    params: Dict[str, Any] = Field(default_factory=dict)
+    params: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="run_blueprint.workforce.worker.params.desc"
+    )
 
 class RunBlueprint(BaseModel):
     """
     The main Pydantic model that validates a complete run_blueprint.yaml file.
     """
-    data: RunDataConfig
-    taskboard: TaskboardConfig
-    workforce: Dict[str, WorkerDefinition] = Field(default_factory=dict)
+    data: RunDataConfig = Field(..., description="run_blueprint.data.desc")
+    taskboard: TaskboardConfig = Field(..., description="run_blueprint.taskboard.desc")
+    workforce: Dict[str, WorkerDefinition] = Field(
+        default_factory=dict,
+        description="run_blueprint.workforce.desc"
+    )
 
 --- END FILE: backend/config/schemas/run_schema.py ---
 
@@ -977,44 +1114,48 @@ class RunBlueprint(BaseModel):
 --- END FILE: backend/config/schemas/__init__.py ---
 
 --- START FILE: backend/config/schemas/connectors/kraken_schema.py ---
-# backend/config/schemas/connectors/kraken_schema.py
+# In bestand: backend/config/schemas/connectors/kraken_schema.py
 """
 Contains Pydantic models that define the configuration structure for the
 KrakenAPIConnector.
 
 @layer: Backend (Config/Schemas)
 @dependencies: [pydantic]
-@responsibilities:
-    - Defines and validates all configuration parameters specific to the
-      KrakenAPIConnector.
 """
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, SecretStr
 
 class KrakenAPIRetryConfig(BaseModel):
     """Defines the retry strategy for API requests."""
-    max_attempts: int = Field(
-        default=3,
-        gt=0,
-        description="kraken_connector_config.retries.max_attempts.desc"
-    )
-    delay_seconds: int = Field(
-        default=2,
-        gt=0,
-        description="kraken_connector_config.retries.delay_seconds.desc"
-    )
+    max_attempts: int = Field(default=3, gt=0, description="kraken.retries.max_attempts.desc")
+    delay_seconds: int = Field(default=2, gt=0, description="kraken.retries.delay_seconds.desc")
 
-class KrakenAPIConnectorConfig(BaseModel):
+class KrakenPublicConfig(BaseModel):
     """
-    The main Pydantic model that validates the configuration for the
-    KrakenAPIConnector.
+    Validation schema for the PUBLIC Kraken API Connector.
+    It contains settings for accessing public, unauthenticated endpoints.
     """
     base_url: str = Field(
         default="https://api.kraken.com/0/public",
-        description="kraken_connector_config.base_url.desc"
+        description="kraken.public.base_url.desc"
     )
     retries: KrakenAPIRetryConfig = Field(
         default_factory=KrakenAPIRetryConfig,
-        description="kraken_connector_config.retries.desc"
+        description="kraken.retries.desc"
+    )
+
+class KrakenPrivateConfig(KrakenPublicConfig):
+    """
+    Validation schema for the PRIVATE Kraken API Connector.
+    Inherits from the public config and adds fields for API credentials.
+    These credentials should be loaded from environment variables.
+    """
+    api_key: SecretStr = Field(..., description="kraken.private.api_key.desc")
+    api_secret: SecretStr = Field(..., description="kraken.private.api_secret.desc")
+
+    # Override de base_url voor private endpoints indien nodig
+    base_url: str = Field(
+        default="https://api.kraken.com/0/private",
+        description="kraken.private.base_url.desc"
     )
 
 --- END FILE: backend/config/schemas/connectors/kraken_schema.py ---
@@ -1886,6 +2027,18 @@ class IAPIConnector(Protocol):
     retrieval and live trading operations.
     """
 
+    def get_available_pairs(self) -> List[str]:
+        """Fetches a list of all available trading pairs from the data source.
+
+        This method is used to discover which assets are supported by the
+        connector, allowing for validation and dynamic UI generation.
+
+        Returns:
+            List[str]: A list of strings, where each string is a trading pair
+                in the format expected by the API (e.g., ['BTC/EUR', 'XRP/EUR']).
+        """
+        ...
+
     # --- Historical Data Acquisition ---
 
     def get_historical_trades(self,
@@ -2495,7 +2648,7 @@ class ParquetPersistor(IDataPersistor):
                     column_meta = row_group_meta.column(timestamp_col_index)
 
                     # 4. Controleer of statistieken bestaan en haal .max op.
-                    if column_meta.statistics and column_meta.statistics.has_max_min: # type: ignore
+                    if column_meta.statistics and column_meta.statistics.has_min_max: # type: ignore
                         timestamps.append(column_meta.statistics.max)
 
             if not timestamps:
@@ -2577,6 +2730,15 @@ needing to know the specific internal file structure.
 @layer: Backend (DTO)
 """
 __all__ = [
+    # commands
+    "FetchPeriodCommand",
+    "FillGapsCommand",
+    "ExtendHistoryCommand",
+    "SynchronizationCommand",
+    # queries
+    "PairsQuery",
+    "CoverageQuery",
+    "RangeQuery",
     # pipeline
     "Signal",
     "EntrySignal",
@@ -2598,6 +2760,8 @@ __all__ = [
     "BacktestResult",
 ]
 
+from .commands import *
+from .queries import *
 from .pipeline import *
 from .execution import *
 from .market import *
@@ -2605,6 +2769,125 @@ from .state import *
 from .results import *
 
 --- END FILE: backend/dtos/__init__.py ---
+
+--- START FILE: backend/dtos/commands/extend_history_command.py ---
+# In bestand: backend/dtos/commands/extend_history_command.py
+"""
+Contains the Command DTO for extending the history of an existing data archive.
+
+@layer: Backend (DTO/Commands)
+@dependencies: [pydantic]
+@responsibilities:
+    - Defines the data contract for extending an existing data archive further
+      into the past.
+"""
+from pydantic import BaseModel, Field
+
+class ExtendHistoryCommand(BaseModel):
+    """
+    Data contract for a command to extend an existing data archive further
+    into the past from its oldest known data point.
+    """
+    pair: str = Field(..., description="extend_history_command.pair.desc")
+    period_days: int = Field(..., gt=0, description="extend_history_command.period_days.desc")
+
+--- END FILE: backend/dtos/commands/extend_history_command.py ---
+
+--- START FILE: backend/dtos/commands/fetch_period_command.py ---
+# In bestand: backend/dtos/commands/fetch_period_command.py
+"""
+Contains the Command DTO for fetching a specific historical data period.
+
+@layer: Backend (DTO/Commands)
+@dependencies: [pydantic, pandas]
+@responsibilities:
+    - Defines the data contract for fetching a new, specific period of historical data.
+"""
+from typing import Optional
+from pydantic import BaseModel, Field, ConfigDict
+import pandas as pd
+
+class FetchPeriodCommand(BaseModel):
+    """
+    Data contract for a command to fetch a specific, bounded period of
+    historical data. This is typically used to build a new archive or
+    manually add a large, specific historical block.
+    """
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    pair: str = Field(..., description="fetch_period_command.pair.desc")
+    start_date: pd.Timestamp = Field(..., description="fetch_period_command.start_date.desc")
+    end_date: Optional[pd.Timestamp] = Field(None, description="fetch_period_command.end_date.desc")
+
+--- END FILE: backend/dtos/commands/fetch_period_command.py ---
+
+--- START FILE: backend/dtos/commands/fill_gaps_command.py ---
+# In bestand: backend/dtos/commands/fill_gaps_command.py
+"""
+Contains the Command DTO for a request to fill all gaps in a data archive.
+
+@layer: Backend (DTO/Commands)
+@dependencies: [pydantic]
+@responsibilities:
+    - Defines the data contract for a request to find and fill all gaps in a
+      data archive.
+"""
+from pydantic import BaseModel, Field
+
+class FillGapsCommand(BaseModel):
+    """
+    Data contract for a command to find and fill all identified gaps in an
+    existing historical data archive for a specific pair.
+    """
+    pair: str = Field(..., description="fill_gaps_command.pair.desc")
+
+--- END FILE: backend/dtos/commands/fill_gaps_command.py ---
+
+--- START FILE: backend/dtos/commands/synchronization_command.py ---
+# In bestand: backend/dtos/commands/synchronization_command.py
+"""
+Contains the Command DTO for a data synchronization action.
+
+@layer: Backend (DTO/Commands)
+@dependencies: [pydantic]
+@responsibilities:
+    - Defines the data contract for initiating an incremental data synchronization.
+"""
+from pydantic import BaseModel, Field
+
+class SynchronizationCommand(BaseModel):
+    """
+    Data contract for a command to synchronize a data archive with the
+    latest trades since the last known data point.
+    """
+    pair: str = Field(..., description="synchronization_command.pair.desc")
+
+--- END FILE: backend/dtos/commands/synchronization_command.py ---
+
+--- START FILE: backend/dtos/commands/__init__.py ---
+# backend/dtos/__init__.py
+"""
+Exposes the public API of the DTOs sub-package.
+
+This file centralizes all DTO imports, allowing other parts of the
+application to import any DTO directly from `backend.dtos` without
+needing to know the specific internal file structure.
+
+@layer: Backend (DTO)
+"""
+__all__ = [
+"SynchronizationCommand",
+"ExtendHistoryCommand",
+"FillGapsCommand",
+"FetchPeriodCommand",
+]
+
+from .synchronization_command import SynchronizationCommand
+from .extend_history_command import ExtendHistoryCommand
+from .fill_gaps_command import FillGapsCommand
+from .fetch_period_command import FetchPeriodCommand
+
+--- END FILE: backend/dtos/commands/__init__.py ---
 
 --- START FILE: backend/dtos/execution/critical_event.py ---
 # backend/dtos/critical_event.py
@@ -3072,6 +3355,98 @@ from .trade_plan import TradePlan
 from .routed_trade_plan import RoutedTradePlan
 
 --- END FILE: backend/dtos/pipeline/__init__.py ---
+
+--- START FILE: backend/dtos/queries/coverage_query.py ---
+# In bestand: backend/dtos/queries/coverage_query.py
+"""
+Contains the Query DTO for a data coverage request.
+
+@layer: Backend (DTO/Queries)
+@dependencies: [pydantic]
+@responsibilities:
+    - Defines the data contract for requesting a data coverage map for a pair.
+"""
+from pydantic import BaseModel, Field
+
+class CoverageQuery(BaseModel):
+    """
+    Data contract for a query to retrieve the data coverage map for a
+    specific trading pair from the archive.
+    """
+    pair: str = Field(..., description="coverage_query.pair.desc")
+
+--- END FILE: backend/dtos/queries/coverage_query.py ---
+
+--- START FILE: backend/dtos/queries/pairs_query.py ---
+# In bestand: backend/dtos/queries/pairs_query.py
+"""
+Contains the Query DTO for requesting available pairs from a connector.
+
+@layer: Backend (DTO/Queries)
+@dependencies: [pydantic]
+@responsibilities:
+    - Defines the data contract for requesting a list of available trading pairs.
+"""
+from pydantic import BaseModel, Field
+
+class PairsQuery(BaseModel):
+    """
+    Data contract for a query to retrieve the list of all available trading
+    pairs from a specific, named connector instance.
+    """
+    exchange_id: str = Field(..., description="pairs_query.exchange_id.desc")
+
+--- END FILE: backend/dtos/queries/pairs_query.py ---
+
+--- START FILE: backend/dtos/queries/range_query.py ---
+# In bestand: backend/dtos/queries/range_query.py
+"""
+Contains the Query DTO for requesting historical data within a specific range.
+
+@layer: Backend (DTO/Queries)
+@dependencies: [pydantic, pandas]
+@responsibilities:
+    - Defines the data contract for requesting raw trade data for a specific pair
+      and time period.
+"""
+from pydantic import BaseModel, Field, ConfigDict
+import pandas as pd
+
+class RangeQuery(BaseModel):
+    """
+    Data contract for a query to retrieve raw trade ticks for a specific
+    pair and time range from the data archive.
+    """
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    pair: str = Field(..., description="range_query.pair.desc")
+    start_date: pd.Timestamp = Field(..., description="range_query.start_date.desc")
+    end_date: pd.Timestamp = Field(..., description="range_query.end_date.desc")
+
+--- END FILE: backend/dtos/queries/range_query.py ---
+
+--- START FILE: backend/dtos/queries/__init__.py ---
+# backend/dtos/__init__.py
+"""
+Exposes the public API of the DTOs sub-package.
+
+This file centralizes all DTO imports, allowing other parts of the
+application to import any DTO directly from `backend.dtos` without
+needing to know the specific internal file structure.
+
+@layer: Backend (DTO)
+"""
+__all__ = [
+"PairsQuery",
+"CoverageQuery",
+"RangeQuery",
+]
+
+from .pairs_query import PairsQuery
+from .coverage_query import CoverageQuery
+from .range_query import RangeQuery
+
+--- END FILE: backend/dtos/queries/__init__.py ---
 
 --- START FILE: backend/dtos/results/backtest_result.py ---
 # backend/dtos/backtest_result.py
@@ -3573,7 +3948,7 @@ from pydantic import ValidationError
 from backend.core.interfaces.connectors import IAPIConnector
 from backend.dtos.market.trade_tick import TradeTick
 from backend.utils.app_logger import LogEnricher
-from backend.config.schemas.connectors.kraken_schema import KrakenAPIConnectorConfig
+from backend.config.schemas.connectors.kraken_schema import KrakenPublicConfig
 
 class KrakenAPIConnector(IAPIConnector):
     """
@@ -3581,7 +3956,7 @@ class KrakenAPIConnector(IAPIConnector):
     with the public Kraken REST API.
     """
 
-    def __init__(self, logger: LogEnricher, config: KrakenAPIConnectorConfig):
+    def __init__(self, logger: LogEnricher, config: KrakenPublicConfig):
         self.logger = logger
         self.config = config
         self.session = requests.Session()
@@ -4253,6 +4628,124 @@ API endpoints for plugins
 # This file contains user-facing text for the application.
 # For the MVP, we use English keys that map to English text.
 
+# --- Labels for Platform Configuration schema ---
+platform_config:
+  core:
+    language:
+      desc: "The default language for the application's user interface and logs."
+    plugins_root_path:
+      desc: "The root directory where the application will scan for plugins."
+    logging:
+      profile:
+        desc: "The active logging profile ('developer' or 'analysis'), which determines which log messages are shown."
+      profiles:
+        desc: "The definition of all available logging profiles and the log levels they include."
+  
+  services:
+    data_collection:
+      max_history_days:
+        desc: "The absolute maximum number of days of history a user can request in a single operation. Acts as a safety limit."
+      warn_history_days:
+        desc: "The number of days after which the UI should display a warning for a large historical data request."
+
+  data:
+    source_dir:
+      desc: "The root directory where raw, downloaded source data (e.g., from CSV files) is stored."
+
+  portfolio:
+    defaults:
+      initial_capital:
+        desc: "The default starting capital for any new portfolio or backtest."
+      fees_pct:
+        desc: "The default transaction fee percentage to apply to trades (e.g., 0.001 for 0.1%)."
+
+# --- Labels for App Composition Schema ---
+app_config:
+  platform:
+    desc: "The global, platform-wide configuration settings."
+  run:
+    desc: "The specific configuration blueprint for this particular run."
+
+# --- Labels for Run Blueprint Schema ---
+run_blueprint:
+  data:
+    desc: "Defines the market data to be used for this run."
+    trading_pair:
+      desc: "The trading pair to be analyzed (e.g., 'BTC/EUR')."
+    timeframe:
+      desc: "The timeframe for the OHLCV data (e.g., '15m', '1h')."
+  taskboard:
+    desc: "Assigns specific plugins (by name) to the different phases of the analytical pipeline."
+  workforce:
+    desc: "Defines the user-configured parameters for each plugin used in the taskboard."
+    worker:
+      params:
+        desc: "A dictionary of key-value pairs that override the default parameters of this specific plugin."
+
+# --- Labels for Plugin Manifest Schema ---
+manifest:
+  core_identity:
+    desc: "System-level fields that identify the schema version of this manifest."
+    apiVersion:
+      desc: "The schema version of the manifest file (e.g., 's1mpletrader.io/v1')."
+    kind:
+      desc: "The type of this configuration document, which is always 'PluginManifest'."
+  identification:
+    desc: "Descriptive metadata that identifies the plugin to both the system and the user."
+    name:
+      desc: "The unique, machine-readable name of the plugin (snake_case)."
+    display_name:
+      desc: "The human-readable name of the plugin as shown in the UI."
+    type:
+      desc: "The functional category that determines in which phase of the pipeline this plugin operates."
+    version:
+      desc: "The semantic version of the plugin (e.g., '1.0.0')."
+    description:
+      desc: "A brief, clear explanation of what the plugin does."
+    author:
+      desc: "The name of the developer or team that created the plugin."
+  dependencies:
+    desc: "Defines the data contract for the plugin's interaction with the market data context."
+    requires:
+      desc: "A list of data columns that this plugin expects as input."
+    provides:
+      desc: "A list of new data columns that this plugin adds as output."
+  permissions:
+    desc: "Defines the security permissions required by the plugin to operate."
+    network_access:
+      desc: "A list of allowed network destinations (URLs) the plugin can access."
+    filesystem_access:
+      desc: "A list of allowed file or directory paths the plugin can access."
+
+# --- Labels for Connector Configurations ---
+connectors:
+  definition:
+    type:
+      desc: "The type of the connector implementation to use (e.g., 'kraken_public', 'kraken_private'). This determines which configuration options are available."
+    config:
+      desc: "The specific configuration block for the chosen connector type."
+  root:
+    desc: "The main dictionary defining all available connector instances for the platform."
+
+kraken:
+  retries:
+    desc: "Configuration for the retry strategy on failed API requests."
+    max_attempts:
+      desc: "The maximum number of times to retry a failed API request."
+    delay_seconds:
+      desc: "The number of seconds to wait between retry attempts."
+  public:
+    base_url:
+      desc: "The base URL for Kraken's public, unauthenticated API endpoints."
+  private:
+    api_key:
+      desc: "The API key for authenticating with private endpoints. Should be loaded from an environment variable."
+    api_secret:
+      desc: "The API secret for signing requests to private endpoints. Should be loaded from an environment variable."
+    base_url:
+      desc: "The base URL for Kraken's private, authenticated API endpoints."
+
+# --- Application labels ---
 app:
   start: "S1mpleTrader is starting..."
 
@@ -4277,6 +4770,22 @@ data_coverage:
     desc: "The timestamp of the latest trade in the data block."
   trade_count:
     desc: "The total number of trades within this data block."
+
+history_build_request:
+  pair:
+    desc: "The trading pair to build the historical archive for (e.g., 'XRP/EUR')."
+  start_date:
+    desc: "The earliest date (inclusive) to fetch historical data for."
+
+sync_request:
+  pair:
+    desc: "The trading pair to synchronize the latest data for (e.g., 'BTC/EUR')."
+
+backfill_request:
+  pair:
+    desc: "The trading pair to backfill the latest data for (e.g., 'ADA/EUR')."
+
+
 --- END FILE: locales/en.yaml ---
 
 --- START FILE: locales/nl.yaml ---
@@ -4807,6 +5316,169 @@ def test_ema_detector_adds_correct_column():
 # Placeholder for results/20250924_213000_mss_fvg_strategy/run_config.yaml
 
 --- END FILE: results/20250924_213000_mss_fvg_strategy/run_config.yaml ---
+
+--- START FILE: services/data_command_service.py ---
+# In bestand: services/data_command_service.py
+"""
+Contains the DataCommandService, responsible for orchestrating actions
+that create, update, or backfill historical market data.
+
+This service acts as the "Interactor" or "Command" layer for data persistence.
+
+@layer: Service
+@dependencies: [IAPIConnector, IDataPersistor, LogEnricher, DataCollectionLimits]
+"""
+from typing import Optional
+import pandas as pd
+
+from backend.core.interfaces.connectors import IAPIConnector
+from backend.core.interfaces.persistors import IDataPersistor
+from backend.config.schemas.platform_schema import DataCollectionLimits
+from backend.dtos.commands.fetch_period_command import FetchPeriodCommand
+from backend.dtos.commands.synchronization_command import SynchronizationCommand
+# TODO: Import future command DTOs when they are used
+# from backend.dtos.commands.extend_history_command import ExtendHistoryCommand
+# from backend.dtos.commands.fill_gaps_command import FillGapsCommand
+from backend.utils.app_logger import LogEnricher
+
+
+class DataCommandService:
+    """Orchestrates write-actions for the historical data archive."""
+
+    def __init__(
+        self,
+        persistor: IDataPersistor,
+        connector: IAPIConnector,
+        limits: DataCollectionLimits,
+        logger: LogEnricher
+    ):
+        """Initializes the DataCommandService.
+
+        Args:
+            persistor (IDataPersistor): The data persistence component.
+            connector (IAPIConnector): The data source connector.
+            limits (DataCollectionLimits): The configured safety limits for
+                data collection operations.
+            logger (LogEnricher): The application's configured logger instance.
+        """
+        self._persistor = persistor
+        self._connector = connector
+        self._limits = limits
+        self._logger = logger
+
+    # --- Private "Motor" ---
+
+    def _fetch_and_save_chunk(
+        self, pair: str, since: int, until: Optional[int] = None
+    ) -> int:
+        """Private helper to fetch and save a single chunk of trade data.
+
+        Args:
+            pair (str): The trading pair to process.
+            since (int): The start timestamp (nanoseconds) for the data fetch.
+            until (Optional[int]): The end timestamp (nanoseconds) for the
+                data fetch.
+
+        Returns:
+            int: The number of new trades that were successfully saved.
+        """
+        trades_chunk = self._connector.get_historical_trades(
+            pair=pair, since=since, until=until
+        )
+        if not trades_chunk:
+            return 0
+        self._persistor.save_trades(pair=pair, trades=trades_chunk)
+        return len(trades_chunk)
+
+    # --- Public "Interactors" (Command Handlers) ---
+
+    def fetch_period(self, command: FetchPeriodCommand) -> None:
+        """
+        Fetches a specific, bounded period of historical data, working backward
+        in daily chunks.
+
+        It validates the requested period against platform limits before execution.
+
+        Args:
+            command (FetchPeriodCommand): A DTO containing the 'pair',
+                'start_date', and optional 'end_date'.
+
+        Raises:
+            ValueError: If the requested date range exceeds the configured
+                maximum limit in `platform.yaml`.
+        """
+        self._logger.info(
+            'data_command.fetch_period_start',
+            values={'pair': command.pair}
+        )
+
+        # 1. Determine the start and end dates for the entire operation.
+        end_day = (command.end_date or pd.Timestamp.utcnow()).normalize()
+        start_day = command.start_date.normalize()
+
+        # 2. Validate the request against the platform's safety limits.
+        requested_days = (end_day - start_day).days + 1
+        if requested_days > self._limits.max_history_days:
+            raise ValueError(
+                f"Requested history of {requested_days} days exceeds the "
+                f"maximum limit of {self._limits.max_history_days} days."
+            )
+
+        # 3. Execute the chunking loop, working backward in time.
+        current_day = end_day
+        while current_day >= start_day:
+            day_str = current_day.strftime('%Y-%m-%d')
+            self._logger.info(
+                'data_command.fetching_chunk',
+                values={'pair': command.pair, 'date': day_str}
+            )
+
+            chunk_start_ns = int(current_day.value)
+
+            if current_day == pd.Timestamp.utcnow().normalize():
+                chunk_end_ns = int(pd.Timestamp.utcnow().value)
+            else:
+                next_day_start = current_day + pd.Timedelta(days=1)
+                chunk_end_ns = int(next_day_start.value - 1)
+
+            saved_count = self._fetch_and_save_chunk(
+                pair=command.pair,
+                since=chunk_start_ns,
+                until=chunk_end_ns
+            )
+
+            if saved_count > 0:
+                self._logger.info(
+                    'data_command.chunk_saved',
+                    values={'count': saved_count, 'date': day_str}
+                )
+            else:
+                self._logger.info(
+                    'data_command.no_data_for_chunk',
+                    values={'date': day_str}
+                )
+
+            current_day -= pd.Timedelta(days=1)
+
+        self._logger.info(
+            'data_command.fetch_period_complete',
+            values={'pair': command.pair}
+        )
+
+    def synchronize(self, command: SynchronizationCommand) -> None:
+        """Synchronizes the archive with the latest trades."""
+        # TODO: Implement full logic for synchronize
+        raise NotImplementedError("synchronize is not yet implemented.")
+
+    def extend_history(self, command: object) -> None:
+        """Extends the existing historical archive further into the past."""
+        raise NotImplementedError("extend_history is not yet implemented.")
+
+    def fill_gaps(self, command: object) -> None:
+        """Fills all identified gaps in the historical data."""
+        raise NotImplementedError("fill_gaps is not yet implemented.")
+
+--- END FILE: services/data_command_service.py ---
 
 --- START FILE: services/optimization_service.py ---
 # services/optimization_service.py
@@ -6172,7 +6844,7 @@ from backend.environments.backtest_environment import (
 )
 from backend.core.interfaces import Tradable
 from backend.config.schemas.app_schema import AppConfig
-from backend.config.schemas.platform_schema import PlatformConfig, PlatformDataConfig
+from backend.config.schemas.platform_schema import PlatformConfig, DataConfig
 from backend.config.schemas.run_schema import RunBlueprint, RunDataConfig
 
 def test_backtest_environment_initialization(mocker: MockerFixture):
@@ -6191,7 +6863,7 @@ def test_backtest_environment_initialization(mocker: MockerFixture):
     mock_app_config.run = mocker.MagicMock(spec=RunBlueprint)
 
     # Definieer de geneste data-objecten
-    mock_app_config.platform.data = mocker.MagicMock(spec=PlatformDataConfig)
+    mock_app_config.platform.data = mocker.MagicMock(spec=DataConfig)
     mock_app_config.run.data = mocker.MagicMock(spec=RunDataConfig)
 
     # Wijs de waarden toe op de juiste, geneste locatie
@@ -6234,7 +6906,7 @@ import pandas as pd
 
 from backend.environments.api_connectors.kraken_connector import KrakenAPIConnector
 from backend.dtos.market.trade_tick import TradeTick
-from backend.config.schemas.connectors.kraken_schema import KrakenAPIConnectorConfig, KrakenAPIRetryConfig
+from backend.config.schemas.connectors.kraken_schema import KrakenPublicConfig, KrakenAPIRetryConfig
 
 MOCK_KRAKEN_SUCCESS_RESPONSE = {
     "error": [],
@@ -6265,7 +6937,7 @@ MOCK_KRAKEN_ERROR_RESPONSE = {
 
 def test_get_historical_trades_success(mocker: MockerFixture):
     mock_logger = MagicMock()
-    mock_config = KrakenAPIConnectorConfig()
+    mock_config = KrakenPublicConfig()
     
     # Mock de eerste call met data, en de tweede zonder nieuwe data
     mock_response_page1 = MagicMock()
@@ -6291,7 +6963,7 @@ def test_get_historical_trades_success(mocker: MockerFixture):
 
 def test_get_historical_trades_handles_api_error(mocker: MockerFixture):
     mock_logger = MagicMock()
-    mock_config = KrakenAPIConnectorConfig()
+    mock_config = KrakenPublicConfig()
     
     mocker.patch('requests.Session.get', return_value=MagicMock(json=MagicMock(return_value=MOCK_KRAKEN_ERROR_RESPONSE)))
 
@@ -6305,7 +6977,7 @@ def test_get_historical_trades_handles_api_error(mocker: MockerFixture):
 
 def test_get_historical_trades_respects_time_window(mocker: MockerFixture):
     mock_logger = MagicMock()
-    mock_config = KrakenAPIConnectorConfig()
+    mock_config = KrakenPublicConfig()
     
     SINCE_NS = 1000 * 1_000_000_000
     UNTIL_NS = 3000 * 1_000_000_000
@@ -6335,7 +7007,7 @@ def test_get_historical_trades_respects_time_window(mocker: MockerFixture):
 
 def test_get_historical_trades_retries_on_network_error(mocker: MockerFixture):
     mock_logger = MagicMock()
-    mock_config = KrakenAPIConnectorConfig(
+    mock_config = KrakenPublicConfig(
         retries=KrakenAPIRetryConfig(max_attempts=3, delay_seconds=1))
 
     mock_success_response = MagicMock()
@@ -6364,7 +7036,7 @@ def test_get_historical_ohlcv_success(mocker: MockerFixture):
     """
     # Arrange
     mock_logger = MagicMock()
-    mock_config = KrakenAPIConnectorConfig()
+    mock_config = KrakenPublicConfig()
 
     mock_response = MagicMock()
     mock_response.json.return_value = MOCK_KRAKEN_OHLCV_SUCCESS_RESPONSE
@@ -6389,6 +7061,100 @@ def test_get_historical_ohlcv_success(mocker: MockerFixture):
 --- START FILE: tests/backend/environments/__init__.py ---
 
 --- END FILE: tests/backend/environments/__init__.py ---
+
+--- START FILE: tests/services/test_data_command_service.py ---
+# In bestand: tests/services/test_data_command_service.py
+"""
+Unit tests for the DataCommandService's interactors.
+"""
+from unittest.mock import MagicMock, call
+import pandas as pd
+import pytest
+from pytest_mock import MockerFixture
+
+from backend.core.interfaces.connectors import IAPIConnector
+from backend.core.interfaces.persistors import IDataPersistor
+from backend.config.schemas.platform_schema import DataCollectionLimits
+from backend.dtos.market.trade_tick import TradeTick
+from backend.dtos.commands.fetch_period_command import FetchPeriodCommand
+
+# De klasse die we gaan testen
+from services.data_command_service import DataCommandService
+
+def test_fetch_period_works_backward_in_chunks(mocker: MockerFixture):
+    """
+    Tests the happy path for fetch_period: fetching a valid period backward
+    in daily, sequential chunks.
+    """
+    # --- Arrange ---
+    # Request om 2 dagen aan historie op te halen
+    command = FetchPeriodCommand(
+        pair="BTC/EUR",
+        start_date=pd.to_datetime("2025-10-05", utc=True)
+    )
+
+    MOCK_NOW = pd.to_datetime("2025-10-06 15:00:00", utc=True)
+    mocker.patch('pandas.Timestamp.utcnow', return_value=MOCK_NOW)
+
+    mock_persistor = mocker.MagicMock(spec=IDataPersistor)
+    mock_connector = mocker.MagicMock(spec=IAPIConnector)
+    mock_logger = mocker.MagicMock()
+    # Stel een ruime limiet in die niet wordt overschreden
+    mock_limits = DataCollectionLimits(max_history_days=365)
+
+    # Definieer de data die de connector zal "teruggeven"
+    trades_today = [TradeTick(price=1.0, volume=1, timestamp=MOCK_NOW, side='buy', order_type='market')]
+    trades_yesterday = [TradeTick(price=2.0, volume=2, timestamp=MOCK_NOW - pd.Timedelta(days=1), side='buy', order_type='market')]
+
+    def get_trades_side_effect(pair, since, until=None):
+        if since == int(pd.to_datetime("2025-10-06 00:00:00", utc=True).value): return trades_today
+        if since == int(pd.to_datetime("2025-10-05 00:00:00", utc=True).value): return trades_yesterday
+        return []
+    mock_connector.get_historical_trades.side_effect = get_trades_side_effect
+
+    # --- Act ---
+    service = DataCommandService(persistor=mock_persistor, connector=mock_connector, logger=mock_logger, limits=mock_limits)
+    service.fetch_period(command=command)
+
+    # --- Assert ---
+    # De connector moet exact 2 keer zijn aangeroepen (voor 6 en 5 oktober)
+    assert mock_connector.get_historical_trades.call_count == 2
+    calls = mock_connector.get_historical_trades.call_args_list
+    assert calls[0] == call(pair=command.pair, since=int(pd.to_datetime("2025-10-06 00:00:00", utc=True).value), until=int(MOCK_NOW.value))
+    assert calls[1] == call(pair=command.pair, since=int(pd.to_datetime("2025-10-05 00:00:00", utc=True).value), until=int(pd.to_datetime("2025-10-05 23:59:59.999999999", utc=True).value))
+
+
+def test_fetch_period_raises_error_if_period_exceeds_max_limit(mocker: MockerFixture):
+    """
+    Tests that fetch_period correctly validates the requested period against
+    the centrally configured safety limit and raises a ValueError if exceeded.
+    """
+    # --- Arrange ---
+    # Stel een strikte limiet in van slechts 30 dagen
+    mock_limits = DataCollectionLimits(max_history_days=30)
+    
+    # Een request voor 31 dagen aan data, wat de limiet overschrijdt
+    start_date_too_far = pd.Timestamp.utcnow() - pd.Timedelta(days=31)
+    command = FetchPeriodCommand(
+        pair="BTC/EUR",
+        start_date=start_date_too_far
+    )
+
+    mock_persistor = mocker.MagicMock(spec=IDataPersistor)
+    mock_connector = mocker.MagicMock(spec=IAPIConnector)
+    mock_logger = mocker.MagicMock()
+
+    # --- Act & Assert ---
+    service = DataCommandService(persistor=mock_persistor, connector=mock_connector, logger=mock_logger, limits=mock_limits)
+    
+    # We verwachten dat de methode een ValueError gooit met een duidelijke melding
+    with pytest.raises(ValueError, match="Requested history of 32 days exceeds the maximum limit of 30 days."):
+        service.fetch_period(command=command)
+
+    # Verifieer dat er GEEN calls zijn gedaan naar de connector of persistor
+    mock_connector.get_historical_trades.assert_not_called()
+
+--- END FILE: tests/services/test_data_command_service.py ---
 
 --- START FILE: tests/services/test_strategy_operator.py ---
 # tests/services/test_strategy_operator.py

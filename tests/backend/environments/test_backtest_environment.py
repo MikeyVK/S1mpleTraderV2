@@ -9,7 +9,7 @@ from backend.environments.backtest_environment import (
 )
 from backend.core.interfaces import Tradable
 from backend.config.schemas.app_schema import AppConfig
-from backend.config.schemas.platform_schema import PlatformConfig, PlatformDataConfig
+from backend.config.schemas.platform_schema import PlatformConfig, DataConfig
 from backend.config.schemas.run_schema import RunBlueprint, RunDataConfig
 
 def test_backtest_environment_initialization(mocker: MockerFixture):
@@ -28,7 +28,7 @@ def test_backtest_environment_initialization(mocker: MockerFixture):
     mock_app_config.run = mocker.MagicMock(spec=RunBlueprint)
 
     # Definieer de geneste data-objecten
-    mock_app_config.platform.data = mocker.MagicMock(spec=PlatformDataConfig)
+    mock_app_config.platform.data = mocker.MagicMock(spec=DataConfig)
     mock_app_config.run.data = mocker.MagicMock(spec=RunDataConfig)
 
     # Wijs de waarden toe op de juiste, geneste locatie

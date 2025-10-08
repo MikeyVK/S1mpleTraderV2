@@ -1,18 +1,55 @@
-# config/platform.yaml
-# De minimale, fundamentele configuratie voor S1mpleTrader V2.
+# In bestand: config/platform.yaml
+# Dit bestand definieert de globale, platform-brede instellingen en
+# fungeert als de 'single source of truth' voor de kernconfiguratie.
 
-language: 'en'
-plugins_root_path: 'plugins'
+core:
+  language: 'en'
+  plugins_root_path: 'plugins'
+
+  logging:
+    # Bepaalt welke set log-berichten wordt getoond.
+    # 'developer': Minimaal, voor snelle checks.
+    # 'analysis': Uitgebreid, voor diepgaande analyse van een run.
+    profile: 'analysis'
+
+    # Definitie van de beschikbare logging profielen.
+    profiles:
+      developer:
+        - INFO
+        - WARNING
+        - ERROR
+        - CRITICAL
+      analysis:
+        - DEBUG
+        - INFO
+        - WARNING
+        - ERROR
+        - CRITICAL
+        - SETUP
+        - MATCH
+        - FILTER
+        - POLICY
+        - RESULT
+        - TRADE
+
+services:
+  data_collection:
+    # Veiligheidslimieten voor de DataCommandService.
+    limits:
+      # Het maximale aantal dagen dat in één keer met 'fetch_period'
+      # of 'synchronize' kan worden opgehaald. Voorkomt overbelasting.
+      max_history_days: 3000 # 5 jaar
+
+      # Het aantal dagen waarna de UI een waarschuwing moet tonen
+      # voor een grote data-aanvraag.
+      warn_history_days: 365 # 1 jaar
 
 data:
+  # De map waar de Parquet-bestanden met historische data worden opgeslagen.
   source_dir: 'source_data'
 
 portfolio:
-  initial_capital: 10000.0
-  fees_pct: 0.001
-
-logging:
-  profile: 'analysis'
-  profiles:
-    developer: ['WARNING', 'ERROR', 'CRITICAL']
-    analysis: ['DEBUG', 'INFO', 'MATCH', 'FILTER', 'TRADE', 'RESULT', 'WARNING', 'ERROR', 'CRITICAL']
+  # Standaard financiële parameters voor elke nieuwe backtest of portfolio.
+  defaults:
+    initial_capital: 10000.0
+    fees_pct: 0.001 # 0.1% transactiekosten

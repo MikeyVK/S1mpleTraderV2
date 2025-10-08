@@ -9,10 +9,15 @@ needing to know the specific internal file structure.
 @layer: Backend (DTO)
 """
 __all__ = [
-    # requests
-    "HistoryBuildRequest",
-    "DataSyncRequest",
-    # requests
+    # commands
+    "FetchPeriodCommand",
+    "FillGapsCommand",
+    "ExtendHistoryCommand",
+    "SynchronizationCommand",
+    # queries
+    "PairsQuery",
+    "CoverageQuery",
+    "RangeQuery",
     # pipeline
     "Signal",
     "EntrySignal",
@@ -34,7 +39,8 @@ __all__ = [
     "BacktestResult",
 ]
 
-from .requests import *
+from .commands import *
+from .queries import *
 from .pipeline import *
 from .execution import *
 from .market import *

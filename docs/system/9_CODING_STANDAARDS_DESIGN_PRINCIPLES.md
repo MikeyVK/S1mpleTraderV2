@@ -210,7 +210,7 @@ Om de `locales/*.yaml` bestanden georganiseerd en onderhoudbaar te houden, hante
 
 De architectuur is gebouwd op de **SOLID**-principes en een aantal kern-ontwerppatronen die de vier kernprincipes (Plugin First, Scheiding van Zorgen, Configuratie-gedreven, Contract-gedreven) tot leven brengen.
 
-### **De Synergie: Configuratie- & Contract-gedreven Executie**
+### **9.6.1. De Synergie: Configuratie- & Contract-gedreven Executie**
 
 Het meest krachtige concept van V2 is de combinatie van configuratie- en contract-gedreven werken. De code is de motor; **de configuratie is de bestuurder, en de contracten zijn de verkeersregels die zorgen dat de bestuurder binnen de lijntjes blijft.**
 
@@ -222,7 +222,7 @@ Het meest krachtige concept van V2 is de combinatie van configuratie- en contrac
 
 Bij het starten van een run, leest de applicatie het `YAML`-bestand en bouwt een gevalideerd `AppConfig`-object. Als een parameter ontbreekt, een verkeerd type heeft, of een plugin wordt aangeroepen die niet bestaat, faalt de applicatie *onmiddellijk* met een duidelijke foutmelding. Dit voorkomt onvoorspelbare runtime-fouten en maakt het systeem extreem robuust en voorspelbaar.
 
-### **SOLID in de Praktijk**
+### **9.6.2. SOLID in de Praktijk**
 * **SRP (Single Responsibility Principle):** Elke klasse heeft één duidelijke taak.
   * ***V2 voorbeeld:*** Een `FVGEntryDetector`-plugin detecteert alleen Fair Value Gaps. Het bepalen van de positiegrootte of het analyseren van de marktstructuur gebeurt in aparte `position_sizer`- of context-plugins.
 
@@ -232,7 +232,30 @@ Bij het starten van een run, leest de applicatie het `YAML`-bestand en bouwt een
 * **DIP (Dependency Inversion Principle):** Hoge-level modules hangen af van abstracties.
     * ***V2 voorbeeld:*** De `BacktestService` (Service-laag) hangt af van de `BaseEnvironment`-interface, niet van de specifieke `BacktestEnvironment`. Hierdoor zijn de services volledig herbruikbaar in elke context.
 
-### **Kernpatronen**
+### **9.6.3. Kernpatronen**
 * **Factory Pattern:** Het `Assembly Team` (met `WorkerBuilder`) centraliseert het ontdekken, valideren en creëren van alle plugins.
 * **Strategy Pattern:** De "Plugin First"-benadering is de puurste vorm van dit patroon. Elke plugin is een uitwisselbare strategie voor een specifieke taak.
 * **DTO’s (Data Transfer Objects):** Pydantic-modellen (`Signal`, `TradePlan`, `ClosedTrade`) zorgen voor een voorspelbare en type-veilige dataflow tussen alle componenten.
+
+### **9.6.4. CQRS (Command Query Responsibility Segregation)**
+* **CommandPrincipe:** We hanteren een strikte scheiding tussen operaties die data lezen (`Queries`) en operaties die de staat van de applicatie veranderen (`Commands`). Een methode mag óf data retourneren, óf data wijzigen, maar nooit beide tegelijk. Dit principe voorkomt onverwachte bijeffecten en maakt het gedrag van het systeem glashelder en voorspelbaar.
+
+* **Implementatie in de Service Laag:** Dit principe is het meest expliciet doorgevoerd in de architectuur van onze data-services, waar we een duidelijke scheiding hebben tussen *lezers* en *schrijvers*:
+
+  1.  **Query Services (Lezers):**
+
+      * **Naamgeving:** Services die uitsluitend data lezen, krijgen de `QueryService`-suffix (bv. `DataQueryService`).
+
+      * **Methodes:** Alle publieke methodes in een Query Service zijn "vragen" en beginnen met het `get_` prefix (bv. `get_coverage`).
+
+      * **Contract:** De DTO's die deze methodes accepteren, krijgen de `Query`-suffix (bv. `CoverageQuery`).
+
+  2.  **Command Services (Schrijvers):**
+
+      * **Naamgeving:** Services die de staat van de data veranderen, krijgen de `CommandService`-suffix (bv. `DataCommandService`).
+
+      * **Methodes:** Alle publieke methodes in een Command Service zijn "opdrachten" en hebben een actieve, werkwoordelijke naam die de actie beschrijft (bv. `synchronize`, `fetch_period`).
+
+      * **Contract:** De DTO's die deze methodes accepteren, krijgen de `Command`-suffix (bv. `SynchronizationCommand`).
+
+* **Scope:** Deze CQRS-naamgevingsconventie is de standaard voor alle services binnen de `Service`-laag die direct interacteren met de staat van data of het systeem. Het naleven van deze conventie is verplicht om de voorspelbaarheid en onderhoudbaarheid van de codebase te garanderen.

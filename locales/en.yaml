@@ -3,6 +3,124 @@
 # This file contains user-facing text for the application.
 # For the MVP, we use English keys that map to English text.
 
+# --- Labels for Platform Configuration schema ---
+platform_config:
+  core:
+    language:
+      desc: "The default language for the application's user interface and logs."
+    plugins_root_path:
+      desc: "The root directory where the application will scan for plugins."
+    logging:
+      profile:
+        desc: "The active logging profile ('developer' or 'analysis'), which determines which log messages are shown."
+      profiles:
+        desc: "The definition of all available logging profiles and the log levels they include."
+  
+  services:
+    data_collection:
+      max_history_days:
+        desc: "The absolute maximum number of days of history a user can request in a single operation. Acts as a safety limit."
+      warn_history_days:
+        desc: "The number of days after which the UI should display a warning for a large historical data request."
+
+  data:
+    source_dir:
+      desc: "The root directory where raw, downloaded source data (e.g., from CSV files) is stored."
+
+  portfolio:
+    defaults:
+      initial_capital:
+        desc: "The default starting capital for any new portfolio or backtest."
+      fees_pct:
+        desc: "The default transaction fee percentage to apply to trades (e.g., 0.001 for 0.1%)."
+
+# --- Labels for App Composition Schema ---
+app_config:
+  platform:
+    desc: "The global, platform-wide configuration settings."
+  run:
+    desc: "The specific configuration blueprint for this particular run."
+
+# --- Labels for Run Blueprint Schema ---
+run_blueprint:
+  data:
+    desc: "Defines the market data to be used for this run."
+    trading_pair:
+      desc: "The trading pair to be analyzed (e.g., 'BTC/EUR')."
+    timeframe:
+      desc: "The timeframe for the OHLCV data (e.g., '15m', '1h')."
+  taskboard:
+    desc: "Assigns specific plugins (by name) to the different phases of the analytical pipeline."
+  workforce:
+    desc: "Defines the user-configured parameters for each plugin used in the taskboard."
+    worker:
+      params:
+        desc: "A dictionary of key-value pairs that override the default parameters of this specific plugin."
+
+# --- Labels for Plugin Manifest Schema ---
+manifest:
+  core_identity:
+    desc: "System-level fields that identify the schema version of this manifest."
+    apiVersion:
+      desc: "The schema version of the manifest file (e.g., 's1mpletrader.io/v1')."
+    kind:
+      desc: "The type of this configuration document, which is always 'PluginManifest'."
+  identification:
+    desc: "Descriptive metadata that identifies the plugin to both the system and the user."
+    name:
+      desc: "The unique, machine-readable name of the plugin (snake_case)."
+    display_name:
+      desc: "The human-readable name of the plugin as shown in the UI."
+    type:
+      desc: "The functional category that determines in which phase of the pipeline this plugin operates."
+    version:
+      desc: "The semantic version of the plugin (e.g., '1.0.0')."
+    description:
+      desc: "A brief, clear explanation of what the plugin does."
+    author:
+      desc: "The name of the developer or team that created the plugin."
+  dependencies:
+    desc: "Defines the data contract for the plugin's interaction with the market data context."
+    requires:
+      desc: "A list of data columns that this plugin expects as input."
+    provides:
+      desc: "A list of new data columns that this plugin adds as output."
+  permissions:
+    desc: "Defines the security permissions required by the plugin to operate."
+    network_access:
+      desc: "A list of allowed network destinations (URLs) the plugin can access."
+    filesystem_access:
+      desc: "A list of allowed file or directory paths the plugin can access."
+
+# --- Labels for Connector Configurations ---
+connectors:
+  definition:
+    type:
+      desc: "The type of the connector implementation to use (e.g., 'kraken_public', 'kraken_private'). This determines which configuration options are available."
+    config:
+      desc: "The specific configuration block for the chosen connector type."
+  root:
+    desc: "The main dictionary defining all available connector instances for the platform."
+
+kraken:
+  retries:
+    desc: "Configuration for the retry strategy on failed API requests."
+    max_attempts:
+      desc: "The maximum number of times to retry a failed API request."
+    delay_seconds:
+      desc: "The number of seconds to wait between retry attempts."
+  public:
+    base_url:
+      desc: "The base URL for Kraken's public, unauthenticated API endpoints."
+  private:
+    api_key:
+      desc: "The API key for authenticating with private endpoints. Should be loaded from an environment variable."
+    api_secret:
+      desc: "The API secret for signing requests to private endpoints. Should be loaded from an environment variable."
+    base_url:
+      desc: "The base URL for Kraken's private, authenticated API endpoints."
+
+# --- Application labels ---
 app:
   start: "S1mpleTrader is starting..."
 
@@ -20,6 +138,31 @@ plugin_registry:
 worker_builder:
   build_success: "Successfully built worker '{name}'."
 
+# --- Log Messages for DataCommandService ---
+data_command:
+  chunk_saved_stream: "Saved a new batch of {count} trades from the stream."
+  fetch_period_start: "Starting historical fetch for pair '{pair}'..."
+  fetch_period_complete: "Historical fetch for pair '{pair}' complete."
+  sync_start: "Starting synchronization for pair '{pair}'..."
+  sync_complete: "Synchronization complete. Saved {count} new trades for '{pair}'."
+  sync_failed_no_data: "Synchronization failed: No existing data found for pair '{pair}'. Please use 'fetch_period' first."
+  archive_is_up_to_date: "Data archive for pair '{pair}' is already up-to-date."
+  extend_history_start: "Extending history for pair '{pair}' by {days} days..."
+  extend_history_complete: "History extension for pair '{pair}' complete."
+  extend_failed_no_data: "History extension failed: No existing data found for pair '{pair}'."
+  extending_period: "Fetching historical data for pair '{pair}' from {start} to {end}."
+  fill_gaps_start: "Scanning for data gaps for pair '{pair}'..."
+  no_gaps_found: "No data gaps found for pair '{pair}'."
+  gap_found: "Data gap found for pair '{pair}'. Fetching missing data from {start} to {end}."
+  fill_gaps_complete: "Gap filling process for pair '{pair}' complete. Filled {gaps_filled} gap(s)."
+
+# --- Log Messages for KrakenAPIConnector ---
+kraken_connector:
+  request_attempt: "Requesting '{endpoint}' (attempt {attempt}/{max_attempts})..."
+
+#--- DTO's ---
+
+#--- Market DTO's ---
 data_coverage:
   start_time:
     desc: "The timestamp of the earliest trade in the data block."
@@ -28,12 +171,42 @@ data_coverage:
   trade_count:
     desc: "The total number of trades within this data block."
 
-history_build_request:
+# --- DataCommandService Commands ---
+synchronization_command:
   pair:
-    desc: "The trading pair to build the historical archive for (e.g., 'XRP/EUR')."
-  start_date:
-    desc: "The earliest date (inclusive) to fetch historical data for."
+    desc: "The trading pair to synchronize with the latest data."
 
-data_sync_request:
+fetch_period_command:
   pair:
-    desc: "The trading pair to synchronize the latest data for (e.g., 'BTC/EUR')."
+    desc: "The trading pair for which to fetch a historical data period."
+  start_date:
+    desc: "The start date of the period to fetch."
+  end_date:
+    desc: "The optional end date of the period to fetch. If not provided, it defaults to the current time."
+
+extend_history_command:
+  pair:
+    desc: "The trading pair whose historical archive should be extended."
+  period_days:
+    desc: "The number of days to extend the history further into the past from the oldest known data point."
+
+fill_gaps_command:
+  pair:
+    desc: "The trading pair for which to find and fill all historical data gaps."
+
+# --- DataQueryService Queries ---
+coverage_query:
+  pair:
+    desc: "The trading pair for which to retrieve the data coverage map."
+
+pairs_query:
+  exchange_id:
+    desc: "The unique name of the connector instance (from connectors.yaml) to query for available pairs."
+
+range_query:
+  pair:
+    desc: "The trading pair for which to retrieve historical data."
+  start_date:
+    desc: "The start date (inclusive) of the time range to query."
+  end_date:
+    desc: "The end date (inclusive) of the time range to query."

@@ -24,6 +24,7 @@ S1mpleTraderV2/
 │   │   │   │   └── kraken_schema.py
 │   │   │   ├── __init__.py
 │   │   │   ├── app_schema.py
+│   │   │   ├── connectors_schema.py
 │   │   │   ├── platform_schema.py
 │   │   │   ├── plugin_manifest_schema.py
 │   │   │   └── run_schema.py
@@ -54,6 +55,12 @@ S1mpleTraderV2/
 │   │   ├── __init__.py
 │   │   └── loader.py
 │   ├── dtos
+│   │   ├── commands
+│   │   │   ├── __init__.py
+│   │   │   ├── extend_history_command.py
+│   │   │   ├── fetch_period_command.py
+│   │   │   ├── fill_gaps_command.py
+│   │   │   └── synchronization_command.py
 │   │   ├── execution
 │   │   │   ├── __init__.py
 │   │   │   ├── critical_event.py
@@ -69,6 +76,11 @@ S1mpleTraderV2/
 │   │   │   ├── routed_trade_plan.py
 │   │   │   ├── signal.py
 │   │   │   └── trade_plan.py
+│   │   ├── queries
+│   │   │   ├── __init__.py
+│   │   │   ├── coverage_query.py
+│   │   │   ├── pairs_query.py
+│   │   │   └── range_query.py
 │   │   ├── state
 │   │   │   ├── __init__.py
 │   │   │   ├── portfolio_state.py
@@ -222,6 +234,7 @@ S1mpleTraderV2/
 │   │   ├── plugin_query_service.py
 │   │   └── visualization_service.py
 │   ├── __init__.py
+│   ├── data_command_service.py
 │   ├── optimization_service.py
 │   ├── parallel_run_service.py
 │   ├── strategy_operator.py
@@ -251,6 +264,7 @@ S1mpleTraderV2/
 │   │   │   └── test_kraken_connector.py
 │   │   └── __init__.py
 │   ├── services
+│   │   ├── test_data_command_service.py
 │   │   └── test_strategy_operator.py
 │   └── __init__.py
 ├── tools

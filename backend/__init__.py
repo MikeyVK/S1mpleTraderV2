@@ -22,8 +22,13 @@ __all__ = [
     "BacktestResult",
     "DataCoverage",
     "TradeTick",
-    "DataSyncRequest",
-    "HistoryBuildRequest",
+    "SynchronizationCommand",
+    "ExtendHistoryCommand",
+    "FillGapsCommand",
+    "FetchPeriodCommand",
+    "PairsQuery",
+    "CoverageQuery",
+    "RangeQuery",
     # from .core
     # from .environments
     "BacktestEnvironment",
@@ -56,8 +61,13 @@ from .dtos import (
     BacktestResult,
     DataCoverage,
     TradeTick,
-    DataSyncRequest,
-    HistoryBuildRequest,
+    SynchronizationCommand,
+    ExtendHistoryCommand,
+    FillGapsCommand,
+    FetchPeriodCommand,
+    PairsQuery,
+    CoverageQuery,
+    RangeQuery,
 )
 from .environments import (
     BacktestEnvironment,

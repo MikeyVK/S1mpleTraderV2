@@ -8,7 +8,7 @@ Contains the abstract contracts (Protocols) for all external data connectors.
     - Defines the universal `IAPIConnector` contract that every external data
       source (CEX, DEX, wallet) must adhere to.
 """
-from typing import Protocol, List, Optional, Any, Dict
+from typing import Protocol, List, Optional, Any, Dict, Generator
 import pandas as pd
 from backend.dtos.market.trade_tick import TradeTick
 from backend.dtos.state.portfolio_state import PortfolioState
@@ -41,13 +41,17 @@ class IAPIConnector(Protocol):
 
     # --- Historical Data Acquisition ---
 
-    def get_historical_trades(self,
-                              pair: str,
-                              since: int,
-                              until: Optional[int] = None,
-                              limit: Optional[int] = None) -> List[TradeTick]:
-        """
-        Fetches a list of historical transactions (ticks) from the data source.
+    def get_historical_trades(
+        self,
+        pair: str,
+        since: int,
+        until: Optional[int] = None
+    ) -> Generator[List[TradeTick], None, None]:
+        """Fetches historical transactions (ticks) as a stream of batches.
+
+        This method acts as a generator, yielding lists of TradeTick DTOs.
+        This allows the calling service to process data in chunks, which is
+        highly memory-efficient for large historical data requests.
 
         Args:
             pair (str): The trading pair to fetch data for.
@@ -55,31 +59,35 @@ class IAPIConnector(Protocol):
             until (Optional[int]): An optional UNIX timestamp (nanoseconds) to
                                    stop fetching at.
             limit (Optional[int]): An optional limit on the number of trades
-                                   to return.
+                                   to return (behavior may vary by implementation).
 
-        Returns:
-            A list of validated TradeTick DTOs.
+        Yields:
+            A list of validated TradeTick DTOs, representing one batch of data.
         """
         ...
 
-    def get_historical_ohlcv(self,
-                             pair: str,
-                             timeframe: str,
-                             since: int,
-                             until: Optional[int] = None,
-                             limit: Optional[int] = None) -> pd.DataFrame:
-        """
-        Fetches historical OHLCV (candlestick) data from the data source.
+    def get_historical_ohlcv(
+        self,
+        pair: str,
+        timeframe: str,
+        since: int,
+        until: Optional[int] = None,
+    ) -> Generator[pd.DataFrame, None, None]:
+        """Fetches historical OHLCV data as a stream of DataFrame batches.
+
+        This method acts as a generator, yielding pandas DataFrames. This
+        allows the calling service to process candlestick data in chunks,
+        which is memory-efficient for very large historical data requests.
 
         Args:
-            pair (str): The trading pair.
+            pair (str): The trading pair (e.g., 'XXBTZEUR').
             timeframe (str): The timeframe identifier (e.g., '15m', '1h').
-            since (int): The UNIX timestamp to start fetching from.
-            limit (Optional[int]): An optional limit on the number of candles
-                                   to return.
+            since (int): The start UNIX timestamp (nanoseconds) to fetch from.
+            until (Optional[int]): An optional end UNIX timestamp (nanoseconds)
+                                   to stop at.
 
-        Returns:
-            A pandas DataFrame containing OHLCV data, indexed by timestamp.
+        Yields:
+            A pandas DataFrame representing one batch of OHLCV data from the API.
         """
         ...
 

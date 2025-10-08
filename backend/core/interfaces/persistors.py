@@ -17,6 +17,13 @@ class IDataPersistor(Protocol):
     An interface for any component that can read from and write to a durable
     data storage.
     """
+    def get_first_timestamp(self, pair: str) -> int:
+        """
+        Retrieves the timestamp (in nanoseconds) of the OLDEST stored
+        trade for a given pair. Returns 0 if no data exists.
+        """
+        ... # pylint: disable=unnecessary-ellipsis
+
     def get_last_timestamp(self, pair: str) -> int:
         """
         Retrieves the timestamp (in nanoseconds) of the most recently stored

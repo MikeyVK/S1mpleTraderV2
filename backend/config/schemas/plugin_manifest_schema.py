@@ -79,7 +79,7 @@ class Permissions(BaseModel):
 
 class PluginManifest(BaseModel):
     """The complete, validated Pydantic model for a plugin's manifest.yaml."""
-    core_identity: CoreIdentity
-    identification: PluginIdentification
-    dependencies: Dependencies
-    permissions: Permissions
+    core_identity: CoreIdentity = Field(..., description="manifest.core_identity.desc")
+    identification: PluginIdentification = Field(..., description="manifest.identification.desc")
+    dependencies: Dependencies = Field(..., description="manifest.dependencies.desc")
+    permissions: Permissions = Field(..., description="manifest.permissions.desc")

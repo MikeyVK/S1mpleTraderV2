@@ -23,6 +23,8 @@ Jinja2
 
 # --- User Interface (CLI) ---
 # Tools voor de command-line interface.
+# --- User Interface (CLI) ---
+typer[all]
 tqdm
 rich
 prompt-toolkit

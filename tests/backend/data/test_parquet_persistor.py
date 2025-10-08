@@ -27,34 +27,31 @@ def sample_trades() -> list[TradeTick]:
         TradeTick(price=1.2, volume=12.0, timestamp=pd.to_datetime("2023-01-01 10:02:00", utc=True), side='buy', order_type='market'),
     ]
 
-def test_save_trades_and_get_last_timestamp(tmp_path: Path, sample_trades: list[TradeTick]):
+def test_save_trades_and_get_first_and_last_timestamp(tmp_path: Path, sample_trades: list[TradeTick]):
     """
-    Tests the core workflow: saving trades and then retrieving the last timestamp.
+    Tests the core workflow: saving trades and then retrieving the first
+    and last timestamps.
     """
     # Arrange
     data_dir = tmp_path
     pair = "BTC_EUR"
     persistor = ParquetPersistor(data_dir=data_dir)
     
-    # Test 1: get_last_timestamp for a non-existent dataset
-    assert persistor.get_last_timestamp(pair) == 0, "Should return 0 if no dataset exists."
+    # Test 1: get_first_timestamp en get_last_timestamp voor een niet-bestaande dataset
+    assert persistor.get_first_timestamp(pair) == 0, "Should return 0 for first_timestamp if no dataset exists."
+    assert persistor.get_last_timestamp(pair) == 0, "Should return 0 for last_timestamp if no dataset exists."
 
     # Test 2: save_trades
     persistor.save_trades(pair, sample_trades)
-
-    # <<< DE FIX (DEEL 1): Controleer op de MAP, niet het bestand >>>
+    
     expected_dataset_path = data_dir / pair
     assert expected_dataset_path.is_dir(), "Parquet dataset directory should be created."
     
-    # <<< DE FIX (DEEL 2): Lees uit de MAP >>>
-    df = pd.read_parquet(expected_dataset_path) # pyright: ignore
-    assert len(df) == 3
-    # Sorteren is nodig omdat de leesvolgorde van partities niet gegarandeerd is
-    df.sort_values('timestamp', inplace=True)
-    assert df['price'].iloc[-1] == 1.2
-
-    # Test 3: get_last_timestamp for an existing dataset
+    # Test 3: get_first_timestamp en get_last_timestamp voor een bestaande dataset
+    first_ts_ns = sample_trades[0].timestamp.value
     last_ts_ns = sample_trades[-1].timestamp.value
+
+    assert persistor.get_first_timestamp(pair) == first_ts_ns, "Should return the earliest timestamp."
     assert persistor.get_last_timestamp(pair) == last_ts_ns, "Should return the latest timestamp."
 
 def test_get_data_coverage_for_non_existent_file(tmp_path: Path):

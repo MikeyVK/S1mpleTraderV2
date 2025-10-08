@@ -228,3 +228,6 @@ def configure_logging(logging_config: LoggingConfig, translator: Translator):
     handler.setFormatter(LogFormatter(log_format, translator=translator))
     handler.addFilter(LogProfiler(log_profile, profile_definitions))
     logger.addHandler(handler)
+
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
+    logging.getLogger("requests").setLevel(logging.WARNING)

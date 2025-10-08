@@ -33,19 +33,22 @@ class Translator:
     language file based on the application configuration and provides methods
     to retrieve translated strings using a dot-notation key.
     """
-    def __init__(self, platform_config: PlatformConfig):
+    def __init__(self, platform_config: PlatformConfig, project_root: Path):
         """Initializes the Translator by loading the appropriate language file.
 
         Args:
-            app_config (AppConfig): The application Pydantic config object.
+            platform_config (PlatformConfig): The application Pydantic config object.
+            project_root (Path): The absolute path to the project's root directory.
         """
-        lang_path = Path('locales') / f"{platform_config.language}.yaml"
+        lang_path = project_root / 'locales' / f"{platform_config.core.language}.yaml"
         self.strings: Dict[str, Any] = {}
         try:
             with open(lang_path, 'r', encoding='utf-8') as f:
-                self.strings = yaml.safe_load(f)
+                self.strings = yaml.safe_load(f) or {}
         except FileNotFoundError:
             print(f"WARNING: Language file not found at {lang_path}")
+        except Exception as e:
+            print(f"ERROR: Failed to load or parse language file at {lang_path}: {e}")
 
     def get(self, key: str, default: str | None = None, **kwargs: Any) -> str:
         """Retrieves and formats a nested translated string using dot-notation.

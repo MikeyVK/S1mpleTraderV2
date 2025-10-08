@@ -8,7 +8,7 @@ Contains the final, composed Pydantic model for a complete application run.
     - Composes platform-level and run-level configurations into a single,
       unified, and immutable AppConfig object.
 """
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from .platform_schema import PlatformConfig
 from .run_schema import RunBlueprint
 
@@ -18,5 +18,11 @@ class AppConfig(BaseModel):
     combines platform-wide settings (PlatformConfig) with the blueprint for a
     specific run (RunBlueprint), creating a single source of truth.
     """
-    platform: PlatformConfig
-    run: RunBlueprint
+    platform: PlatformConfig = Field(
+        ...,
+        description="app_config.platform.desc"
+    )
+    run: RunBlueprint = Field(
+        ...,
+        description="app_config.run.desc"
+    )

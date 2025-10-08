@@ -41,6 +41,48 @@ class ParquetPersistor(IDataPersistor):
         except (IOError, ValueError, pa.ArrowInvalid):
             return None
 
+    def get_first_timestamp(self, pair: str) -> int:
+        """Efficiently retrieves the first timestamp from a partitioned dataset.
+
+        This method reads the metadata of the Parquet dataset to find the
+        global minimum value of the 'timestamp' column without loading the
+        entire dataset into memory.
+
+        Args:
+            pair: The trading pair to query.
+
+        Returns:
+            The UNIX timestamp (in nanoseconds) of the oldest stored trade,
+            or 0 if no data exists.
+        """
+        dataset_path = self._get_dataset_path(pair)
+        if not dataset_path.is_dir():
+            return 0
+        try:
+            dataset = pq.ParquetDataset(dataset_path)
+            if not dataset.fragments:
+                return 0
+
+            timestamp_col_index = dataset.schema.names.index('timestamp')
+            timestamps: List[Any] = []
+
+            for frag in dataset.fragments:
+                for i in range(frag.num_row_groups):
+                    row_group_meta = frag.metadata.row_group(i)
+                    column_meta = row_group_meta.column(timestamp_col_index)
+                    if column_meta.statistics and column_meta.statistics.has_min_max:
+                        # Hier gebruiken we .min in plaats van .max
+                        timestamps.append(column_meta.statistics.min)
+
+            if not timestamps:
+                return 0
+
+            min_ts = min(timestamps)
+            return int(pd.Timestamp(min_ts).value)
+
+        except (IOError, ValueError, pa.ArrowInvalid, KeyError, IndexError):
+            return 0
+
     def get_last_timestamp(self, pair: str) -> int:
         """Efficiently retrieves the last timestamp from a partitioned dataset."""
         dataset_path = self._get_dataset_path(pair)

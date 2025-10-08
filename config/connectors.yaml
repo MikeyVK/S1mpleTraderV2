@@ -1,0 +1,24 @@
+# In bestand: config/connectors.yaml
+# Dit bestand definieert alle beschikbare API connector-instanties.
+# Elke key is een unieke, zelfgekozen naam voor een verbinding.
+
+kraken_public:
+  # Het 'type' veld verhuist van hier...
+  # config: # ...naar hierbinnen.
+  # --- CORRECTE STRUCTUUR ---
+  # Het 'root' object wordt nu direct het config-blok.
+  type: 'kraken_public'
+  base_url: "https://api.kraken.com/0/public"
+  retries:
+    max_attempts: 3
+    delay_seconds: 2
+
+# Voorbeeld van hoe een private connector eruit zou zien:
+# kraken_private:
+#   type: 'kraken_private'
+#   base_url: "https://api.kraken.com/0/private"
+#   api_key: "${KRAKEN_API_KEY}"
+#   api_secret: "${KRAKEN_API_SECRET}"
+#   retries:
+#     max_attempts: 5
+#     delay_seconds: 3
