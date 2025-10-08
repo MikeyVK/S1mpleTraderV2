@@ -9,6 +9,7 @@ from pytest_mock import MockerFixture
 
 from backend.core.interfaces.connectors import IAPIConnector
 from backend.core.interfaces.persistors import IDataPersistor
+from backend.assembly.connector_factory import IConnectorFactory
 from backend.config.schemas.platform_schema import DataCollectionLimits
 from backend.dtos.market.trade_tick import TradeTick
 from backend.dtos.commands.fetch_period_command import FetchPeriodCommand
@@ -36,6 +37,7 @@ def test_fetch_period_processes_stream_correctly(mocker: MockerFixture):
     command = FetchPeriodCommand(pair=PAIR, start_date=START_DATE, end_date=END_DATE)
 
     mock_persistor = mocker.MagicMock(spec=IDataPersistor)
+    mock_persistor.get_last_timestamp.return_value = 0
     mock_logger = mocker.MagicMock()
     mock_limits = DataCollectionLimits(max_history_days=365) # Ruime limiet
 
@@ -50,6 +52,9 @@ def test_fetch_period_processes_stream_correctly(mocker: MockerFixture):
     mock_connector = mocker.MagicMock(spec=IAPIConnector)
     mock_connector.get_historical_trades.return_value = mock_generator()
 
+    mock_factory = mocker.MagicMock(spec=IConnectorFactory)
+    mock_factory.get_connector.return_value = mock_connector
+
     service = DataCommandService(
         persistor=mock_persistor,
         connector=mock_connector,
@@ -61,14 +66,17 @@ def test_fetch_period_processes_stream_correctly(mocker: MockerFixture):
     service.fetch_period(command)
 
     # Assert
-    # 1. Is de stream correct gestart met de grenzen uit het commando?
+    # 1. Is de juiste connector opgevraagd bij de fabriek?
+    mock_factory.get_connector.assert_called_once_with('kraken_public') # Aanname van een default
+
+    # 2. Is de stream correct gestart met de grenzen uit het commando?
     mock_connector.get_historical_trades.assert_called_once_with(
         pair=PAIR,
         since=int(START_DATE.value),
         until=int(END_DATE.value)
     )
 
-    # 2. Zijn BEIDE batches correct opgeslagen door de persistor?
+    # 3. Zijn BEIDE batches correct opgeslagen door de persistor?
     assert mock_persistor.save_trades.call_count == 2
     expected_calls = [
         mocker.call(pair=PAIR, trades=batch1),
@@ -76,7 +84,7 @@ def test_fetch_period_processes_stream_correctly(mocker: MockerFixture):
     ]
     mock_persistor.save_trades.assert_has_calls(expected_calls)
 
-    # 3. Is de logging correct?
+    # 4. Is de logging correct?
     mock_logger.info.assert_any_call('data_command.fetch_period_start', values={'pair': PAIR})
     mock_logger.info.assert_any_call('data_command.fetch_period_complete', values={'pair': PAIR})
 
@@ -102,7 +110,7 @@ def test_fetch_period_raises_error_if_period_exceeds_max_limit(mocker: MockerFix
 
     # --- Act & Assert ---
     service = DataCommandService(persistor=mock_persistor,
-                                 connector=mock_connector,
+                                 connector_factory=mock_factory,
                                  logger=mock_logger,
                                  limits=mock_limits)
 
@@ -152,12 +160,15 @@ def test_synchronize_fetches_and_saves_streamed_data(mocker: MockerFixture):
     mock_connector = mocker.MagicMock(spec=IAPIConnector)
     mock_connector.get_historical_trades.return_value = mock_generator()
 
+    mock_factory = mocker.MagicMock(spec=IConnectorFactory)
+    mock_factory.get_connector.return_value = mock_connector
+
     mock_logger = mocker.MagicMock()
     mock_limits = DataCollectionLimits()
 
     service = DataCommandService(
         persistor=mock_persistor,
-        connector=mock_connector,
+        connector_factory=mock_factory,
         logger=mock_logger,
         limits=mock_limits
     )
@@ -167,6 +178,7 @@ def test_synchronize_fetches_and_saves_streamed_data(mocker: MockerFixture):
 
     # Assert (deze blijven hetzelfde)
     mock_persistor.get_last_timestamp.assert_called_once_with(PAIR)
+    mock_factory.get_connector.assert_called_once_with('kraken_public')
     mock_connector.get_historical_trades.assert_called_once_with(
         pair=PAIR, since=LAST_KNOWN_TS_NS, until=None
     )
@@ -204,14 +216,17 @@ def test_extend_history_works_backward_from_oldest_point(mocker: MockerFixture):
         yield new_trades_batch
     mock_connector = mocker.MagicMock(spec=IAPIConnector)
     mock_connector.get_historical_trades.return_value = mock_generator()
-    
+
+    mock_factory = mocker.MagicMock(spec=IConnectorFactory)
+    mock_factory.get_connector.return_value = mock_connector
+   
     mock_logger = mocker.MagicMock()
     # Mock limits om de ValueError te vermijden in de (niet geteste) helpers
     mock_limits = DataCollectionLimits(max_history_days=365)
     
     service = DataCommandService(
         persistor=mock_persistor,
-        connector=mock_connector,
+        connector_factory=mock_factory,
         logger=mock_logger,
         limits=mock_limits
     )
@@ -222,12 +237,13 @@ def test_extend_history_works_backward_from_oldest_point(mocker: MockerFixture):
     # Assert
     # 1. Is de oudste timestamp correct opgevraagd?
     mock_persistor.get_first_timestamp.assert_called_once_with(PAIR)
+    mock_factory.get_connector.assert_called_once_with('kraken_public')
 
     # 2. Is de connector aangeroepen met de correcte, terugberekende periode?
     expected_until_ns = int(OLDEST_KNOWN_TS.value) - 1
     expected_start_date = pd.to_datetime(expected_until_ns, unit='ns', utc=True) - pd.Timedelta(days=DAYS_TO_EXTEND)
     expected_since_ns = int(expected_start_date.value)
-    
+
     mock_connector.get_historical_trades.assert_called_once_with(
         pair=PAIR,
         since=expected_since_ns,
@@ -281,10 +297,13 @@ def test_fill_gaps_fetches_only_missing_data(mocker: MockerFixture):
     mock_connector = mocker.MagicMock(spec=IAPIConnector)
     mock_connector.get_historical_trades.return_value = mock_generator()
 
+    mock_factory = mocker.MagicMock(spec=IConnectorFactory)
+    mock_factory.get_connector.return_value = mock_connector
+
     mock_logger = mocker.MagicMock()
     service = DataCommandService(
         persistor=mock_persistor,
-        connector=mock_connector,
+        connector_factory=mock_factory,
         logger=mock_logger,
         limits=mocker.MagicMock() # Niet van toepassing voor deze test
     )
@@ -295,6 +314,8 @@ def test_fill_gaps_fetches_only_missing_data(mocker: MockerFixture):
     # Assert
     # 1. Is de datakaart correct opgevraagd?
     mock_persistor.get_data_coverage.assert_called_once_with(PAIR)
+    
+    mock_factory.get_connector.assert_called_once_with('kraken_public')
 
     # 2. Is de connector aangeroepen met de PRECIEZE grenzen van het gat?
     expected_since_ns = int(block1_end.value) + 1

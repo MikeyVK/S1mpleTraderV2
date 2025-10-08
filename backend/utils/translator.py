@@ -50,8 +50,8 @@ class Translator:
         except Exception as e:
             print(f"ERROR: Failed to load or parse language file at {lang_path}: {e}")
 
-    def get(self, key: str, default: str | None = None, **kwargs: Any) -> str:
-        """Retrieves and formats a nested translated string using dot-notation.
+    def get(self, key: str, default: str | None = None) -> str:
+        """Retrieves a nested translated string using dot-notation.
 
         If the key is not found, it returns the default value, or the key
         itself if no default is provided.
@@ -60,10 +60,9 @@ class Translator:
             key (str): The dot-notation key (e.g., 'app.start').
             default (str, optional): A fallback value to return if the key is
                                      not found. Defaults to None.
-            **kwargs: Values to format into the translated string.
 
         Returns:
-            The translated and formatted string.
+            The translated string (template).
         """
         try:
             value: Any = self.strings
@@ -75,7 +74,7 @@ class Translator:
             if not isinstance(value, str):
                 return default or key
 
-            return value.format(**kwargs)
+            return value
         except (KeyError, TypeError):
             return default or key
 

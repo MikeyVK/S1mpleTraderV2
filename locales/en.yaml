@@ -159,6 +159,7 @@ data_command:
 # --- Log Messages for KrakenAPIConnector ---
 kraken_connector:
   request_attempt: "Requesting '{endpoint}' (attempt {attempt}/{max_attempts})..."
+  session_closing: "Closing connector session for '{connector_type}'."
 
 #--- DTO's ---
 

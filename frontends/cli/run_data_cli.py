@@ -28,7 +28,7 @@ from backend.utils.translator import Translator
 from backend.utils.app_logger import configure_logging, LogEnricher
 from backend.data.persistors.parquet_persistor import ParquetPersistor
 from backend.environments.api_connectors.kraken_connector import KrakenAPIConnector
-from backend.dtos.commands import FetchPeriodCommand, SynchronizationCommand
+from backend.dtos.commands import FetchPeriodCommand, SynchronizationCommand, ExtendHistoryCommand
 from services.data_command_service import DataCommandService
 # pylint: enable=wrong-import-position
 
@@ -52,8 +52,9 @@ def bootstrap_service() -> DataCommandService:
     logger = LogEnricher(root_logger)
 
     # 3. Initialiseer de specifieke componenten
-    persistor = ParquetPersistor(data_dir=Path(platform_config.data.source_dir))  # pylint: disable=no-member
-
+    data_directory = project_root / platform_config.data.source_dir
+    persistor = ParquetPersistor(data_dir=data_directory)
+    
     kraken_conf = connectors_config.root.get('kraken_public')  # pylint: disable=no-member
     if not kraken_conf:
         raise ValueError("Connector 'kraken_public' not found in connectors.yaml")
@@ -114,6 +115,22 @@ def fetch_period(
     except NotImplementedError as e:
         typer.secho(f"Functionality Error: {e}", fg=typer.colors.YELLOW)
     except RuntimeError as e:
+        typer.secho(f"An unexpected error occurred: {e}", fg=typer.colors.RED)
+
+@app.command()
+def extend_history(
+    pair: Annotated[str, typer.Option(help="The trading pair to extend, e.g., 'ETH/EUR'.")],
+    days: Annotated[int, typer.Option(help="The number of days to extend the history backward.")]
+):
+    """Extends an existing archive further back in time."""
+    typer.echo(f"🚀 Extending history for {pair} by {days} days...")
+    command = ExtendHistoryCommand(pair=pair, period_days=days)
+    try:
+        service_instance.extend_history(command)
+        typer.secho("✅ History extension complete!", fg=typer.colors.GREEN)
+    except (ValueError, NotImplementedError) as e:
+        typer.secho(f"Error: {e}", fg=typer.colors.RED)
+    except Exception as e:
         typer.secho(f"An unexpected error occurred: {e}", fg=typer.colors.RED)
 
 if __name__ == "__main__":

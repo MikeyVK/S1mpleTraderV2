@@ -1,4 +1,5 @@
 # backend/core/interfaces/connectors.py
+# pylint: disable=unnecessary-ellipsis
 """
 Contains the abstract contracts (Protocols) for all external data connectors.
 
@@ -156,4 +157,11 @@ class IAPIConnector(Protocol):
 
     def stop_user_data_stream(self) -> None:
         """Stops the active PRIVATE user data stream."""
+        ...
+
+    def close(self) -> None:
+        """
+        Gracefully closes any open network connections and cleans up
+        associated resources.
+        """
         ...

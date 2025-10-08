@@ -80,7 +80,6 @@ class LogFormatter(logging.Formatter):
                 final_message = translated_template.format(**values_dict)
             except (KeyError, TypeError):
                 final_message = f"{translated_template} [FORMATTING ERROR]"
-
         record.msg = final_message
         record.args = ()
 

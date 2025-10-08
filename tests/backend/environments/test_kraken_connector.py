@@ -51,7 +51,7 @@ def test_get_historical_trades_streams_batches_successfully(mocker: MockerFixtur
     """
     # Arrange
     mock_logger = MagicMock()
-    mock_config = KrakenPublicConfig()
+    mock_config = KrakenPublicConfig(type='kraken_public')
     mock_response_page1 = MagicMock(json=lambda: MOCK_KRAKEN_SUCCESS_RESPONSE)
     mock_response_page2 = MagicMock(json=lambda: {
         "error": [], "result": {"last": MOCK_KRAKEN_SUCCESS_RESPONSE["result"]["last"]}
@@ -77,7 +77,7 @@ def test_get_historical_trades_handles_api_error(mocker: MockerFixture):
     """
     # Arrange
     mock_logger = MagicMock()
-    mock_config = KrakenPublicConfig()
+    mock_config = KrakenPublicConfig(type='kraken_public')
     mock_response = MagicMock(json=lambda: MOCK_KRAKEN_ERROR_RESPONSE)
     mocker.patch('requests.Session.get', return_value=mock_response)
     connector = KrakenAPIConnector(logger=mock_logger, config=mock_config)
@@ -99,7 +99,7 @@ def test_get_historical_trades_respects_time_window(mocker: MockerFixture):
     """
     # Arrange
     mock_logger = MagicMock()
-    mock_config = KrakenPublicConfig()
+    mock_config = KrakenPublicConfig(type='kraken_public')
     SINCE_NS = 1000 * 1_000_000_000
     UNTIL_NS = 2000 * 1_000_000_000
 
@@ -130,7 +130,7 @@ def test_get_historical_trades_retries_on_network_error(mocker: MockerFixture):
     """
     # Arrange
     mock_logger = MagicMock()
-    mock_config = KrakenPublicConfig(retries=KrakenAPIRetryConfig(max_attempts=3, delay_seconds=1))
+    mock_config = KrakenPublicConfig(type='kraken_public',retries=KrakenAPIRetryConfig(max_attempts=3, delay_seconds=1))
     mock_success_response = MagicMock(json=lambda: MOCK_KRAKEN_SUCCESS_RESPONSE)
     # Een lege 'stop' response voor de tweede call
     mock_stop_response = MagicMock(json=lambda: {
@@ -163,7 +163,7 @@ def test_get_historical_ohlcv_streams_batches_successfully(mocker: MockerFixture
     """
     # Arrange
     mock_logger = MagicMock()
-    mock_config = KrakenPublicConfig()
+    mock_config = KrakenPublicConfig(type='kraken_public')
 
     # Mock de API:
     # Pagina 1: Heeft 2 candles en verwijst naar een 'last' timestamp.

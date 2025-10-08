@@ -13,11 +13,14 @@ import pandas as pd
 
 from backend.core.interfaces.connectors import IAPIConnector
 from backend.core.interfaces.persistors import IDataPersistor
+from backend.assembly.connector_factory import IConnectorFactory
 from backend.config.schemas.platform_schema import DataCollectionLimits
-from backend.dtos.commands.fetch_period_command import FetchPeriodCommand
-from backend.dtos.commands.synchronization_command import SynchronizationCommand
-from backend.dtos.commands.extend_history_command import ExtendHistoryCommand
-from backend.dtos.commands.fill_gaps_command import FillGapsCommand
+from backend.dtos.commands import (
+    FetchPeriodCommand,
+    SynchronizationCommand,
+    ExtendHistoryCommand,
+    FillGapsCommand
+)
 from backend.dtos.market.trade_tick import TradeTick
 from backend.utils.app_logger import LogEnricher
 
@@ -28,15 +31,23 @@ class DataCommandService:
     def __init__(
         self,
         persistor: IDataPersistor,
-        connector: IAPIConnector,
+        connector_factory: IConnectorFactory,
         limits: DataCollectionLimits,
         logger: LogEnricher
     ):
         """Initializes the DataCommandService."""
         self._persistor = persistor
-        self._connector = connector
+        self._connector_factory = connector_factory
         self._limits = limits
         self._logger = logger
+
+
+    def _get_connector(self, name: str = 'kraken_public') -> IAPIConnector:
+        """Helper to get a connector from the factory and handle errors."""
+        connector = self._connector_factory.get_connector(name)
+        if not connector:
+            raise ValueError(f"Failed to get connector '{name}' from factory.")
+        return connector
 
     # --- Private "Motor" ---
 

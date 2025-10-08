@@ -98,7 +98,7 @@ class KrakenAPIConnector(IAPIConnector):
 
                 if api_errors:
                     # Een andere, niet-herstelbare API fout.
-                    self.logger.error(f"Kraken API error: {api_errors}")
+                    self.logger.error(f"Kraken API error for endpoint '/Trades': {api_errors}")
                     return {} # Stop en geef op.
 
                 # ---- Succes! ----
@@ -325,3 +325,11 @@ class KrakenAPIConnector(IAPIConnector):
 
     def stop_user_data_stream(self) -> None:
         raise NotImplementedError("stop_user_data_stream is not implemented for KrakenAPIConnector")
+
+    def close(self) -> None:
+        """Closes the underlying requests.Session to release connections."""
+        self.logger.info(
+            'kraken_connector.session_closing',
+            values={'connector_type': self.config.type}
+        )
+        self.session.close()
