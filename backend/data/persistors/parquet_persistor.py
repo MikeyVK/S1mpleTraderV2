@@ -71,7 +71,6 @@ class ParquetPersistor(IDataPersistor):
                     row_group_meta = frag.metadata.row_group(i)
                     column_meta = row_group_meta.column(timestamp_col_index)
                     if column_meta.statistics and column_meta.statistics.has_min_max:
-                        # Hier gebruiken we .min in plaats van .max
                         timestamps.append(column_meta.statistics.min)
 
             if not timestamps:
@@ -93,24 +92,17 @@ class ParquetPersistor(IDataPersistor):
             if not dataset.fragments:
                 return 0
 
-            # --- DE FIX: Gebruik de correcte API voor Parquet metadata ---
-
-            # 1. Bepaal de index van de 'timestamp' kolom in het schema.
             try:
                 timestamp_col_index = dataset.schema.names.index('timestamp')
             except ValueError:
-                # Kolom 'timestamp' bestaat niet in het schema.
                 return 0
 
             timestamps: List[Any] = []
-            # 2. Itereer door de fragmenten en hun row groups.
             for frag in dataset.fragments:
                 for i in range(frag.num_row_groups):
                     row_group_meta = frag.metadata.row_group(i)
-                    # 3. Vraag de metadata voor de specifieke kolom op.
                     column_meta = row_group_meta.column(timestamp_col_index)
 
-                    # 4. Controleer of statistieken bestaan en haal .max op.
                     if column_meta.statistics and column_meta.statistics.has_min_max: # type: ignore
                         timestamps.append(column_meta.statistics.max)
 
@@ -118,14 +110,10 @@ class ParquetPersistor(IDataPersistor):
                 return 0
 
             max_ts = max(timestamps)
-            # Converteer de waarde (die een Arrow-native type kan zijn)
-            # naar een nanoseconde integer.
             return int(pd.Timestamp(max_ts).value)
 
         except (IOError, ValueError, pa.ArrowInvalid, KeyError, IndexError):
-            # Vang ook een mogelijke IndexError op als de kolomindex niet gevonden wordt.
             return 0
-
 
     def save_trades(self, pair: str, trades: List[TradeTick]) -> None:
         """Saves trades to a partitioned Parquet dataset by year and month."""
