@@ -15,3 +15,4 @@ class SynchronizationCommand(BaseModel):
     latest trades since the last known data point.
     """
     pair: str = Field(..., description="synchronization_command.pair.desc")
+    exchange_id: str = Field(..., description="synchronization_command.exchange_id.desc")
