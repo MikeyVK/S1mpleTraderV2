@@ -4,7 +4,23 @@
 # For the MVP, we use English keys that map to English text.
 
 # --- Labels for Platform Configuration schema ---
+# In bestand: locales/en.yaml
+
+# ... (andere bestaande keys zoals 'app', 'data_command', etc.)
+
+# --- Descriptions for Platform Schema (platform_config) ---
 platform_config:
+  # --- Top-Level Sections ---
+  core:
+    desc: "Defines the core, foundational settings for the application."
+  services:
+    desc: "Groups all configurations for the service layer components."
+  data:
+    desc: "Defines settings related to data sources and physical storage."
+  portfolio:
+    desc: "Groups all portfolio-related configurations."
+
+  # --- Core Section ---
   core:
     language:
       desc: "The default language for the application's user interface and logs."
@@ -12,21 +28,33 @@ platform_config:
       desc: "The root directory where the application will scan for plugins."
     logging:
       profile:
-        desc: "The active logging profile ('developer' or 'analysis'), which determines which log messages are shown."
+        desc: "The active logging profile, which determines which log messages are shown."
       profiles:
         desc: "The definition of all available logging profiles and the log levels they include."
-  
   services:
     data_collection:
-      max_history_days:
-        desc: "The absolute maximum number of days of history a user can request in a single operation. Acts as a safety limit."
-      warn_history_days:
-        desc: "The number of days after which the UI should display a warning for a large historical data request."
-
+      limits:
+        max_history_days:
+          desc: "Safety limit: The max number of days to fetch in a single historical request."
+        warn_history_days:
+          desc: "The number of days after which the UI should warn for a large data request."
+    data_ingestion:
+      defaults:
+        desc: "Defines the default buffer strategies for different ingestion tasks."
+        historical_task:
+          desc: "The default buffer strategy for historical bulk download tasks."
+        live_task:
+          desc: "The default buffer strategy for real-time, live data ingestion tasks."
+      profiles:
+        desc: "A library of named, specific buffer strategies that can be explicitly requested."
+      buffer:
+        max_records:
+          desc: "The max number of records to hold in an in-memory buffer before flushing to disk."
+        max_seconds:
+          desc: "The max age in seconds of an in-memory buffer before it is flushed to disk."
   data:
     source_dir:
-      desc: "The root directory where raw, downloaded source data (e.g., from CSV files) is stored."
-
+      desc: "The root directory where historical data archives (e.g., Parquet files) are stored."
   portfolio:
     defaults:
       initial_capital:

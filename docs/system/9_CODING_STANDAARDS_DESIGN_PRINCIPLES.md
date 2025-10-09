@@ -32,6 +32,14 @@ Elk bestand, elke klasse en elke functie moet een duidelijke docstring hebben.
         - Builds and maintains the central plugin registry.
     """
     ```
+* **Imports:** Alle imports staan bovenaan het bestand. Het is van belang dat deze in de juiste volgorde staan. We zullen hiervoor ten alle tijden een onderverdeling gebruiken in de volgende drie groepen en volgorde:
+  * **1. Standard Library Imports**
+  * **2. Third-Party Imports**
+  * **3. Our Application Imports**
+Alle imports zullen absoluut zijn en opbouwen vanaf de project root.
+
+Indien mogelijk worden imports gegroepeerd om lange regels te voorkomen en te blijven voldoen aan de PEP 8.
+
 * **Functie & Methode Docstrings (Google Style):** Voor alle functies en methodes hanteren we de **Google Style Python Docstrings**. Dit is een leesbare en gestructureerde manier om parameters, return-waarden en voorbeelden te documenteren.
     ```python
     def process_data(df: pd.DataFrame, length: int = 14) -> pd.DataFrame:
