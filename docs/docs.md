@@ -154,8 +154,8 @@ Dit is de definitieve lijst van events die de interactie tussen de componenten s
 | StrategyProposalReady     | EngineCycleResult        | StrategyOperator       | PortfolioSupervisor,         |
 |                           |                          |                        | ContextRecorder              |
 | ExecutionApproved         | List[ExecutionDirective] | PortfolioSupervisor,   | ExecutionHandler,            |
-|                           |                          |                        | Operationele Agenten,        |
-|                           |                          | Operationele Agenten   | LiveDashboardUI              |
+|                           |                          | Operationele Agenten   | Operationele Agenten,        |
+|                           |                          |                        | LiveDashboardUI              |
 | --------------------------| -------------------------| -----------------------| -----------------------------|
 | **Portfolio Lifecycle**   |                          |                        |                              |
 | PortfolioStateChanged     | PortfolioState           | ExecutionHandler       | ContextOrchestrator,         |
