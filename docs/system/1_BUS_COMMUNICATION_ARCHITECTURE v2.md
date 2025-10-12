@@ -36,11 +36,8 @@ De EventAdapter is een generieke, herbruikbare "vertaler" wiens enige taak het i
 Deze regel instrueert het systeem om:
 
 1\. Een EventAdapter te creëren.  
-
 2\. Deze adapter te laten luisteren naar het ContextReady\\-event.  
-
 3\. Wanneer dat event binnenkomt, de run\\\_pipeline()\\-methode van de AnalysisOperator aan te roepen met de event-payload.  
-
 4\. Als de methode een resultaat teruggeeft, dit resultaat te publiceren op de bus onder de naam StrategyProposalReady.
 
 ### **1.2.2. De Rol van de EventWiringFactory**
