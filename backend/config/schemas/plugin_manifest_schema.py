@@ -63,6 +63,10 @@ class Dependencies(BaseModel):
         description="manifest.dependencies.provides.desc",
         default_factory=list
     )
+    produces_events: List[str] = Field(
+        description="manifest.dependencies.produces_events.desc",
+        default_factory=list
+    )
 
 class Permissions(BaseModel):
     """Defines the security permissions required by the plugin."""

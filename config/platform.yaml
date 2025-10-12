@@ -44,6 +44,22 @@ services:
       # voor een grote data-aanvraag.
       warn_history_days: 365 # 1 jaar
 
+  data_ingestion:
+    # Default buffer configurations for different ingestion tasks
+    defaults:
+      historical_task:
+        max_records: 250000
+        max_seconds: 3600
+      live_task:
+        max_records: 10000
+        max_seconds: 300
+
+    # Custom ingestion profiles for different use cases
+    profiles:
+      local_power_user:
+        max_records: 1000000
+        max_seconds: 7200
+
 data:
   # De map waar de Parquet-bestanden met historische data worden opgeslagen.
   source_dir: 'source_data'

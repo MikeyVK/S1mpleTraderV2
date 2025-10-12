@@ -55,8 +55,10 @@ platform_config:
   data:
     source_dir:
       desc: "The root directory where historical data archives (e.g., Parquet files) are stored."
+  # --- Portfolio Section ---
   portfolio:
     defaults:
+      desc: "Defines the default financial parameters for any new portfolio or backtest."
       initial_capital:
         desc: "The default starting capital for any new portfolio or backtest."
       fees_pct:
@@ -239,3 +241,79 @@ range_query:
     desc: "The start date (inclusive) of the time range to query."
   end_date:
     desc: "The end date (inclusive) of the time range to query."
+
+# --- Portfolio Schema Localization ---
+
+# Portfolio Blueprint descriptions
+portfolio_schema:
+  portfolio_blueprint:
+    display_name:
+      desc: "A human-readable name for this portfolio configuration."
+    description:
+      desc: "A detailed description of this portfolio's purpose and strategy."
+    strategies:
+      desc: "A list of strategy configurations linked to specific execution environments."
+    risk_policy:
+      desc: "The comprehensive risk management policy for this portfolio."
+
+  strategy_link:
+    strategy_blueprint_path:
+      desc: "Path to the strategy blueprint YAML file (relative to config/runs/)."
+    execution_environment_id:
+      desc: "The ID of the execution environment where this strategy should run."
+
+  capital_allocation:
+    percentage:
+      desc: "Percentage of total portfolio capital allocated to this strategy (0-100%)."
+    max_quote_amount:
+      desc: "Maximum absolute amount in quote currency for this strategy (optional)."
+
+  event_action:
+    block_new_signals_min:
+      desc: "Block new trading signals for this strategy for X minutes after event."
+    close_strategy_positions:
+      desc: "Close all open positions for this strategy immediately."
+    move_sl_to_breakeven_strategy:
+      desc: "Move stop-loss orders to breakeven for this strategy's positions."
+    reduce_position_size_pct_strategy:
+      desc: "Reduce position sizes by this percentage for this strategy."
+    cancel_entry_orders_strategy:
+      desc: "Cancel all pending entry orders for this strategy."
+    close_all_portfolio_positions:
+      desc: "Close ALL positions across the entire portfolio immediately."
+    cancel_all_entry_orders_portfolio:
+      desc: "Cancel all pending entry orders across the entire portfolio."
+    notification_message:
+      desc: "Custom notification message to send when this event occurs."
+
+  risk_policy:
+    portfolio_rules:
+      desc: "Risk management rules that apply to the entire portfolio."
+    strategy_rules:
+      desc: "Single source of truth for all strategy-specific risk configurations. Each strategy's risk parameters are defined here, not in the strategy links."
+    event_responses:
+      desc: "Dynamic responses to specific events detected by PortfolioMonitor plugins."
+
+  portfolio_risk:
+    max_total_drawdown_pct:
+      desc: "Maximum allowed drawdown for the entire portfolio before emergency actions."
+    max_position_size_pct_per_strategy:
+      desc: "Maximum position size as percentage of portfolio for any single strategy."
+    max_correlated_positions:
+      desc: "Maximum number of positions in correlated assets allowed."
+
+  strategy_risk:
+    capital_allocation:
+      desc: "Capital allocation limits for this specific strategy."
+    max_drawdown_pct:
+      desc: "Maximum drawdown allowed for this strategy before intervention."
+    max_position_size_pct:
+      desc: "Maximum position size as percentage of strategy allocation."
+    enabled:
+      desc: "Whether this strategy is currently active and allowed to trade."
+
+# Extended Plugin Manifest for Event Production
+manifest:
+  dependencies:
+    produces_events:
+      desc: "List of event types that this plugin can produce (for PortfolioMonitor plugins)."

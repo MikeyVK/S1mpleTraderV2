@@ -1,0 +1,24 @@
+name: max_drawdown_detector
+display_name: "Maximum Drawdown Detector"
+type: portfolio_monitor
+version: "1.0.0"
+description: "Monitors portfolio and strategy drawdown levels and triggers emergency responses"
+author: "S1mpleTrader Team"
+
+# --- Code Contract ---
+entry_class: "MaxDrawdownDetector"
+schema_path: "schema.py"
+params_class: "MaxDrawdownDetectorParams"
+
+# --- Data Contract ---
+dependencies:
+  requires: []  # PortfolioMonitor plugins don't need DataFrame columns
+  provides: []  # They only produce CriticalEvents
+  produces_events:
+    - "MAX_DRAWDOWN_BREACHED"
+    - "STRATEGY_DRAWDOWN_EXCEEDED"
+
+# --- Permissions ---
+permissions:
+  network_access: []
+  filesystem_access: []

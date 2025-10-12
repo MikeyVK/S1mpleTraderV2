@@ -123,7 +123,8 @@ class DataCommandService:
 
         effective_since_ns = max(start_date_ns, last_known_ts_ns)
 
-        trades_generator = self._connector.get_historical_trades(
+        connector = self._get_connector()
+        trades_generator = connector.get_historical_trades(
             pair=command.pair,
             since=effective_since_ns,  # Gebruik het slimme startpunt
             until=int(end_date.value)
@@ -164,7 +165,8 @@ class DataCommandService:
                 f"Please use 'fetch_period' to fill the large gap."
             )
 
-        trades_generator = self._connector.get_historical_trades(
+        connector = self._get_connector()
+        trades_generator = connector.get_historical_trades(
             pair=command.pair,
             since=last_ts_ns,
             until=None
@@ -224,7 +226,8 @@ class DataCommandService:
             }
         )
 
-        trades_generator = self._connector.get_historical_trades(
+        connector = self._get_connector()
+        trades_generator = connector.get_historical_trades(
             pair=command.pair,
             since=since_ns,
             until=until_ns
@@ -290,7 +293,8 @@ class DataCommandService:
                 }
             )
 
-            trades_generator = self._connector.get_historical_trades(
+            connector = self._get_connector()
+            trades_generator = connector.get_historical_trades(
                 pair=command.pair,
                 since=gap_start_ns,
                 until=gap_end_ns

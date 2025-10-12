@@ -1,19 +1,204 @@
 # tests/backend/config/schemas/test_platform_schema.py
 """
-Unit tests for the platform_schema.py.
+Comprehensive unit tests for the platform_schema.py.
 
 @layer: Tests (Backend/Config/Schemas)
 @dependencies: [pytest, pydantic]
 @responsibilities:
-    - Verify that a valid platform configuration, including the new
-      data_ingestion structure, is successfully parsed.
-    - Verify that an invalid configuration raises a ValidationError.
+    - Verify that valid platform configurations are successfully parsed
+    - Test all nested configuration structures (core, services, data, portfolio)
+    - Validate data ingestion profiles and buffer configurations
+    - Test logging configuration and profile definitions
+    - Ensure proper default value application
+    - Test validation rules for all numeric and structural constraints
+    - Validate error messages and edge cases
+    - Test real-world configuration scenarios
 """
 import pytest
 from pydantic import ValidationError
+from typing import List
 
-# Het schema dat we gaan testen (bestaat nog niet in de juiste vorm)
-from backend.config.schemas.platform_schema import PlatformConfig
+# Import the LogLevel enum for proper typing
+from backend.core.enums import LogLevel
+
+# Import all platform schema models
+from backend.config.schemas.platform_schema import (
+    PlatformConfig,
+    CoreConfig,
+    LoggingConfig,
+    DataCollectionLimits,
+    DataIngestionConfig,
+    DataIngestionDefaults,
+    DataIngestionBufferConfig,
+    DataConfig,
+    PortfolioDefaults,
+)
+
+def test_data_ingestion_buffer_config_valid():
+    """Test DataIngestionBufferConfig with valid parameters."""
+    # Arrange & Act
+    buffer_config = DataIngestionBufferConfig(max_records=100000, max_seconds=3600)
+
+    # Assert
+    assert buffer_config.max_records == 100000
+    assert buffer_config.max_seconds == 3600
+
+
+def test_data_ingestion_buffer_config_validation_errors():
+    """Test DataIngestionBufferConfig validation rule enforcement."""
+    # Test zero max_records
+    with pytest.raises(ValidationError):
+        DataIngestionBufferConfig(max_records=0, max_seconds=300)
+
+    # Test negative max_records
+    with pytest.raises(ValidationError):
+        DataIngestionBufferConfig(max_records=-1000, max_seconds=300)
+
+    # Test zero max_seconds
+    with pytest.raises(ValidationError):
+        DataIngestionBufferConfig(max_records=10000, max_seconds=0)
+
+    # Test negative max_seconds
+    with pytest.raises(ValidationError):
+        DataIngestionBufferConfig(max_records=10000, max_seconds=-60)
+
+
+def test_data_ingestion_defaults_valid():
+    """Test DataIngestionDefaults with valid nested buffer configurations."""
+    # Arrange
+    historical_buffer = DataIngestionBufferConfig(max_records=250000, max_seconds=3600)
+    live_buffer = DataIngestionBufferConfig(max_records=10000, max_seconds=300)
+
+    # Act
+    defaults = DataIngestionDefaults(
+        historical_task=historical_buffer,
+        live_task=live_buffer
+    )
+
+    # Assert
+    assert defaults.historical_task.max_records == 250000
+    assert defaults.live_task.max_seconds == 300
+
+
+def test_data_ingestion_config_with_profiles():
+    """Test DataIngestionConfig with custom profiles."""
+    # Arrange
+    defaults = DataIngestionDefaults(
+        historical_task=DataIngestionBufferConfig(max_records=100000, max_seconds=1800),
+        live_task=DataIngestionBufferConfig(max_records=5000, max_seconds=150)
+    )
+
+    profiles = {
+        "power_user": DataIngestionBufferConfig(max_records=1000000, max_seconds=7200),
+        "minimal": DataIngestionBufferConfig(max_records=1000, max_seconds=60)
+    }
+
+    # Act
+    ingestion_config = DataIngestionConfig(defaults=defaults, profiles=profiles)
+
+    # Assert
+    assert len(ingestion_config.profiles) == 2
+    assert "power_user" in ingestion_config.profiles
+    assert ingestion_config.profiles["power_user"].max_records == 1000000
+    assert ingestion_config.profiles["minimal"].max_seconds == 60
+
+
+def test_logging_config_valid():
+    """Test LoggingConfig with valid profile definitions."""
+    # Arrange
+    profiles: dict[str, List[LogLevel]] = {
+        "developer": [LogLevel.DEBUG, LogLevel.INFO, LogLevel.WARNING, LogLevel.ERROR],
+        "production": [LogLevel.WARNING, LogLevel.ERROR, LogLevel.CRITICAL]
+    }
+
+    # Act
+    logging_config = LoggingConfig(profile="analysis", profiles=profiles)
+
+    # Assert
+    assert logging_config.profile == "analysis"
+    assert len(logging_config.profiles) == 2
+    assert LogLevel.DEBUG in logging_config.profiles["developer"]
+
+
+def test_core_config_valid():
+    """Test CoreConfig with valid platform settings."""
+    # Arrange
+    logging_config = LoggingConfig(
+        profile="analysis",
+        profiles={
+            "analysis": [LogLevel.DEBUG, LogLevel.INFO, LogLevel.WARNING, LogLevel.ERROR, LogLevel.CRITICAL, LogLevel.TRADE]
+        }
+    )
+
+    # Act
+    core_config = CoreConfig(
+        language="nl",
+        plugins_root_path="custom_plugins",
+        logging=logging_config
+    )
+
+    # Assert
+    assert core_config.language == "nl"
+    assert core_config.plugins_root_path == "custom_plugins"
+    assert core_config.logging.profile == "analysis"
+
+
+def test_core_config_defaults():
+    """Test CoreConfig default value application."""
+    # Arrange & Act
+    core_config = CoreConfig()
+
+    # Assert
+    assert core_config.language == "en"
+    assert core_config.plugins_root_path == "plugins"
+    assert core_config.logging.profile == "analysis"
+
+
+def test_data_collection_limits_valid():
+    """Test DataCollectionLimits with valid safety constraints."""
+    # Arrange & Act
+    limits = DataCollectionLimits(max_history_days=2000, warn_history_days=365)
+
+    # Assert
+    assert limits.max_history_days == 2000
+    assert limits.warn_history_days == 365
+
+
+def test_data_collection_limits_validation():
+    """Test DataCollectionLimits validation rules."""
+    # Test zero max_history_days
+    with pytest.raises(ValidationError):
+        DataCollectionLimits(max_history_days=0, warn_history_days=30)
+
+    # Test negative warn_history_days
+    with pytest.raises(ValidationError):
+        DataCollectionLimits(max_history_days=1000, warn_history_days=-10)
+
+
+def test_portfolio_defaults_valid():
+    """Test PortfolioDefaults with valid financial parameters."""
+    # Arrange & Act
+    defaults = PortfolioDefaults(initial_capital=50000.0, fees_pct=0.002)
+
+    # Assert
+    assert defaults.initial_capital == 50000.0
+    assert defaults.fees_pct == 0.002
+
+
+def test_portfolio_defaults_validation():
+    """Test PortfolioDefaults validation rules."""
+    # Test zero initial_capital
+    with pytest.raises(ValidationError):
+        PortfolioDefaults(initial_capital=0.0, fees_pct=0.001)
+
+    # Test negative initial_capital
+    with pytest.raises(ValidationError):
+        PortfolioDefaults(initial_capital=-10000.0, fees_pct=0.001)
+
+    # Test negative fees_pct
+    with pytest.raises(ValidationError):
+        PortfolioDefaults(initial_capital=10000.0, fees_pct=-0.001)
+
 
 def test_full_valid_platform_config_succeeds():
     """
@@ -24,12 +209,19 @@ def test_full_valid_platform_config_succeeds():
     valid_config_dict = {
         "core": {
             "language": "en",
-            "plugins_root_path": "plugins"
+            "plugins_root_path": "plugins",
+            "logging": {
+                "profile": "analysis",
+                "profiles": {
+                    "analysis": ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL", "TRADE"]
+                }
+            }
         },
         "services": {
             "data_collection": {
                 "limits": {
-                    "max_history_days": 1000
+                    "max_history_days": 1000,
+                    "warn_history_days": 365
                 }
             },
             "data_ingestion": {
@@ -47,7 +239,8 @@ def test_full_valid_platform_config_succeeds():
         },
         "portfolio": {
             "defaults": {
-                "initial_capital": 5000.0
+                "initial_capital": 50000.0,
+                "fees_pct": 0.002
             }
         }
     }

@@ -1,4 +1,5 @@
 S1mpleTraderV2/
+├── -p
 ├── backend
 │   ├── assembly
 │   │   ├── templates
@@ -11,6 +12,7 @@ S1mpleTraderV2/
 │   │   │   ├── schema.py.tpl
 │   │   │   └── worker.py.tpl
 │   │   ├── __init__.py
+│   │   ├── connector_factory.py
 │   │   ├── context_builder.py
 │   │   ├── dependency_validator.py
 │   │   ├── engine_builder.py
@@ -27,6 +29,7 @@ S1mpleTraderV2/
 │   │   │   ├── connectors_schema.py
 │   │   │   ├── platform_schema.py
 │   │   │   ├── plugin_manifest_schema.py
+│   │   │   ├── portfolio_schema.py
 │   │   │   └── run_schema.py
 │   │   └── __init__.py
 │   ├── core
@@ -111,17 +114,24 @@ S1mpleTraderV2/
 │   ├── variants
 │   │   └── robustness_test.yaml
 │   ├── __init__.py
+│   ├── connectors.yaml
 │   ├── index.yaml
-│   └── platform.yaml
+│   ├── platform.yaml
+│   └── portfolio.yaml
 ├── docs
 │   ├── development
 │   │   ├── KanBan
 │   │   │   ├── backlog_to_github.py
 │   │   │   ├── clear_github_issues.py
 │   │   │   └── product_backlog.csv
+│   │   ├── Architectonische Blauwdruk V2_ Het Agnostische Handels-Ecosysteem.md
 │   │   ├── D_BIJLAGE_PLUGIN SECURITY.pdf
 │   │   ├── E_BIJLAGE_ARCHITECTURAL_BLIND_SPOT_ANALYSE.pdf
-│   │   └── USM_DEV_ROADMAP.md
+│   │   ├── OVERDRACHT_DATA_SERVICES.md
+│   │   ├── Overdrachtsdocument_ Architectonische Inzichten & Beslissingen.md
+│   │   ├── USM_DEV_ROADMAP.md
+│   │   ├── Werkdocument_ De Quant Configuratie Workflow.md
+│   │   └── Werkdocument_ Use-Cases voor Historische Data Voorbereiding.md
 │   ├── system
 │   │   ├── 0_V2_ARCHITECTURE.md
 │   │   ├── 1_EVENT_DRIVEN_ARCHITECTURE.md
@@ -145,8 +155,9 @@ S1mpleTraderV2/
 │   ├── cli
 │   │   ├── presenters
 │   │   │   └── optimization_presenter.py
-│   │   └── reporters
-│   │       └── cli_reporter.py
+│   │   ├── reporters
+│   │   │   └── cli_reporter.py
+│   │   └── run_data_cli.py
 │   ├── web
 │   │   ├── api
 │   │   │   ├── routers
@@ -167,14 +178,6 @@ S1mpleTraderV2/
 │   └── nl.yaml
 ├── plugins
 │   ├── critical_event_detectors
-│   │   └── max_drawdown_overlay
-│   │       ├── tests
-│   │       │   ├── __init__.py
-│   │       │   └── test_worker.py
-│   │       ├── __init__.py
-│   │       ├── plugin_manifest.yaml
-│   │       ├── schema.py
-│   │       └── worker.py
 │   ├── entry_planners
 │   │   ├── liquidity_target_exit
 │   │   │   ├── tests
@@ -186,6 +189,16 @@ S1mpleTraderV2/
 │   │   │   └── worker.py
 │   │   └── __init__.py
 │   ├── order_routers
+│   │   └── __init__.py
+│   ├── portfolio_monitors
+│   │   ├── max_drawdown_detector
+│   │   │   ├── tests
+│   │   │   │   ├── __init__.py
+│   │   │   │   └── test_worker.py
+│   │   │   ├── __init__.py
+│   │   │   ├── plugin_manifest.yaml
+│   │   │   ├── schema.py
+│   │   │   └── worker.py
 │   │   └── __init__.py
 │   ├── regime_filters
 │   │   ├── adx_trend_filter
@@ -235,6 +248,7 @@ S1mpleTraderV2/
 │   │   └── visualization_service.py
 │   ├── __init__.py
 │   ├── data_command_service.py
+│   ├── data_query_service.py
 │   ├── optimization_service.py
 │   ├── parallel_run_service.py
 │   ├── strategy_operator.py
@@ -243,12 +257,17 @@ S1mpleTraderV2/
 │   ├── backend
 │   │   ├── assembly
 │   │   │   ├── __init__.py
+│   │   │   ├── test_connector_factory.py
 │   │   │   ├── test_context_builder.py
 │   │   │   ├── test_dependency_validator.py
 │   │   │   ├── test_engine_builder.py
 │   │   │   ├── test_plugin_creator.py
 │   │   │   ├── test_plugin_registry.py
 │   │   │   └── test_worker_builder.py
+│   │   ├── config
+│   │   │   ├── __init__.py
+│   │   │   ├── test_platform_schema.py
+│   │   │   └── test_portfolio_schema.py
 │   │   ├── core
 │   │   │   ├── test_context_recoreder.py
 │   │   │   ├── test_directive_flattener.py
@@ -265,6 +284,7 @@ S1mpleTraderV2/
 │   │   └── __init__.py
 │   ├── services
 │   │   ├── test_data_command_service.py
+│   │   ├── test_data_query_service.py
 │   │   └── test_strategy_operator.py
 │   └── __init__.py
 ├── tools

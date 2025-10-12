@@ -122,6 +122,8 @@ Jinja2
 
 # --- User Interface (CLI) ---
 # Tools voor de command-line interface.
+# --- User Interface (CLI) ---
+typer[all]
 tqdm
 rich
 prompt-toolkit
@@ -271,6 +273,131 @@ from .assembly import (
 )
 
 --- END FILE: backend/__init__.py ---
+
+--- START FILE: backend/assembly/connector_factory.py ---
+# In bestand: backend/assembly/connector_factory.py
+"""
+Contains the factory responsible for creating and managing API connector instances.
+
+@layer: Backend (Assembly)
+@dependencies: [backend.config.schemas, backend.environments.api_connectors]
+@responsibilities:
+    - Instantiates specific API connectors based on configuration.
+    - Manages the lifecycle of connector instances (creation, caching).
+    - Decouples services from the concrete implementation of connectors.
+"""
+from typing import Dict, Optional, Protocol
+
+from backend.config.schemas.connectors_schema import ConnectorsConfig, AnyConnectorConfig
+from backend.core.interfaces.connectors import IAPIConnector
+from backend.environments.api_connectors.kraken_connector import KrakenAPIConnector
+from backend.utils.app_logger import LogEnricher
+
+
+class IConnectorFactory(Protocol):
+    """An interface for any component that can build and manage API connectors."""
+    def get_connector(self, name: str) -> Optional[IAPIConnector]:
+        """Builds and returns a connector instance by its configured name."""
+        ...
+
+    def close_connector(self, name: str) -> None:
+        """Closes and removes a specific connector instance from the cache."""
+        ...
+
+    def close_all(self) -> None:
+        """Closes all cached connector instances."""
+        ...
+
+class ConnectorFactory(IConnectorFactory):
+    """A factory for creating API connector instances based on configuration."""
+
+    def __init__(self, config: ConnectorsConfig, logger: LogEnricher):
+        """Initializes the ConnectorFactory.
+
+        Args:
+            config (ConnectorsConfig): The validated connectors configuration,
+                mapping names to connector definitions.
+            logger (LogEnricher): The application's configured logger instance.
+        """
+        self._config = config
+        self._logger = logger
+        # De cache om reeds gemaakte instanties te bewaren voor hergebruik.
+        self._instances: Dict[str, IAPIConnector] = {}
+
+    def get_connector(self, name: str) -> Optional[IAPIConnector]:
+        """Builds and returns a connector instance using lazy loading.
+
+        The first time a connector is requested, it is built, cached, and
+        returned. Subsequent requests for the same connector name will return
+        the cached instance, preventing redundant object creation.
+
+        Args:
+            name (str): The unique name of the connector as defined in
+                connectors.yaml (e.g., 'kraken_public').
+
+        Returns:
+            An instance of a component that adheres to the IAPIConnector
+            interface if found and successfully built, otherwise None.
+        """
+        # Stap 1: Controleer de cache voor een bestaande instantie.
+        if name in self._instances:
+            return self._instances[name]
+
+        # Stap 2: Zoek de configuratie voor de gevraagde connector.
+        connector_config = self._config.root.get(name)
+        if not connector_config:
+            self._logger.error(
+                f"Connector '{name}' not found in configuration."
+            )
+            return None
+
+        # Stap 3: Delegeer de daadwerkelijke bouw naar een private helper.
+        instance = self._build(connector_config)
+        if instance:
+            # Stap 4: Sla de nieuwe instantie op in de cache voor de volgende keer.
+            self._instances[name] = instance
+        return instance
+
+    def close_connector(self, name: str) -> None:
+        """Closes a specific connector and removes it from the cache."""
+        if name in self._instances:
+            self._logger.info(f"Closing connector instance '{name}'...")
+            instance = self._instances[name]
+            try:
+                instance.close()
+            except Exception as e:
+                self._logger.error(
+                    f"Failed to gracefully close connector '{name}': {e}"
+                )
+            del self._instances[name]
+        else:
+            self._logger.warning(
+                f"Attempted to close non-existent or non-cached connector '{name}'."
+            )
+
+    def close_all(self) -> None:
+        """Closes all cached connector instances gracefully."""
+        self._logger.info("Closing all active connector instances...")
+        # We itereren over een kopie van de keys, omdat close_connector de dictionary aanpast.
+        for name in list(self._instances.keys()):
+            self.close_connector(name)
+        self._instances.clear()
+
+    def _build(self, config: AnyConnectorConfig) -> Optional[IAPIConnector]:
+        """Internal builder method that maps a config type to a concrete class."""
+        # Dit is het hart van de fabriek: het 'if/elif/else'-blok dat
+        # de juiste klasse kiest op basis van het 'type' veld.
+        if config.type == 'kraken_public':
+            return KrakenAPIConnector(logger=self._logger, config=config)
+
+        # Hier kunnen in de toekomst andere types worden toegevoegd:
+        # if config.type == 'binance_public':
+        #     return BinanceAPIConnector(logger=self._logger, config=config)
+
+        self._logger.error(f"Unknown connector type '{config.type}' in _build method.")
+        return None
+
+--- END FILE: backend/assembly/connector_factory.py ---
 
 --- START FILE: backend/assembly/context_builder.py ---
 # backend/assembly/context_builder.py
@@ -813,7 +940,6 @@ class AppConfig(BaseModel):
 # In bestand: backend/config/schemas/connectors_schema.py
 """
 Contains Pydantic models that define the structure of the connectors.yaml file.
-
 This schema is the single source of truth for defining and validating all
 API connector configurations used by the platform.
 
@@ -821,66 +947,79 @@ API connector configurations used by the platform.
 @dependencies: [pydantic, .connectors.kraken_schema]
 """
 from typing import Dict, Union, Annotated
-from pydantic import BaseModel, Field, RootModel
+from pydantic import Field, RootModel
 
 from backend.config.schemas.connectors.kraken_schema import (
     KrakenPublicConfig,
     KrakenPrivateConfig,
 )
 
-# Use a Tagged Union to allow Pydantic to automatically select the correct
-# model based on the 'type' field in the YAML.
 AnyConnectorConfig = Annotated[
     Union[KrakenPublicConfig, KrakenPrivateConfig],
     Field(discriminator="type"),
 ]
 
-class ConnectorDefinition(BaseModel):
+class ConnectorsConfig(RootModel[Dict[str, AnyConnectorConfig]]):
     """
-    Defines a single, named connector instance. The 'type' field determines
-    which specific configuration schema will be used for validation.
+    The root model for the entire connectors.yaml file. It represents a
+    dictionary where each key is a unique, user-defined name for a connector
+    instance, and the value is its validated configuration.
     """
-    type: str = Field(
-        ...,
-        description="connectors.definition.type.desc"
-    )
-    config: AnyConnectorConfig = Field(
-        ...,
-        description="connectors.definition.config.desc"
-    )
-
-
-class ConnectorsConfig(RootModel[Dict[str, ConnectorDefinition]]):
-    """
-    The root model for the entire connectors.yaml file.
-    It represents a dictionary where each key is a unique, user-defined name
-    for a connector instance, and the value is its validated definition.
-    """
-    root: Dict[str, ConnectorDefinition] = Field(
-        ...,
-        description="connectors.root.desc"
-    )
+    root: Dict[str, AnyConnectorConfig]
 
 --- END FILE: backend/config/schemas/connectors_schema.py ---
 
 --- START FILE: backend/config/schemas/platform_schema.py ---
-# In bestand: backend/config/schemas/platform_schema.py
+# backend/config/schemas/platform_schema.py
 """
 Contains Pydantic models that define the structure of the platform.yaml file.
 
 This schema defines the global, platform-wide settings and acts as a single
 source of truth for the application's core configuration, reflecting the
-main architectural layers.
+main architectural layers and providing flexible, hierarchical settings.
 
 @layer: Backend (Config/Schemas)
 @dependencies: [pydantic, backend.core.enums]
 """
+# 1. Standard Library Imports
 from typing import Dict, List, Literal
+
+# 2. Third-Party Imports
 from pydantic import BaseModel, Field
+
+# 3. Our Application Imports
 from backend.core.enums import LogLevel
 
-# --- Sub-models for Logical Grouping ---
+# --- Sub-models for Data Ingestion ---
+class DataIngestionBufferConfig(BaseModel):
+    """Defines buffer settings for a specific ingestion profile."""
+    max_records: int = Field(
+        ..., gt=0, description="platform_config.services.data_ingestion.buffer.max_records.desc"
+    )
+    max_seconds: int = Field(
+        ..., gt=0, description="platform_config.services.data_ingestion.buffer.max_seconds.desc"
+    )
 
+class DataIngestionDefaults(BaseModel):
+    """Defines the default ingestion profiles for core tasks."""
+    historical_task: DataIngestionBufferConfig = Field(
+        ..., description="platform_config.services.data_ingestion.defaults.historical_task.desc"
+    )
+    live_task: DataIngestionBufferConfig = Field(
+        ..., description="platform_config.services.data_ingestion.defaults.live_task.desc"
+    )
+
+class DataIngestionConfig(BaseModel):
+    """Defines the library of ingestion profiles, including defaults."""
+    defaults: DataIngestionDefaults = Field(
+        ..., description="platform_config.services.data_ingestion.defaults.desc"
+    )
+    profiles: Dict[str, DataIngestionBufferConfig] = Field(
+        default_factory=dict,
+        description="platform_config.services.data_ingestion.profiles.desc"
+    )
+
+# --- Sub-models for Logical Grouping ---
 class LoggingConfig(BaseModel):
     """Defines the structure for the 'logging' section."""
     profile: Literal['developer', 'analysis'] = Field(
@@ -909,12 +1048,12 @@ class DataCollectionLimits(BaseModel):
     max_history_days: int = Field(
         default=365 * 5,
         gt=0,
-        description="platform_config.services.data_collection.max_history_days.desc"
+        description="platform_config.services.data_collection.limits.max_history_days.desc"
     )
     warn_history_days: int = Field(
         default=365,
         gt=0,
-        description="platform_config.services.data_collection.warn_history_days.desc"
+        description="platform_config.services.data_collection.limits.warn_history_days.desc"
     )
 
 class DataCollectionConfig(BaseModel):
@@ -924,6 +1063,7 @@ class DataCollectionConfig(BaseModel):
 class ServicesConfig(BaseModel):
     """Groups all service-layer configurations."""
     data_collection: DataCollectionConfig = Field(default_factory=DataCollectionConfig)
+    data_ingestion: DataIngestionConfig
 
 class DataConfig(BaseModel):
     """Defines settings related to data sources and storage."""
@@ -947,19 +1087,30 @@ class PortfolioDefaults(BaseModel):
 
 class PortfolioConfig(BaseModel):
     """Groups all portfolio-related configurations."""
-    defaults: PortfolioDefaults = Field(default_factory=PortfolioDefaults)
+    defaults: PortfolioDefaults = Field(
+        default_factory=PortfolioDefaults,
+        description="platform_config.portfolio.defaults.desc"
+    )
 
 # --- Main Platform Configuration Model ---
-
 class PlatformConfig(BaseModel):
     """
     The main Pydantic model that validates the entire platform.yaml file.
-    It composes all other configuration models into a logical, hierarchical structure.
+    It composes all other configuration models into a logical, hierarchical
+    structure.
     """
-    core: CoreConfig = Field(default_factory=CoreConfig)
-    services: ServicesConfig = Field(default_factory=ServicesConfig)
-    data: DataConfig = Field(default_factory=DataConfig)
-    portfolio: PortfolioConfig = Field(default_factory=PortfolioConfig)
+    core: CoreConfig = Field(
+        default_factory=CoreConfig, description="platform_config.core.desc"
+    )
+    services: ServicesConfig = Field(
+        ..., description="platform_config.services.desc"
+    )
+    data: DataConfig = Field(
+        default_factory=DataConfig, description="platform_config.data.desc"
+    )
+    portfolio: PortfolioConfig = Field(
+        default_factory=PortfolioConfig, description="platform_config.portfolio.desc"
+    )
 
 --- END FILE: backend/config/schemas/platform_schema.py ---
 
@@ -1029,6 +1180,10 @@ class Dependencies(BaseModel):
         description="manifest.dependencies.provides.desc",
         default_factory=list
     )
+    produces_events: List[str] = Field(
+        description="manifest.dependencies.produces_events.desc",
+        default_factory=list
+    )
 
 class Permissions(BaseModel):
     """Defines the security permissions required by the plugin."""
@@ -1051,6 +1206,222 @@ class PluginManifest(BaseModel):
     permissions: Permissions = Field(..., description="manifest.permissions.desc")
 
 --- END FILE: backend/config/schemas/plugin_manifest_schema.py ---
+
+--- START FILE: backend/config/schemas/portfolio_schema.py ---
+# backend/config/schemas/portfolio_schema.py
+"""
+Contains Pydantic models that define the structure of the portfolio.yaml file.
+
+This schema implements the layered risk management architecture, providing
+comprehensive configuration for portfolio-wide and strategy-specific risk rules,
+along with dynamic event-driven risk responses.
+
+@layer: Backend (Config/Schemas)
+@dependencies: [pydantic, typing]
+@responsibilities:
+    - Defines the complete portfolio configuration structure
+    - Implements layered risk management policies
+    - Provides dynamic event response configuration
+    - Validates strategy links and risk parameters
+"""
+
+from typing import Dict, List, Optional
+from pydantic import BaseModel, Field
+
+
+# === CAPITAL ALLOCATION CONFIGURATION ===
+
+class CapitalAllocationConfig(BaseModel):
+    """
+    Defines flexible capital allocation options for a strategy.
+
+    The PortfolioSupervisor will always apply the most restrictive limit
+    between percentage and absolute amount.
+    """
+    percentage: float = Field(
+        ...,
+        gt=0,
+        le=100,
+        description="portfolio_schema.capital_allocation.percentage.desc"
+    )
+    max_quote_amount: Optional[float] = Field(
+        None,
+        gt=0,
+        description="portfolio_schema.capital_allocation.max_quote_amount.desc"
+    )
+
+
+# === EVENT ACTION CONFIGURATION ===
+
+class EventAction(BaseModel):
+    """
+    Defines the "toolbox" of operational actions available to the PortfolioSupervisor.
+
+    This model provides hard-coded emergency response capabilities that can be
+    triggered by CriticalEvents from PortfolioMonitor plugins.
+    """
+
+    # --- STRATEGY-LEVEL CONTROLS ---
+    block_new_signals_min: Optional[int] = Field(
+        default=None,
+        ge=0,
+        description="portfolio_schema.event_action.block_new_signals_min.desc"
+    )
+
+    # --- POSITION CONTROLS (STRATEGY-LEVEL) ---
+    close_strategy_positions: Optional[bool] = Field(
+        default=None,
+        description="portfolio_schema.event_action.close_strategy_positions.desc"
+    )
+    move_sl_to_breakeven_strategy: Optional[bool] = Field(
+        default=None,
+        description="portfolio_schema.event_action.move_sl_to_breakeven_strategy.desc"
+    )
+    reduce_position_size_pct_strategy: Optional[float] = Field(
+        default=None,
+        gt=0,
+        le=100,
+        description="portfolio_schema.event_action.reduce_position_size_pct_strategy.desc"
+    )
+
+    # --- ORDER CONTROLS (STRATEGY-LEVEL) ---
+    cancel_entry_orders_strategy: Optional[bool] = Field(
+        default=None,
+        description="portfolio_schema.event_action.cancel_entry_orders_strategy.desc"
+    )
+
+    # --- PORTFOLIO-LEVEL CONTROLS ---
+    close_all_portfolio_positions: Optional[bool] = Field(
+        default=None,
+        description="portfolio_schema.event_action.close_all_portfolio_positions.desc"
+    )
+    cancel_all_entry_orders_portfolio: Optional[bool] = Field(
+        default=None,
+        description="portfolio_schema.event_action.cancel_all_entry_orders_portfolio.desc"
+    )
+
+    # --- NOTIFICATIONS ---
+    notification_message: Optional[str] = Field(
+        default=None,
+        description="portfolio_schema.event_action.notification_message.desc"
+    )
+
+
+# === RISK POLICY CONFIGURATION ===
+
+class PortfolioRiskConfig(BaseModel):
+    """Defines portfolio-wide risk management rules."""
+
+    max_total_drawdown_pct: float = Field(
+        ...,
+        gt=0,
+        le=100,
+        description="portfolio_schema.portfolio_risk.max_total_drawdown_pct.desc"
+    )
+    max_position_size_pct_per_strategy: float = Field(
+        ...,
+        gt=0,
+        le=100,
+        description="portfolio_schema.portfolio_risk.max_position_size_pct_per_strategy.desc"
+    )
+    max_correlated_positions: int = Field(
+        ...,
+        ge=1,
+        description="portfolio_schema.portfolio_risk.max_correlated_positions.desc"
+    )
+
+
+class StrategyRiskConfig(BaseModel):
+    """Defines strategy-specific risk management rules."""
+
+    capital_allocation: CapitalAllocationConfig = Field(
+        ...,
+        description="portfolio_schema.strategy_risk.capital_allocation.desc"
+    )
+    max_drawdown_pct: float = Field(
+        ...,
+        gt=0,
+        le=100,
+        description="portfolio_schema.strategy_risk.max_drawdown_pct.desc"
+    )
+    max_position_size_pct: float = Field(
+        ...,
+        gt=0,
+        le=100,
+        description="portfolio_schema.strategy_risk.max_position_size_pct.desc"
+    )
+    enabled: bool = Field(
+        default=True,
+        description="portfolio_schema.strategy_risk.enabled.desc"
+    )
+
+
+class RiskPolicy(BaseModel):
+    """
+    Central data structure that bundles all risk management rules.
+
+    This is the heart of the layered risk management system, providing
+    a single, comprehensive, and passable object containing all risk policies.
+    """
+
+    portfolio_rules: PortfolioRiskConfig = Field(
+        ...,
+        description="portfolio_schema.risk_policy.portfolio_rules.desc"
+    )
+    strategy_rules: Dict[str, StrategyRiskConfig] = Field(
+        ...,
+        description="portfolio_schema.risk_policy.strategy_rules.desc"
+    )
+    event_responses: Dict[str, EventAction] = Field(
+        default_factory=dict,
+        description="portfolio_schema.risk_policy.event_responses.desc"
+    )
+
+
+# === STRATEGY LINK CONFIGURATION ===
+
+class StrategyLink(BaseModel):
+    """Defines a link between a strategy blueprint and its execution environment."""
+
+    strategy_blueprint_path: str = Field(
+        ...,
+        description="portfolio_schema.strategy_link.strategy_blueprint_path.desc"
+    )
+    execution_environment_id: str = Field(
+        ...,
+        description="portfolio_schema.strategy_link.execution_environment_id.desc"
+    )
+
+
+# === MAIN PORTFOLIO BLUEPRINT ===
+
+class PortfolioBlueprint(BaseModel):
+    """
+    The main Pydantic model that validates the complete portfolio.yaml file.
+
+    This model implements the complete layered risk management architecture,
+    integrating portfolio-wide rules, strategy-specific configurations, and
+    dynamic event-driven risk responses.
+    """
+
+    display_name: str = Field(
+        ...,
+        description="portfolio_schema.portfolio_blueprint.display_name.desc"
+    )
+    description: str = Field(
+        ...,
+        description="portfolio_schema.portfolio_blueprint.description.desc"
+    )
+    strategies: List[StrategyLink] = Field(
+        ...,
+        description="portfolio_schema.portfolio_blueprint.strategies.desc"
+    )
+    risk_policy: RiskPolicy = Field(
+        ...,
+        description="portfolio_schema.portfolio_blueprint.risk_policy.desc"
+    )
+
+--- END FILE: backend/config/schemas/portfolio_schema.py ---
 
 --- START FILE: backend/config/schemas/run_schema.py ---
 # backend/config/schemas/run_schema.py
@@ -1110,6 +1481,53 @@ class RunBlueprint(BaseModel):
 --- END FILE: backend/config/schemas/run_schema.py ---
 
 --- START FILE: backend/config/schemas/__init__.py ---
+# backend/config/schemas/__init__.py
+"""
+Exposes the public API of the Config Schemas sub-package.
+
+This module centralizes all schema exports, allowing other parts of the
+application to import any schema model from a single location.
+"""
+
+# Platform and application schemas
+from .app_schema import AppConfig
+from .platform_schema import PlatformConfig
+from .run_schema import RunBlueprint
+
+# Portfolio and risk management schemas
+from .portfolio_schema import (
+    PortfolioBlueprint,
+    RiskPolicy,
+    PortfolioRiskConfig,
+    StrategyRiskConfig,
+    CapitalAllocationConfig,
+    EventAction,
+    StrategyLink,
+)
+
+# Plugin and connector schemas
+from .plugin_manifest_schema import PluginManifest
+from .connectors_schema import ConnectorsConfig
+
+__all__ = [
+    # Platform and application
+    "AppConfig",
+    "PlatformConfig",
+    "RunBlueprint",
+
+    # Portfolio and risk management
+    "PortfolioBlueprint",
+    "RiskPolicy",
+    "PortfolioRiskConfig",
+    "StrategyRiskConfig",
+    "CapitalAllocationConfig",
+    "EventAction",
+    "StrategyLink",
+
+    # Plugin and connector
+    "PluginManifest",
+    "ConnectorsConfig",
+]
 
 --- END FILE: backend/config/schemas/__init__.py ---
 
@@ -1122,41 +1540,52 @@ KrakenAPIConnector.
 @layer: Backend (Config/Schemas)
 @dependencies: [pydantic]
 """
+from typing import Literal
 from pydantic import BaseModel, Field, SecretStr
+
+# --- Gedeelde Sub-modellen ---
 
 class KrakenAPIRetryConfig(BaseModel):
     """Defines the retry strategy for API requests."""
-    max_attempts: int = Field(default=3, gt=0, description="kraken.retries.max_attempts.desc")
-    delay_seconds: int = Field(default=2, gt=0, description="kraken.retries.delay_seconds.desc")
-
-class KrakenPublicConfig(BaseModel):
-    """
-    Validation schema for the PUBLIC Kraken API Connector.
-    It contains settings for accessing public, unauthenticated endpoints.
-    """
-    base_url: str = Field(
-        default="https://api.kraken.com/0/public",
-        description="kraken.public.base_url.desc"
+    max_attempts: int = Field(
+        default=3, gt=0, description="kraken.retries.max_attempts.desc"
     )
+    delay_seconds: int = Field(
+        default=2, gt=0, description="kraken.retries.delay_seconds.desc"
+    )
+
+# --- DE FIX: Een gezamenlijke basisklasse voor gedeelde velden ---
+
+class KrakenBaseConfig(BaseModel):
+    """A base model for shared Kraken configuration fields."""
     retries: KrakenAPIRetryConfig = Field(
         default_factory=KrakenAPIRetryConfig,
         description="kraken.retries.desc"
     )
 
-class KrakenPrivateConfig(KrakenPublicConfig):
-    """
-    Validation schema for the PRIVATE Kraken API Connector.
-    Inherits from the public config and adds fields for API credentials.
-    These credentials should be loaded from environment variables.
-    """
-    api_key: SecretStr = Field(..., description="kraken.private.api_key.desc")
-    api_secret: SecretStr = Field(..., description="kraken.private.api_secret.desc")
+# --- Specifieke Connector-modellen ---
 
-    # Override de base_url voor private endpoints indien nodig
+class KrakenPublicConfig(KrakenBaseConfig):
+    """Validation schema for the PUBLIC Kraken API Connector."""
+    type: Literal['kraken_public'] = Field(
+        ..., description="connectors.definition.type.desc"
+    )
+    base_url: str = Field(
+        default="https://api.kraken.com/0/public",
+        description="kraken.public.base_url.desc"
+    )
+
+class KrakenPrivateConfig(KrakenBaseConfig):
+    """Validation schema for the PRIVATE Kraken API Connector."""
+    type: Literal['kraken_private'] = Field(
+        ..., description="connectors.definition.type.desc"
+    )
     base_url: str = Field(
         default="https://api.kraken.com/0/private",
         description="kraken.private.base_url.desc"
     )
+    api_key: SecretStr = Field(..., description="kraken.private.api_key.desc")
+    api_secret: SecretStr = Field(..., description="kraken.private.api_secret.desc")
 
 --- END FILE: backend/config/schemas/connectors/kraken_schema.py ---
 
@@ -1999,6 +2428,7 @@ from .execution import BacktestExecutionHandler
 
 --- START FILE: backend/core/interfaces/connectors.py ---
 # backend/core/interfaces/connectors.py
+# pylint: disable=unnecessary-ellipsis
 """
 Contains the abstract contracts (Protocols) for all external data connectors.
 
@@ -2008,7 +2438,7 @@ Contains the abstract contracts (Protocols) for all external data connectors.
     - Defines the universal `IAPIConnector` contract that every external data
       source (CEX, DEX, wallet) must adhere to.
 """
-from typing import Protocol, List, Optional, Any, Dict
+from typing import Protocol, List, Optional, Any, Dict, Generator
 import pandas as pd
 from backend.dtos.market.trade_tick import TradeTick
 from backend.dtos.state.portfolio_state import PortfolioState
@@ -2041,13 +2471,17 @@ class IAPIConnector(Protocol):
 
     # --- Historical Data Acquisition ---
 
-    def get_historical_trades(self,
-                              pair: str,
-                              since: int,
-                              until: Optional[int] = None,
-                              limit: Optional[int] = None) -> List[TradeTick]:
-        """
-        Fetches a list of historical transactions (ticks) from the data source.
+    def get_historical_trades(
+        self,
+        pair: str,
+        since: int,
+        until: Optional[int] = None
+    ) -> Generator[List[TradeTick], None, None]:
+        """Fetches historical transactions (ticks) as a stream of batches.
+
+        This method acts as a generator, yielding lists of TradeTick DTOs.
+        This allows the calling service to process data in chunks, which is
+        highly memory-efficient for large historical data requests.
 
         Args:
             pair (str): The trading pair to fetch data for.
@@ -2055,31 +2489,35 @@ class IAPIConnector(Protocol):
             until (Optional[int]): An optional UNIX timestamp (nanoseconds) to
                                    stop fetching at.
             limit (Optional[int]): An optional limit on the number of trades
-                                   to return.
+                                   to return (behavior may vary by implementation).
 
-        Returns:
-            A list of validated TradeTick DTOs.
+        Yields:
+            A list of validated TradeTick DTOs, representing one batch of data.
         """
         ...
 
-    def get_historical_ohlcv(self,
-                             pair: str,
-                             timeframe: str,
-                             since: int,
-                             until: Optional[int] = None,
-                             limit: Optional[int] = None) -> pd.DataFrame:
-        """
-        Fetches historical OHLCV (candlestick) data from the data source.
+    def get_historical_ohlcv(
+        self,
+        pair: str,
+        timeframe: str,
+        since: int,
+        until: Optional[int] = None,
+    ) -> Generator[pd.DataFrame, None, None]:
+        """Fetches historical OHLCV data as a stream of DataFrame batches.
+
+        This method acts as a generator, yielding pandas DataFrames. This
+        allows the calling service to process candlestick data in chunks,
+        which is memory-efficient for very large historical data requests.
 
         Args:
-            pair (str): The trading pair.
+            pair (str): The trading pair (e.g., 'XXBTZEUR').
             timeframe (str): The timeframe identifier (e.g., '15m', '1h').
-            since (int): The UNIX timestamp to start fetching from.
-            limit (Optional[int]): An optional limit on the number of candles
-                                   to return.
+            since (int): The start UNIX timestamp (nanoseconds) to fetch from.
+            until (Optional[int]): An optional end UNIX timestamp (nanoseconds)
+                                   to stop at.
 
-        Returns:
-            A pandas DataFrame containing OHLCV data, indexed by timestamp.
+        Yields:
+            A pandas DataFrame representing one batch of OHLCV data from the API.
         """
         ...
 
@@ -2148,6 +2586,13 @@ class IAPIConnector(Protocol):
 
     def stop_user_data_stream(self) -> None:
         """Stops the active PRIVATE user data stream."""
+        ...
+
+    def close(self) -> None:
+        """
+        Gracefully closes any open network connections and cleans up
+        associated resources.
+        """
         ...
 
 --- END FILE: backend/core/interfaces/connectors.py ---
@@ -2321,6 +2766,13 @@ class IDataPersistor(Protocol):
     An interface for any component that can read from and write to a durable
     data storage.
     """
+    def get_first_timestamp(self, pair: str) -> int:
+        """
+        Retrieves the timestamp (in nanoseconds) of the OLDEST stored
+        trade for a given pair. Returns 0 if no data exists.
+        """
+        ... # pylint: disable=unnecessary-ellipsis
+
     def get_last_timestamp(self, pair: str) -> int:
         """
         Retrieves the timestamp (in nanoseconds) of the most recently stored
@@ -2620,6 +3072,47 @@ class ParquetPersistor(IDataPersistor):
         except (IOError, ValueError, pa.ArrowInvalid):
             return None
 
+    def get_first_timestamp(self, pair: str) -> int:
+        """Efficiently retrieves the first timestamp from a partitioned dataset.
+
+        This method reads the metadata of the Parquet dataset to find the
+        global minimum value of the 'timestamp' column without loading the
+        entire dataset into memory.
+
+        Args:
+            pair: The trading pair to query.
+
+        Returns:
+            The UNIX timestamp (in nanoseconds) of the oldest stored trade,
+            or 0 if no data exists.
+        """
+        dataset_path = self._get_dataset_path(pair)
+        if not dataset_path.is_dir():
+            return 0
+        try:
+            dataset = pq.ParquetDataset(dataset_path)
+            if not dataset.fragments:
+                return 0
+
+            timestamp_col_index = dataset.schema.names.index('timestamp')
+            timestamps: List[Any] = []
+
+            for frag in dataset.fragments:
+                for i in range(frag.num_row_groups):
+                    row_group_meta = frag.metadata.row_group(i)
+                    column_meta = row_group_meta.column(timestamp_col_index)
+                    if column_meta.statistics and column_meta.statistics.has_min_max:
+                        timestamps.append(column_meta.statistics.min)
+
+            if not timestamps:
+                return 0
+
+            min_ts = min(timestamps)
+            return int(pd.Timestamp(min_ts).value)
+
+        except (IOError, ValueError, pa.ArrowInvalid, KeyError, IndexError):
+            return 0
+
     def get_last_timestamp(self, pair: str) -> int:
         """Efficiently retrieves the last timestamp from a partitioned dataset."""
         dataset_path = self._get_dataset_path(pair)
@@ -2630,24 +3123,17 @@ class ParquetPersistor(IDataPersistor):
             if not dataset.fragments:
                 return 0
 
-            # --- DE FIX: Gebruik de correcte API voor Parquet metadata ---
-
-            # 1. Bepaal de index van de 'timestamp' kolom in het schema.
             try:
                 timestamp_col_index = dataset.schema.names.index('timestamp')
             except ValueError:
-                # Kolom 'timestamp' bestaat niet in het schema.
                 return 0
 
             timestamps: List[Any] = []
-            # 2. Itereer door de fragmenten en hun row groups.
             for frag in dataset.fragments:
                 for i in range(frag.num_row_groups):
                     row_group_meta = frag.metadata.row_group(i)
-                    # 3. Vraag de metadata voor de specifieke kolom op.
                     column_meta = row_group_meta.column(timestamp_col_index)
 
-                    # 4. Controleer of statistieken bestaan en haal .max op.
                     if column_meta.statistics and column_meta.statistics.has_min_max: # type: ignore
                         timestamps.append(column_meta.statistics.max)
 
@@ -2655,14 +3141,10 @@ class ParquetPersistor(IDataPersistor):
                 return 0
 
             max_ts = max(timestamps)
-            # Converteer de waarde (die een Arrow-native type kan zijn)
-            # naar een nanoseconde integer.
             return int(pd.Timestamp(max_ts).value)
 
         except (IOError, ValueError, pa.ArrowInvalid, KeyError, IndexError):
-            # Vang ook een mogelijke IndexError op als de kolomindex niet gevonden wordt.
             return 0
-
 
     def save_trades(self, pair: str, trades: List[TradeTick]) -> None:
         """Saves trades to a partitioned Parquet dataset by year and month."""
@@ -2861,6 +3343,7 @@ class SynchronizationCommand(BaseModel):
     latest trades since the last known data point.
     """
     pair: str = Field(..., description="synchronization_command.pair.desc")
+    exchange_id: str = Field(..., description="synchronization_command.exchange_id.desc")
 
 --- END FILE: backend/dtos/commands/synchronization_command.py ---
 
@@ -3928,7 +4411,7 @@ from .backtest_environment import BacktestEnvironment
 --- END FILE: backend/environments/__init__.py ---
 
 --- START FILE: backend/environments/api_connectors/kraken_connector.py ---
-# backend/environments/api_connectors/kraken_connector.py
+# In bestand: backend/environments/api_connectors/kraken_connector.py
 """
 Contains the concrete implementation of an APIConnector for the Kraken exchange.
 
@@ -3938,123 +4421,198 @@ Contains the concrete implementation of an APIConnector for the Kraken exchange.
     - Implements the IAPIConnector interface for the Kraken REST API.
     - Fetches raw market data and translates it into application-specific DTOs.
     - Handles API-specific details like pagination, error parsing, and retries.
+    - Provides historical trade data as a memory-efficient generator.
 """
+
 import time
-from typing import cast, List, Dict, Any, Optional
-import requests
+from typing import cast, List, Dict, Any, Optional, Generator
+
 import pandas as pd
+import requests
 from pydantic import ValidationError
 
+from backend.config.schemas.connectors.kraken_schema import KrakenPublicConfig
 from backend.core.interfaces.connectors import IAPIConnector
 from backend.dtos.market.trade_tick import TradeTick
 from backend.utils.app_logger import LogEnricher
-from backend.config.schemas.connectors.kraken_schema import KrakenPublicConfig
+from backend.dtos.state.portfolio_state import PortfolioState
+from backend.dtos.execution.execution_directive import ExecutionDirective
 
 class KrakenAPIConnector(IAPIConnector):
     """
-    A concrete implementation of the IAPIConnector interface that communicates
-    with the public Kraken REST API.
+    A concrete implementation of the IAPIConnector that communicates with the
+    public Kraken REST API, providing data as efficient streams.
     """
 
     def __init__(self, logger: LogEnricher, config: KrakenPublicConfig):
+        """Initializes the KrakenAPIConnector.
+
+        Args:
+            logger: The application's configured logger instance.
+            config: A Pydantic object with the validated configuration for
+                this connector instance.
+        """
         self.logger = logger
         self.config = config
         self.session = requests.Session()
         self.session.headers.update({'User-Agent': 'S1mpleTraderV2'})
 
-    def _request(self, endpoint: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """
-        Executes a single, robust request to a public Kraken API endpoint,
-        including the full retry logic.
+        self._adaptive_delay_sec = 0.2  # Start met een snelle 200ms
+        self._min_delay_sec = 0.1       # Ga nooit sneller dan 100ms
+        self._max_delay_sec = 5.0       # Wacht maximaal 5 seconden
+
+    def _request(
+        self, endpoint: str, params: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """Executes a single, robust request to a public Kraken API endpoint.
+
+        This method encapsulates the full retry logic. It will attempt a request
+        up to `max_attempts` times, with a configured delay between failures.
+
+        Args:
+            endpoint: The API endpoint to call (e.g., "/Trades").
+            params: A dictionary of query parameters for the request.
+
+        Returns:
+            The JSON response from the API as a dictionary, or an empty
+            dictionary if the request ultimately fails.
         """
         attempt = 1
         while attempt <= self.config.retries.max_attempts:
             try:
-                log_msg = (
-                    f"Requesting '{endpoint}' (attempt {attempt}/"
-                    f"{self.config.retries.max_attempts})"
+                # Wacht eerst, zodat we de API nooit bestoken.
+                time.sleep(self._adaptive_delay_sec)
+
+                response = self.session.get(
+                    f"{self.config.base_url}{endpoint}", params=params, timeout=10
                 )
-                self.logger.info(log_msg)
-                response = self.session.get(f"{self.config.base_url}{endpoint}", params=params)
                 response.raise_for_status()
-
                 data = cast(Dict[str, Any], response.json())
-                if data.get('error'):
-                    self.logger.error(
-                        f"Kraken API error for endpoint '{endpoint}': {data['error']}"
-                    )
-                    return {}
+                api_errors = data.get('error', [])
 
+                # --- DE FIX: Luister naar de feedback in de response body ---
+                is_rate_limit_error = any(
+                    'EGeneral:Too many requests' in str(err) for err in api_errors
+                )
+
+                if is_rate_limit_error:
+                    # ---- Rate limited! ----
+                    # Verhoog de wachttijd aanzienlijk en probeer het opnieuw.
+                    self._adaptive_delay_sec = min(
+                        self._max_delay_sec, self._adaptive_delay_sec * 1.5 + 0.1
+                    )
+                    self.logger.warning(
+                        "Rate limited by API. Increasing delay to "
+                        f"{self._adaptive_delay_sec:.2f}s."
+                    )
+                    attempt += 1
+                    continue # Ga naar de volgende iteratie van de 'while' lus.
+                # ------------------------------------------------------------
+
+                if api_errors:
+                    # Een andere, niet-herstelbare API fout.
+                    self.logger.error(f"Kraken API error for endpoint '/Trades': {api_errors}")
+                    return {} # Stop en geef op.
+
+                # ---- Succes! ----
+                # Verlaag de wachttijd lichtjes voor de volgende call.
+                self._adaptive_delay_sec = max(
+                    self._min_delay_sec, self._adaptive_delay_sec * 0.95
+                )
                 return data
 
             except requests.RequestException as e:
-                self.logger.error(f"HTTP Request failed (attempt {attempt}): {e}")
-                if attempt == self.config.retries.max_attempts:
-                    self.logger.error("Max retries reached. Aborting request.")
-                    return {}
-                time.sleep(self.config.retries.delay_seconds)
+                # Een netwerkfout (bv. geen internet).
+                self.logger.error(f"Network request failed on attempt {attempt}: {e}")
                 attempt += 1
+                # Wacht langer bij een netwerkfout voordat je het opnieuw probeert.
+                time.sleep(self.config.retries.delay_seconds * attempt)
+
+        self.logger.error("Max retries reached. Aborting request.")
         return {}
 
     def get_historical_trades(
-        self, pair: str, since: int, until: Optional[int] = None, limit: Optional[int] = None
-    ) -> List[TradeTick]:
-        all_trades: List[TradeTick] = []
-        current_since_ns = str(since)
+        self, pair: str, since: int, until: Optional[int] = None
+    ) -> Generator[List[TradeTick], None, None]:
+        """Fetches historical trades as a stream of batches.
 
-        # Hou de timestamp van de allerlaatste trade bij om duplicaten te voorkomen
+        This method acts as a generator, yielding lists of TradeTick DTOs
+        as they are received from the API. This allows the calling service
+        to process data in chunks, preventing high memory usage for large
+        historical fetches. The internal loop handles pagination automatically
+        until the API indicates there is no more recent data.
+
+        Args:
+            pair: The trading pair to fetch data for (e.g., 'XXBTZEUR').
+            since: The start UNIX timestamp (nanoseconds) to fetch from.
+            until: An optional end UNIX timestamp (nanoseconds) to stop at.
+
+        Yields:
+            A list of validated TradeTick DTOs representing one batch
+            of trades from the API.
+        """
+        current_since_ns = str(since)
         last_processed_timestamp_ns = since
 
         while True:
-            data = self._request("/Trades", params={'pair': pair, 'since': current_since_ns})
-            result = cast(Dict[str, Any], data.get('result', {}))
-
+            api_data = self._request(
+                "/Trades", params={'pair': pair, 'since': current_since_ns}
+            )
+            result = cast(Dict[str, Any], api_data.get('result', {}))
             if not result:
                 break
 
             pair_key = next(iter(result.keys()), None)
-            trade_data = cast(List[List[Any]], result.get(pair_key, [])) if pair_key else []
 
-            if not trade_data:
+            raw_trades: List[List[Any]] = []
+            if pair_key:
+                raw_trades = cast(List[List[Any]], result.get(pair_key, []))
+
+            if not raw_trades:
+                break
+            if not raw_trades:
                 break
 
-            last_api_timestamp_ns = result.get('last')
+            last_api_ts = result.get('last')
+            batch_to_yield: List[TradeTick] = []
 
-            for trade in trade_data:
+            for trade_data in raw_trades:
                 try:
-                    timestamp_obj = pd.to_datetime(float(trade[2]), unit='s', utc=True)
-                    trade_timestamp_ns = int(timestamp_obj.value)
+                    ts_obj = pd.to_datetime(float(trade_data[2]), unit='s', utc=True)
+                    ts_ns = int(ts_obj.value)
 
-                    # **DE ECHTE FIX: Sla trades over die we al hebben verwerkt.**
-                    # Dit is de meest robuuste manier om duplicaten te voorkomen.
-                    if trade_timestamp_ns <= last_processed_timestamp_ns:
-                        continue
+                    if ts_ns <= last_processed_timestamp_ns:
+                        continue  # Skip duplicates from API overlap
 
-                    if until and trade_timestamp_ns > until:
-                        return all_trades
+                    if until and ts_ns > until:
+                        if batch_to_yield:
+                            yield batch_to_yield
+                        return  # Stop the generator completely
 
-                    side = 'sell' if trade[3] == 's' else 'buy'
-                    order_type = 'market' if trade[4] == 'm' else 'limit'
                     tick = TradeTick(
-                        price=float(trade[0]), volume=float(trade[1]),
-                        timestamp=timestamp_obj, side=side,
-                        order_type=order_type, misc=str(trade[5])
+                        price=float(trade_data[0]),
+                        volume=float(trade_data[1]),
+                        timestamp=ts_obj,
+                        side='sell' if trade_data[3] == 's' else 'buy',
+                        order_type='market' if trade_data[4] == 'm' else 'limit',
+                        misc=str(trade_data[5])
                     )
-                    all_trades.append(tick)
-
-                    # Update de laatst geziene timestamp
-                    last_processed_timestamp_ns = trade_timestamp_ns
+                    batch_to_yield.append(tick)
+                    last_processed_timestamp_ns = ts_ns
 
                 except (ValidationError, IndexError, ValueError) as e:
-                    self.logger.warning(f"Skipping invalid trade data: {trade}. Error: {e}")
+                    self.logger.warning(
+                        f"Skipping invalid trade data: {trade_data}. Error: {e}"
+                    )
 
-            if last_api_timestamp_ns == current_since_ns:
+            if batch_to_yield:
+                yield batch_to_yield
+
+            # Kraken's stop-criterion for pagination
+            if last_api_ts == current_since_ns:
                 break
 
-            current_since_ns = last_api_timestamp_ns
-            time.sleep(1)
-
-        return all_trades
+            current_since_ns = last_api_ts
 
     def get_historical_ohlcv(
         self,
@@ -4062,56 +4620,132 @@ class KrakenAPIConnector(IAPIConnector):
         timeframe: str,
         since: int,
         until: Optional[int] = None,
-        limit: Optional[int] = None
-    ) -> pd.DataFrame:
+    ) -> Generator[pd.DataFrame, None, None]:
+        """Fetches historical OHLCV data as a stream of DataFrame batches.
+
+        This method acts as a generator, yielding pandas DataFrames. This
+        allows the calling service to process candlestick data in chunks,
+        which is memory-efficient for very large historical data requests.
+        The internal loop handles pagination by using the 'last' timestamp
+        returned by the Kraken API as the 'since' for the next request.
+
+        Args:
+            pair: The trading pair to fetch data for (e.g., 'XXBTZEUR').
+            timeframe: The timeframe identifier (e.g., '15m', '1h').
+            since: The start UNIX timestamp (nanoseconds) to fetch from.
+            until: An optional end UNIX timestamp (nanoseconds) to stop at.
+
+        Yields:
+            A pandas DataFrame representing one batch of OHLCV data from the
+            API, indexed by a UTC timestamp.
+
+        Raises:
+            ValueError: If an unsupported timeframe is provided.
         """
-        Fetches historical OHLCV (candlestick) data from the data source.
-        """
-        # Kraken API gebruikt 'interval' voor timeframe. Standaard is 1 minuut.
-        # We moeten onze timeframe string (bv. '15m') omzetten naar minuten.
         interval_map = {
-            '1m': 1, '5m': 5, '15m': 15, '30m': 30, '1h': 60, '4h': 240, '1d': 1440,
-            '1w': 10080
+            '1m': 1, '5m': 5, '15m': 15, '30m': 30, '1h': 60, '4h': 240,
+            '1d': 1440, '1w': 10080
         }
         interval = interval_map.get(timeframe.lower())
-
         if interval is None:
-            raise ValueError(
-                f"Unsupported timeframe: {timeframe}. "
-                f"Supported values are: {list(interval_map.keys())}"
+            raise ValueError(f"Unsupported timeframe: {timeframe}")
+
+        current_since_seconds = str(since // 1_000_000_000)
+
+        while True:
+            # FIX (Linter): Geef 'params' een expliciet type.
+            params: Dict[str, Any] = {
+                'pair': pair, 'interval': interval, 'since': current_since_seconds
+            }
+            api_data = self._request("/OHLC", params=params)
+            result = cast(Dict[str, Any], api_data.get('result', {}))
+            if not result:
+                break
+
+            pair_key = next(iter(result.keys()), None)
+            raw_ohlcv: List[List[Any]] = []
+            if pair_key:
+                raw_ohlcv = cast(List[List[Any]], result.get(pair_key, []))
+
+            last_api_ts_seconds = result.get('last')
+
+            pair_key = next((key for key in result if key != 'last'), None)
+
+            raw_ohlcv: List[List[Any]] = []
+            if pair_key:
+                raw_ohlcv = cast(List[List[Any]], result.get(pair_key, []))
+
+            if not raw_ohlcv:
+                break
+
+            columns = [
+                "timestamp", "open", "high", "low", "close", "vwap", "volume", "count"
+            ]
+            df_batch = pd.DataFrame(raw_ohlcv, columns=columns)
+
+            df_batch['timestamp'] = pd.to_datetime(
+                df_batch['timestamp'], unit='s', utc=True
             )
+            df_batch.set_index('timestamp', inplace=True)
+            numeric_cols = ["open", "high", "low", "close", "vwap", "volume"]
+            df_batch[numeric_cols] = df_batch[numeric_cols].astype(float)
+            df_batch['count'] = df_batch['count'].astype(int)
 
-        params: Dict[str, Any] = {
-            'pair': pair,
-            'interval': interval,
-            'since': since
-        }
+            if until:
+                # FIX (Linter): Pylance kent .value niet op een generieke Index.
+                # We weten dat het een DatetimeIndex is, dus we negeren de waarschuwing.
+                df_batch = df_batch[df_batch.index.value <= until] # type: ignore
+                if df_batch.empty: # type: ignore
+                    return
 
-        data = self._request("/OHLC", params=params)
-        result = cast(Dict[str, Any], data.get('result', {}))
+            if not df_batch.empty: # type: ignore
+                yield df_batch
 
-        if not result:
-            return pd.DataFrame() # Retourneer een lege DataFrame bij geen resultaat
+            if until and df_batch.index.max().value >= until: # type: ignore
+                return
 
-        pair_key = next(iter(result.keys()), None)
-        ohlcv_data = cast(List[List[Any]], result.get(pair_key, [])) if pair_key else []
+            if str(last_api_ts_seconds) == current_since_seconds:
+                break
 
-        if not ohlcv_data:
-            return pd.DataFrame()
+            current_since_seconds = str(last_api_ts_seconds)
 
-        # Definieer de kolomnamen volgens de Kraken API documentatie
-        columns = ["timestamp", "open", "high", "low", "close", "vwap", "volume", "count"]
-        df = pd.DataFrame(ohlcv_data, columns=columns)
+    def get_available_pairs(self) -> List[str]:
+        raise NotImplementedError("get_available_pairs is not implemented for KrakenAPIConnector")
 
-        # Converteer data naar de juiste types
-        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='s', utc=True)
-        df.set_index('timestamp', inplace=True)
+    def get_portfolio_state(self) -> PortfolioState:
+        raise NotImplementedError("get_portfolio_state is not implemented for KrakenAPIConnector")
 
-        numeric_columns = ["open", "high", "low", "close", "vwap", "volume"]
-        df[numeric_columns] = df[numeric_columns].astype(float)
-        df['count'] = df['count'].astype(int)
+    def get_open_orders(self) -> List[Dict[str, Any]]:
+        raise NotImplementedError("get_open_orders is not implemented for KrakenAPIConnector")
 
-        return df
+    def place_order(self, directive: ExecutionDirective) -> Dict[str, Any]:
+        raise NotImplementedError("place_order is not implemented for KrakenAPIConnector")
+
+    def cancel_order(self, order_id: str) -> Dict[str, Any]:
+        raise NotImplementedError("cancel_order is not implemented for KrakenAPIConnector")
+
+    def start_market_data_stream(self, pair: str, callback: Any) -> None:
+        raise NotImplementedError(
+            "start_market_data_stream is not implemented for KrakenAPIConnector")
+
+    def stop_market_data_stream(self) -> None:
+        raise NotImplementedError(
+            "stop_market_data_stream is not implemented for KrakenAPIConnector")
+
+    def start_user_data_stream(self, callback: Any) -> None:
+        raise NotImplementedError(
+            "start_user_data_stream is not implemented for KrakenAPIConnector")
+
+    def stop_user_data_stream(self) -> None:
+        raise NotImplementedError("stop_user_data_stream is not implemented for KrakenAPIConnector")
+
+    def close(self) -> None:
+        """Closes the underlying requests.Session to release connections."""
+        self.logger.info(
+            'kraken_connector.session_closing',
+            values={'connector_type': self.config.type}
+        )
+        self.session.close()
 
 --- END FILE: backend/environments/api_connectors/kraken_connector.py ---
 
@@ -4198,7 +4832,6 @@ class LogFormatter(logging.Formatter):
                 final_message = translated_template.format(**values_dict)
             except (KeyError, TypeError):
                 final_message = f"{translated_template} [FORMATTING ERROR]"
-
         record.msg = final_message
         record.args = ()
 
@@ -4347,6 +4980,9 @@ def configure_logging(logging_config: LoggingConfig, translator: Translator):
     handler.addFilter(LogProfiler(log_profile, profile_definitions))
     logger.addHandler(handler)
 
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
+    logging.getLogger("requests").setLevel(logging.WARNING)
+
 --- END FILE: backend/utils/app_logger.py ---
 
 --- START FILE: backend/utils/data_utils.py ---
@@ -4437,22 +5073,25 @@ class Translator:
     language file based on the application configuration and provides methods
     to retrieve translated strings using a dot-notation key.
     """
-    def __init__(self, platform_config: PlatformConfig):
+    def __init__(self, platform_config: PlatformConfig, project_root: Path):
         """Initializes the Translator by loading the appropriate language file.
 
         Args:
-            app_config (AppConfig): The application Pydantic config object.
+            platform_config (PlatformConfig): The application Pydantic config object.
+            project_root (Path): The absolute path to the project's root directory.
         """
-        lang_path = Path('locales') / f"{platform_config.language}.yaml"
+        lang_path = project_root / 'locales' / f"{platform_config.core.language}.yaml"
         self.strings: Dict[str, Any] = {}
         try:
             with open(lang_path, 'r', encoding='utf-8') as f:
-                self.strings = yaml.safe_load(f)
+                self.strings = yaml.safe_load(f) or {}
         except FileNotFoundError:
             print(f"WARNING: Language file not found at {lang_path}")
+        except Exception as e:
+            print(f"ERROR: Failed to load or parse language file at {lang_path}: {e}")
 
-    def get(self, key: str, default: str | None = None, **kwargs: Any) -> str:
-        """Retrieves and formats a nested translated string using dot-notation.
+    def get(self, key: str, default: str | None = None) -> str:
+        """Retrieves a nested translated string using dot-notation.
 
         If the key is not found, it returns the default value, or the key
         itself if no default is provided.
@@ -4461,10 +5100,9 @@ class Translator:
             key (str): The dot-notation key (e.g., 'app.start').
             default (str, optional): A fallback value to return if the key is
                                      not found. Defaults to None.
-            **kwargs: Values to format into the translated string.
 
         Returns:
-            The translated and formatted string.
+            The translated string (template).
         """
         try:
             value: Any = self.strings
@@ -4476,7 +5114,7 @@ class Translator:
             if not isinstance(value, str):
                 return default or key
 
-            return value.format(**kwargs)
+            return value
         except (KeyError, TypeError):
             return default or key
 
@@ -4503,32 +5141,201 @@ class Translator:
 
 --- END FILE: backend/utils/__init__.py ---
 
+--- START FILE: config/connectors.yaml ---
+# In bestand: config/connectors.yaml
+# Dit bestand definieert alle beschikbare API connector-instanties.
+# Elke key is een unieke, zelfgekozen naam voor een verbinding.
+
+kraken_public:
+  # Het 'type' veld verhuist van hier...
+  # config: # ...naar hierbinnen.
+  # --- CORRECTE STRUCTUUR ---
+  # Het 'root' object wordt nu direct het config-blok.
+  type: 'kraken_public'
+  base_url: "https://api.kraken.com/0/public"
+  retries:
+    max_attempts: 3
+    delay_seconds: 2
+
+# Voorbeeld van hoe een private connector eruit zou zien:
+# kraken_private:
+#   type: 'kraken_private'
+#   base_url: "https://api.kraken.com/0/private"
+#   api_key: "${KRAKEN_API_KEY}"
+#   api_secret: "${KRAKEN_API_SECRET}"
+#   retries:
+#     max_attempts: 5
+#     delay_seconds: 3
+--- END FILE: config/connectors.yaml ---
+
 --- START FILE: config/index.yaml ---
 # Placeholder for config/index.yaml
 
 --- END FILE: config/index.yaml ---
 
 --- START FILE: config/platform.yaml ---
-# config/platform.yaml
-# De minimale, fundamentele configuratie voor S1mpleTrader V2.
+# In bestand: config/platform.yaml
+# Dit bestand definieert de globale, platform-brede instellingen en
+# fungeert als de 'single source of truth' voor de kernconfiguratie.
 
-language: 'en'
-plugins_root_path: 'plugins'
+core:
+  language: 'en'
+  plugins_root_path: 'plugins'
+
+  logging:
+    # Bepaalt welke set log-berichten wordt getoond.
+    # 'developer': Minimaal, voor snelle checks.
+    # 'analysis': Uitgebreid, voor diepgaande analyse van een run.
+    profile: 'analysis'
+
+    # Definitie van de beschikbare logging profielen.
+    profiles:
+      developer:
+        - INFO
+        - WARNING
+        - ERROR
+        - CRITICAL
+      analysis:
+        - DEBUG
+        - INFO
+        - WARNING
+        - ERROR
+        - CRITICAL
+        - SETUP
+        - MATCH
+        - FILTER
+        - POLICY
+        - RESULT
+        - TRADE
+
+services:
+  data_collection:
+    # Veiligheidslimieten voor de DataCommandService.
+    limits:
+      # Het maximale aantal dagen dat in één keer met 'fetch_period'
+      # of 'synchronize' kan worden opgehaald. Voorkomt overbelasting.
+      max_history_days: 3000 # 5 jaar
+
+      # Het aantal dagen waarna de UI een waarschuwing moet tonen
+      # voor een grote data-aanvraag.
+      warn_history_days: 365 # 1 jaar
+
+  data_ingestion:
+    # Default buffer configurations for different ingestion tasks
+    defaults:
+      historical_task:
+        max_records: 250000
+        max_seconds: 3600
+      live_task:
+        max_records: 10000
+        max_seconds: 300
+
+    # Custom ingestion profiles for different use cases
+    profiles:
+      local_power_user:
+        max_records: 1000000
+        max_seconds: 7200
 
 data:
+  # De map waar de Parquet-bestanden met historische data worden opgeslagen.
   source_dir: 'source_data'
 
 portfolio:
-  initial_capital: 10000.0
-  fees_pct: 0.001
-
-logging:
-  profile: 'analysis'
-  profiles:
-    developer: ['WARNING', 'ERROR', 'CRITICAL']
-    analysis: ['DEBUG', 'INFO', 'MATCH', 'FILTER', 'TRADE', 'RESULT', 'WARNING', 'ERROR', 'CRITICAL']
-
+  # Standaard financiële parameters voor elke nieuwe backtest of portfolio.
+  defaults:
+    initial_capital: 10000.0
+    fees_pct: 0.001 # 0.1% transactiekosten
 --- END FILE: config/platform.yaml ---
+
+--- START FILE: config/portfolio.yaml ---
+# config/portfolio.yaml
+# Example portfolio configuration demonstrating the layered risk management system
+#
+# ARCHITECTURAL NOTE: Single Source of Truth for Risk Configuration
+# - StrategyLink: ONLY contains strategy_blueprint_path and execution_environment_id
+# - RiskPolicy.strategy_rules: SINGLE SOURCE OF TRUTH for all strategy risk configuration
+# - This separation ensures no duplication and centralized risk management
+
+display_name: "Main Trading Portfolio"
+description: "Primary portfolio for EUR-based crypto trading strategies with comprehensive risk management"
+
+strategies:
+  - strategy_blueprint_path: "runs/mss_fvg_strategy.yaml"
+    execution_environment_id: "backtest_btc_eur"
+
+  - strategy_blueprint_path: "runs/eth_mean_reversion.yaml"
+    execution_environment_id: "backtest_eth_eur"
+
+  - strategy_blueprint_path: "runs/multi_timeframe_momentum.yaml"
+    execution_environment_id: "backtest_multi_asset"
+
+risk_policy:
+  # Portfolio-wide risk rules
+  portfolio_rules:
+    max_total_drawdown_pct: 25.0  # Emergency stop if portfolio loses 25%
+    max_position_size_pct_per_strategy: 15.0  # No strategy can have >15% portfolio exposure
+    max_correlated_positions: 3  # Maximum 3 positions in correlated assets
+
+  # Strategy-specific risk rules (single source of truth)
+  strategy_rules:
+    mss_fvg_strategy:
+      capital_allocation:
+        percentage: 50.0  # 50% of portfolio capital
+        max_quote_amount: 25000.0  # Maximum €25,000
+      max_drawdown_pct: 15.0  # Stop strategy if it loses 15%
+      max_position_size_pct: 10.0  # Max 10% of strategy allocation per position
+      enabled: true
+
+    eth_mean_reversion:
+      capital_allocation:
+        percentage: 30.0  # 30% of portfolio capital
+        max_quote_amount: 15000.0  # Maximum €15,000
+      max_drawdown_pct: 12.0  # Lower risk tolerance for ETH strategy
+      max_position_size_pct: 8.0  # Smaller positions for ETH
+      enabled: true
+
+    multi_timeframe_momentum:
+      capital_allocation:
+        percentage: 20.0  # 20% of portfolio capital
+        max_quote_amount: 10000.0  # Maximum €10,000
+      max_drawdown_pct: 10.0  # Conservative risk management
+      max_position_size_pct: 5.0  # Smallest position sizes
+      enabled: false  # Disabled for now
+
+  # Strategy-specific risk rules (already defined above in each strategy)
+
+  # Event-driven risk responses
+  event_responses:
+    # Response to maximum drawdown breach
+    "MAX_DRAWDOWN_BREACHED":
+      block_new_signals_min: 1440  # Block all new signals for 24 hours
+      close_all_portfolio_positions: true  # Emergency close all positions
+      cancel_all_entry_orders_portfolio: true  # Cancel all pending orders
+      notification_message: "EMERGENCY: Maximum drawdown breached. All positions closed."
+
+    # Response to strategy-specific drawdown
+    "STRATEGY_DRAWDOWN_EXCEEDED":
+      block_new_signals_min: 60  # Block signals for 1 hour for affected strategy
+      reduce_position_size_pct_strategy: 50.0  # Reduce position sizes by 50%
+      move_sl_to_breakeven_strategy: true  # Move stop losses to breakeven
+      notification_message: "WARNING: Strategy {strategy_name} exceeded maximum drawdown."
+
+    # Response to correlation breach
+    "CORRELATION_LIMIT_EXCEEDED":
+      block_new_signals_min: 30  # Brief pause to reassess
+      cancel_entry_orders_strategy: true  # Cancel pending entries for affected strategy
+      notification_message: "WARNING: Too many correlated positions for strategy {strategy_name}."
+
+    # Response to rapid market movement
+    "RAPID_PRICE_MOVEMENT":
+      block_new_signals_min: 15  # Brief pause during volatility
+      notification_message: "WARNING: Rapid price movement detected. Signals temporarily blocked."
+
+    # Response to portfolio correlation warning
+    "PORTFOLIO_CORRELATION_HIGH":
+      reduce_position_size_pct_strategy: 25.0  # Reduce all strategy positions by 25%
+      notification_message: "WARNING: High correlation detected across portfolio strategies."
+--- END FILE: config/portfolio.yaml ---
 
 --- START FILE: config/__init__.py ---
 
@@ -4557,6 +5364,147 @@ logging:
 --- START FILE: frontends/__init__.py ---
 
 --- END FILE: frontends/__init__.py ---
+
+--- START FILE: frontends/cli/run_data_cli.py ---
+# In bestand: frontends/cli/run_data_cli.py
+"""
+Entrypoint for all data-related CLI operations.
+
+This script provides a command-line interface to interact with the
+DataCommandService, allowing for real-world testing and execution of data
+fetching and synchronization tasks.
+"""
+import sys
+from pathlib import Path
+import logging
+
+# Voeg de project root toe aan het pad zodat we de backend/services kunnen importeren
+project_root = Path(__file__).resolve().parents[2]
+if str(project_root) not in sys.path:
+    sys.path.append(str(project_root))
+
+# pylint: disable=wrong-import-position
+import pandas as pd
+from typing_extensions import Annotated
+import typer
+import yaml
+
+from backend.config.schemas.connectors.kraken_schema import KrakenPublicConfig
+from backend.config.schemas.platform_schema import PlatformConfig
+from backend.config.schemas.connectors_schema import ConnectorsConfig
+from backend.utils.translator import Translator
+from backend.utils.app_logger import configure_logging, LogEnricher
+from backend.data.persistors.parquet_persistor import ParquetPersistor
+from backend.environments.api_connectors.kraken_connector import KrakenAPIConnector
+from backend.dtos.commands import FetchPeriodCommand, SynchronizationCommand, ExtendHistoryCommand
+from services.data_command_service import DataCommandService
+# pylint: enable=wrong-import-position
+
+# --- Bootstrap Functie (Het opbouwen van de service) ---
+
+def bootstrap_service() -> DataCommandService:
+    """Loads all configs and instantiates the full DataCommandService."""
+    # 1. Laad configuratiebestanden
+    with open(project_root / "config/platform.yaml", 'r', encoding="utf-8") as f:
+        platform_conf_raw = yaml.safe_load(f)
+    platform_config = PlatformConfig(**platform_conf_raw)
+
+    with open(project_root / "config/connectors.yaml", 'r', encoding="utf-8") as f:
+        connectors_conf_raw = yaml.safe_load(f)
+    connectors_config = ConnectorsConfig(connectors_conf_raw)
+
+    # 2. Initialiseer basis-dependencies
+    translator = Translator(platform_config=platform_config, project_root=project_root)
+    configure_logging(logging_config=platform_config.core.logging, translator=translator)  # pylint: disable=no-member
+    root_logger = logging.getLogger()
+    logger = LogEnricher(root_logger)
+
+    # 3. Initialiseer de specifieke componenten
+    data_directory = project_root / platform_config.data.source_dir
+    persistor = ParquetPersistor(data_dir=data_directory)
+    
+    kraken_conf = connectors_config.root.get('kraken_public')  # pylint: disable=no-member
+    if not kraken_conf:
+        raise ValueError("Connector 'kraken_public' not found in connectors.yaml")
+
+    if not isinstance(kraken_conf, KrakenPublicConfig):
+        raise TypeError("The 'kraken_public' connector is not of type 'KrakenPublicConfig'")
+
+    connector = KrakenAPIConnector(logger=logger, config=kraken_conf)
+
+    # 4. Bouw en retourneer de uiteindelijke service
+    return DataCommandService(
+        persistor=persistor,
+        connector=connector,
+        limits=platform_config.services.data_collection.limits,  # pylint: disable=no-member
+        logger=logger
+    )
+
+# --- CLI Applicatie ---
+app = typer.Typer(
+    help="CLI tool for managing S1mpleTraderV2 data archives.",
+    add_completion=False
+)
+# Initialiseer de service eenmalig bij het opstarten
+service_instance = bootstrap_service()
+
+@app.command()
+def synchronize(
+    pair: Annotated[str, typer.Option(help="The trading pair to synchronize, e.g., 'BTC/EUR'.")]
+):
+    """Synchronizes the archive for a pair with the latest trades."""
+    typer.echo(f"🚀 Starting synchronization for {pair}...")
+    command = SynchronizationCommand(pair=pair)
+    try:
+        service_instance.synchronize(command)
+        typer.secho("✅ Synchronization complete!", fg=typer.colors.GREEN)
+    except ValueError as e:
+        typer.secho(f"Error: {e}", fg=typer.colors.RED)
+    except NotImplementedError as e:
+        typer.secho(f"Functionality Error: {e}", fg=typer.colors.YELLOW)
+    except RuntimeError as e:
+        typer.secho(f"An unexpected error occurred: {e}", fg=typer.colors.RED)
+
+@app.command()
+def fetch_period(
+    pair: Annotated[str, typer.Option(help="The trading pair to fetch, e.g., 'XRP/EUR'.")],
+    start_date: Annotated[str, typer.Option(help="Start date in YYYY-MM-DD format.")]
+):
+    """Fetches a historical period for a new or existing archive."""
+    typer.echo(f"🚀 Starting historical fetch for {pair} from {start_date}...")
+    try:
+        start_ts = pd.to_datetime(start_date, utc=True)
+        command = FetchPeriodCommand(pair=pair, start_date=start_ts, end_date=None)
+
+        service_instance.fetch_period(command)
+        typer.secho("✅ Historical fetch complete!", fg=typer.colors.GREEN)
+    except ValueError as e:
+        typer.secho(f"Error: {e}", fg=typer.colors.RED)
+    except NotImplementedError as e:
+        typer.secho(f"Functionality Error: {e}", fg=typer.colors.YELLOW)
+    except RuntimeError as e:
+        typer.secho(f"An unexpected error occurred: {e}", fg=typer.colors.RED)
+
+@app.command()
+def extend_history(
+    pair: Annotated[str, typer.Option(help="The trading pair to extend, e.g., 'ETH/EUR'.")],
+    days: Annotated[int, typer.Option(help="The number of days to extend the history backward.")]
+):
+    """Extends an existing archive further back in time."""
+    typer.echo(f"🚀 Extending history for {pair} by {days} days...")
+    command = ExtendHistoryCommand(pair=pair, period_days=days)
+    try:
+        service_instance.extend_history(command)
+        typer.secho("✅ History extension complete!", fg=typer.colors.GREEN)
+    except (ValueError, NotImplementedError) as e:
+        typer.secho(f"Error: {e}", fg=typer.colors.RED)
+    except Exception as e:
+        typer.secho(f"An unexpected error occurred: {e}", fg=typer.colors.RED)
+
+if __name__ == "__main__":
+    app()
+
+--- END FILE: frontends/cli/run_data_cli.py ---
 
 --- START FILE: frontends/cli/presenters/optimization_presenter.py ---
 # frontends/cli/presenters/optimization_presenter.py
@@ -4629,7 +5577,23 @@ API endpoints for plugins
 # For the MVP, we use English keys that map to English text.
 
 # --- Labels for Platform Configuration schema ---
+# In bestand: locales/en.yaml
+
+# ... (andere bestaande keys zoals 'app', 'data_command', etc.)
+
+# --- Descriptions for Platform Schema (platform_config) ---
 platform_config:
+  # --- Top-Level Sections ---
+  core:
+    desc: "Defines the core, foundational settings for the application."
+  services:
+    desc: "Groups all configurations for the service layer components."
+  data:
+    desc: "Defines settings related to data sources and physical storage."
+  portfolio:
+    desc: "Groups all portfolio-related configurations."
+
+  # --- Core Section ---
   core:
     language:
       desc: "The default language for the application's user interface and logs."
@@ -4637,23 +5601,37 @@ platform_config:
       desc: "The root directory where the application will scan for plugins."
     logging:
       profile:
-        desc: "The active logging profile ('developer' or 'analysis'), which determines which log messages are shown."
+        desc: "The active logging profile, which determines which log messages are shown."
       profiles:
         desc: "The definition of all available logging profiles and the log levels they include."
-  
   services:
     data_collection:
-      max_history_days:
-        desc: "The absolute maximum number of days of history a user can request in a single operation. Acts as a safety limit."
-      warn_history_days:
-        desc: "The number of days after which the UI should display a warning for a large historical data request."
-
+      limits:
+        max_history_days:
+          desc: "Safety limit: The max number of days to fetch in a single historical request."
+        warn_history_days:
+          desc: "The number of days after which the UI should warn for a large data request."
+    data_ingestion:
+      defaults:
+        desc: "Defines the default buffer strategies for different ingestion tasks."
+        historical_task:
+          desc: "The default buffer strategy for historical bulk download tasks."
+        live_task:
+          desc: "The default buffer strategy for real-time, live data ingestion tasks."
+      profiles:
+        desc: "A library of named, specific buffer strategies that can be explicitly requested."
+      buffer:
+        max_records:
+          desc: "The max number of records to hold in an in-memory buffer before flushing to disk."
+        max_seconds:
+          desc: "The max age in seconds of an in-memory buffer before it is flushed to disk."
   data:
     source_dir:
-      desc: "The root directory where raw, downloaded source data (e.g., from CSV files) is stored."
-
+      desc: "The root directory where historical data archives (e.g., Parquet files) are stored."
+  # --- Portfolio Section ---
   portfolio:
     defaults:
+      desc: "Defines the default financial parameters for any new portfolio or backtest."
       initial_capital:
         desc: "The default starting capital for any new portfolio or backtest."
       fees_pct:
@@ -4763,6 +5741,32 @@ plugin_registry:
 worker_builder:
   build_success: "Successfully built worker '{name}'."
 
+# --- Log Messages for DataCommandService ---
+data_command:
+  chunk_saved_stream: "Saved a new batch of {count} trades from the stream."
+  fetch_period_start: "Starting historical fetch for pair '{pair}'..."
+  fetch_period_complete: "Historical fetch for pair '{pair}' complete."
+  sync_start: "Starting synchronization for pair '{pair}'..."
+  sync_complete: "Synchronization complete. Saved {count} new trades for '{pair}'."
+  sync_failed_no_data: "Synchronization failed: No existing data found for pair '{pair}'. Please use 'fetch_period' first."
+  archive_is_up_to_date: "Data archive for pair '{pair}' is already up-to-date."
+  extend_history_start: "Extending history for pair '{pair}' by {days} days..."
+  extend_history_complete: "History extension for pair '{pair}' complete."
+  extend_failed_no_data: "History extension failed: No existing data found for pair '{pair}'."
+  extending_period: "Fetching historical data for pair '{pair}' from {start} to {end}."
+  fill_gaps_start: "Scanning for data gaps for pair '{pair}'..."
+  no_gaps_found: "No data gaps found for pair '{pair}'."
+  gap_found: "Data gap found for pair '{pair}'. Fetching missing data from {start} to {end}."
+  fill_gaps_complete: "Gap filling process for pair '{pair}' complete. Filled {gaps_filled} gap(s)."
+
+# --- Log Messages for KrakenAPIConnector ---
+kraken_connector:
+  request_attempt: "Requesting '{endpoint}' (attempt {attempt}/{max_attempts})..."
+  session_closing: "Closing connector session for '{connector_type}'."
+
+#--- DTO's ---
+
+#--- Market DTO's ---
 data_coverage:
   start_time:
     desc: "The timestamp of the earliest trade in the data block."
@@ -4771,21 +5775,121 @@ data_coverage:
   trade_count:
     desc: "The total number of trades within this data block."
 
-history_build_request:
+# --- DataCommandService Commands ---
+synchronization_command:
   pair:
-    desc: "The trading pair to build the historical archive for (e.g., 'XRP/EUR')."
+    desc: "The trading pair to synchronize with the latest data."
+
+fetch_period_command:
+  pair:
+    desc: "The trading pair for which to fetch a historical data period."
   start_date:
-    desc: "The earliest date (inclusive) to fetch historical data for."
+    desc: "The start date of the period to fetch."
+  end_date:
+    desc: "The optional end date of the period to fetch. If not provided, it defaults to the current time."
 
-sync_request:
+extend_history_command:
   pair:
-    desc: "The trading pair to synchronize the latest data for (e.g., 'BTC/EUR')."
+    desc: "The trading pair whose historical archive should be extended."
+  period_days:
+    desc: "The number of days to extend the history further into the past from the oldest known data point."
 
-backfill_request:
+fill_gaps_command:
   pair:
-    desc: "The trading pair to backfill the latest data for (e.g., 'ADA/EUR')."
+    desc: "The trading pair for which to find and fill all historical data gaps."
 
+# --- DataQueryService Queries ---
+coverage_query:
+  pair:
+    desc: "The trading pair for which to retrieve the data coverage map."
 
+pairs_query:
+  exchange_id:
+    desc: "The unique name of the connector instance (from connectors.yaml) to query for available pairs."
+
+range_query:
+  pair:
+    desc: "The trading pair for which to retrieve historical data."
+  start_date:
+    desc: "The start date (inclusive) of the time range to query."
+  end_date:
+    desc: "The end date (inclusive) of the time range to query."
+
+# --- Portfolio Schema Localization ---
+
+# Portfolio Blueprint descriptions
+portfolio_schema:
+  portfolio_blueprint:
+    display_name:
+      desc: "A human-readable name for this portfolio configuration."
+    description:
+      desc: "A detailed description of this portfolio's purpose and strategy."
+    strategies:
+      desc: "A list of strategy configurations linked to specific execution environments."
+    risk_policy:
+      desc: "The comprehensive risk management policy for this portfolio."
+
+  strategy_link:
+    strategy_blueprint_path:
+      desc: "Path to the strategy blueprint YAML file (relative to config/runs/)."
+    execution_environment_id:
+      desc: "The ID of the execution environment where this strategy should run."
+
+  capital_allocation:
+    percentage:
+      desc: "Percentage of total portfolio capital allocated to this strategy (0-100%)."
+    max_quote_amount:
+      desc: "Maximum absolute amount in quote currency for this strategy (optional)."
+
+  event_action:
+    block_new_signals_min:
+      desc: "Block new trading signals for this strategy for X minutes after event."
+    close_strategy_positions:
+      desc: "Close all open positions for this strategy immediately."
+    move_sl_to_breakeven_strategy:
+      desc: "Move stop-loss orders to breakeven for this strategy's positions."
+    reduce_position_size_pct_strategy:
+      desc: "Reduce position sizes by this percentage for this strategy."
+    cancel_entry_orders_strategy:
+      desc: "Cancel all pending entry orders for this strategy."
+    close_all_portfolio_positions:
+      desc: "Close ALL positions across the entire portfolio immediately."
+    cancel_all_entry_orders_portfolio:
+      desc: "Cancel all pending entry orders across the entire portfolio."
+    notification_message:
+      desc: "Custom notification message to send when this event occurs."
+
+  risk_policy:
+    portfolio_rules:
+      desc: "Risk management rules that apply to the entire portfolio."
+    strategy_rules:
+      desc: "Single source of truth for all strategy-specific risk configurations. Each strategy's risk parameters are defined here, not in the strategy links."
+    event_responses:
+      desc: "Dynamic responses to specific events detected by PortfolioMonitor plugins."
+
+  portfolio_risk:
+    max_total_drawdown_pct:
+      desc: "Maximum allowed drawdown for the entire portfolio before emergency actions."
+    max_position_size_pct_per_strategy:
+      desc: "Maximum position size as percentage of portfolio for any single strategy."
+    max_correlated_positions:
+      desc: "Maximum number of positions in correlated assets allowed."
+
+  strategy_risk:
+    capital_allocation:
+      desc: "Capital allocation limits for this specific strategy."
+    max_drawdown_pct:
+      desc: "Maximum drawdown allowed for this strategy before intervention."
+    max_position_size_pct:
+      desc: "Maximum position size as percentage of strategy allocation."
+    enabled:
+      desc: "Whether this strategy is currently active and allowed to trade."
+
+# Extended Plugin Manifest for Event Production
+manifest:
+  dependencies:
+    produces_events:
+      desc: "List of event types that this plugin can produce (for PortfolioMonitor plugins)."
 --- END FILE: locales/en.yaml ---
 
 --- START FILE: locales/nl.yaml ---
@@ -4796,68 +5900,6 @@ app:
 --- START FILE: plugins/__init__.py ---
 
 --- END FILE: plugins/__init__.py ---
-
---- START FILE: plugins/critical_event_detectors/max_drawdown_overlay/plugin_manifest.yaml ---
-name: max_drawdown_overlay
-type: portfolio_overlay
-...
---- END FILE: plugins/critical_event_detectors/max_drawdown_overlay/plugin_manifest.yaml ---
-
---- START FILE: plugins/critical_event_detectors/max_drawdown_overlay/schema.py ---
-# plugins/portfolio_overlays/max_drawdown_overlay/schema.py
-"""
-Docstring for schema.py.
-
-@layer: TODO
-@dependencies: TODO
-@responsibilities: TODO
-"""
-
-class MaxDrawdownOverlayParams:
-    """Docstring for MaxDrawdownOverlayParams."""
-    pass
-
---- END FILE: plugins/critical_event_detectors/max_drawdown_overlay/schema.py ---
-
---- START FILE: plugins/critical_event_detectors/max_drawdown_overlay/worker.py ---
-# plugins/portfolio_overlays/max_drawdown_overlay/worker.py
-"""
-Docstring for worker.py.
-
-@layer: TODO
-@dependencies: TODO
-@responsibilities: TODO
-"""
-
-class MaxDrawdownOverlay:
-    """Docstring for MaxDrawdownOverlay."""
-    pass
-
---- END FILE: plugins/critical_event_detectors/max_drawdown_overlay/worker.py ---
-
---- START FILE: plugins/critical_event_detectors/max_drawdown_overlay/__init__.py ---
-
---- END FILE: plugins/critical_event_detectors/max_drawdown_overlay/__init__.py ---
-
---- START FILE: plugins/critical_event_detectors/max_drawdown_overlay/tests/test_worker.py ---
-# plugins/portfolio_overlays/max_drawdown_overlay/tests/test_worker.py
-"""
-Docstring for test_worker.py.
-
-@layer: TODO
-@dependencies: TODO
-@responsibilities: TODO
-"""
-
-class TestMaxDrawdownOverlay:
-    """Docstring for TestMaxDrawdownOverlay."""
-    pass
-
---- END FILE: plugins/critical_event_detectors/max_drawdown_overlay/tests/test_worker.py ---
-
---- START FILE: plugins/critical_event_detectors/max_drawdown_overlay/tests/__init__.py ---
-
---- END FILE: plugins/critical_event_detectors/max_drawdown_overlay/tests/__init__.py ---
 
 --- START FILE: plugins/entry_planners/__init__.py ---
 
@@ -4928,6 +5970,513 @@ class TestLiquidityTargetExitPlanner:
 --- START FILE: plugins/order_routers/__init__.py ---
 
 --- END FILE: plugins/order_routers/__init__.py ---
+
+--- START FILE: plugins/portfolio_monitors/__init__.py ---
+# plugins/portfolio_monitors/__init__.py
+--- END FILE: plugins/portfolio_monitors/__init__.py ---
+
+--- START FILE: plugins/portfolio_monitors/max_drawdown_detector/plugin_manifest.yaml ---
+name: max_drawdown_detector
+display_name: "Maximum Drawdown Detector"
+type: portfolio_monitor
+version: "1.0.0"
+description: "Monitors portfolio and strategy drawdown levels and triggers emergency responses"
+author: "S1mpleTrader Team"
+
+# --- Code Contract ---
+entry_class: "MaxDrawdownDetector"
+schema_path: "schema.py"
+params_class: "MaxDrawdownDetectorParams"
+
+# --- Data Contract ---
+dependencies:
+  requires: []  # PortfolioMonitor plugins don't need DataFrame columns
+  provides: []  # They only produce CriticalEvents
+  produces_events:
+    - "MAX_DRAWDOWN_BREACHED"
+    - "STRATEGY_DRAWDOWN_EXCEEDED"
+
+# --- Permissions ---
+permissions:
+  network_access: []
+  filesystem_access: []
+--- END FILE: plugins/portfolio_monitors/max_drawdown_detector/plugin_manifest.yaml ---
+
+--- START FILE: plugins/portfolio_monitors/max_drawdown_detector/schema.py ---
+# plugins/portfolio_monitors/max_drawdown_detector/schema.py
+"""
+Configuration schema for the MaxDrawdownDetector PortfolioMonitor plugin.
+
+@layer: Plugin
+@dependencies: [pydantic]
+@responsibilities:
+    - Defines configuration parameters for drawdown monitoring
+    - Validates monitoring thresholds and intervals
+"""
+
+from typing import Optional
+from pydantic import BaseModel, Field
+
+
+class MaxDrawdownDetectorParams(BaseModel):
+    """
+    Configuration parameters for the Maximum Drawdown Detector.
+
+    This plugin monitors portfolio and strategy performance for drawdown
+    breaches and triggers appropriate risk responses.
+    """
+
+    # Monitoring intervals
+    check_interval_seconds: int = Field(
+        default=60,
+        gt=0,
+        description="How often to check for drawdown breaches (seconds)"
+    )
+
+    # Portfolio-level monitoring (optional - use RiskPolicy if not specified)
+    portfolio_max_drawdown_pct: Optional[float] = Field(
+        default=None,
+        gt=0,
+        le=100,
+        description="Portfolio-wide maximum drawdown threshold (overrides RiskPolicy if set)"
+    )
+
+    # Strategy-level monitoring (optional - use RiskPolicy if not specified)
+    strategy_max_drawdown_pct: Optional[float] = Field(
+        default=None,
+        gt=0,
+        le=100,
+        description="Strategy-specific maximum drawdown threshold (overrides RiskPolicy if set)"
+    )
+
+    # Notification settings
+    enable_notifications: bool = Field(
+        default=True,
+        description="Whether to send notifications when events are triggered"
+    )
+
+    # Recovery settings
+    auto_reset_after_minutes: int = Field(
+        default=1440,  # 24 hours
+        gt=0,
+        description="Minutes after which blocked strategies are automatically re-enabled"
+    )
+
+--- END FILE: plugins/portfolio_monitors/max_drawdown_detector/schema.py ---
+
+--- START FILE: plugins/portfolio_monitors/max_drawdown_detector/worker.py ---
+# plugins/portfolio_monitors/max_drawdown_detector/worker.py
+"""
+PortfolioMonitor plugin that monitors portfolio and strategy drawdown levels.
+
+This plugin runs parallel to the StrategyEngine and monitors the portfolio
+state for drawdown breaches, triggering CriticalEvents as needed.
+
+@layer: Plugin
+@dependencies: [backend.core.interfaces, backend.dtos, backend.utils.app_logger]
+@responsibilities:
+    - Monitors portfolio and strategy performance continuously
+    - Detects drawdown breaches against configured thresholds
+    - Produces CriticalEvents for the PortfolioSupervisor to handle
+    - Integrates with the layered risk management system
+"""
+
+from typing import Dict, List, Any, Optional
+from dataclasses import dataclass
+from uuid import uuid4
+
+import pandas as pd
+from backend.core.interfaces.worker import CriticalEventDetector
+from backend.dtos.execution.critical_event import CriticalEvent
+from backend.dtos.state.portfolio_state import PortfolioState
+from backend.utils.app_logger import LogEnricher
+
+from .schema import MaxDrawdownDetectorParams
+
+
+@dataclass
+class DrawdownState:
+    """Tracks drawdown state for a portfolio or strategy."""
+
+    peak_value: float
+    current_value: float
+    max_drawdown_pct: float
+    last_check_time: pd.Timestamp
+    is_breached: bool
+    breach_time: Optional[pd.Timestamp] = None
+
+
+class MaxDrawdownDetector(CriticalEventDetector):
+    """
+    Monitors portfolio and strategy drawdown levels and triggers emergency responses.
+
+    This PortfolioMonitor plugin operates independently of the StrategyEngine,
+    continuously monitoring portfolio state and producing CriticalEvents when
+    risk thresholds are breached.
+    """
+
+    def __init__(
+        self,
+        name: str,
+        params: MaxDrawdownDetectorParams,
+        logger: LogEnricher
+    ):
+        """Initialize the MaxDrawdownDetector PortfolioMonitor."""
+        self.name = name
+        self.params = params
+        self.logger = logger
+
+        # State tracking for drawdown monitoring
+        self._portfolio_state: Optional[DrawdownState] = None
+        self._strategy_states: Dict[str, DrawdownState] = {}
+        self._last_check_time: Optional[pd.Timestamp] = None
+
+        self.logger.info(
+            "Initialized MaxDrawdownDetector with check interval: %s seconds",
+            self.params.check_interval_seconds
+        )
+
+    def process(
+        self,
+        routed_trade_plans: List[Any],  # Not used by PortfolioMonitor
+        context: Any  # TradingContext - used to access portfolio state
+    ) -> List[CriticalEvent]:
+        """
+        Monitor portfolio state for drawdown breaches.
+
+        This method is called regularly by the PortfolioSupervisor to check
+        for risk threshold breaches and return any CriticalEvents that need
+        to be handled according to the RiskPolicy.
+
+        Args:
+            routed_trade_plans: Not used by PortfolioMonitor plugins
+            context: TradingContext containing current portfolio state
+
+        Returns:
+            List of CriticalEvents that require immediate attention
+        """
+        current_time = pd.Timestamp.utcnow()
+
+        # Implement minimum check interval to avoid excessive monitoring
+        if (
+            self._last_check_time and
+            (current_time - self._last_check_time).total_seconds() < self.params.check_interval_seconds
+        ):
+            return []  # Too soon to check again
+
+        self._last_check_time = current_time
+        events_detected = []
+
+        try:
+            # Get current portfolio state from context
+            portfolio_state = context.portfolio_state
+
+            # Check portfolio-level drawdown
+            portfolio_events = self._check_portfolio_drawdown(portfolio_state, current_time)
+            events_detected.extend(portfolio_events)
+
+            # Check strategy-level drawdown
+            strategy_events = self._check_strategy_drawdowns(portfolio_state, current_time)
+            events_detected.extend(strategy_events)
+
+        except Exception as e:
+            self.logger.error(
+                "Error during drawdown monitoring: %s",
+                str(e),
+                exc_info=True
+            )
+
+        return events_detected
+
+    def _check_portfolio_drawdown(
+        self,
+        portfolio_state: PortfolioState,
+        current_time: pd.Timestamp
+    ) -> List[CriticalEvent]:
+        """Check portfolio-level drawdown against thresholds."""
+        events = []
+
+        # Initialize or update portfolio peak tracking
+        current_equity = portfolio_state.equity
+
+        if self._portfolio_state is None:
+            # First time - establish baseline
+            self._portfolio_state = DrawdownState(
+                peak_value=current_equity,
+                current_value=current_equity,
+                max_drawdown_pct=self.params.portfolio_max_drawdown_pct or 100.0,
+                last_check_time=current_time,
+                is_breached=False
+            )
+        
+        # Update peak if current equity is higher
+        if current_equity > self._portfolio_state.peak_value:
+            self._portfolio_state.peak_value = current_equity
+            self._portfolio_state.is_breached = False  # Reset breach state
+            self._portfolio_state.breach_time = None
+
+        self._portfolio_state.current_value = current_equity
+        self._portfolio_state.last_check_time = current_time
+
+        # Calculate current drawdown
+        if self._portfolio_state.peak_value > 0:
+            drawdown_pct = (
+                (self._portfolio_state.peak_value - current_equity) /
+                self._portfolio_state.peak_value * 100
+            )
+
+            # Check for breach
+            if (
+                drawdown_pct >= self._portfolio_state.max_drawdown_pct and
+                not self._portfolio_state.is_breached
+            ):
+                self._portfolio_state.is_breached = True
+                self._portfolio_state.breach_time = current_time
+
+                events.append(CriticalEvent(
+                    correlation_id=uuid4(),
+                    event_type="MAX_DRAWDOWN_BREACHED",
+                    timestamp=current_time
+                ))
+
+                self.logger.warning(
+                    "Portfolio maximum drawdown breached: %.2f%% (threshold: %.2f%%)",
+                    drawdown_pct,
+                    self._portfolio_state.max_drawdown_pct
+                )
+
+        return events
+
+    def _check_strategy_drawdowns(
+        self,
+        portfolio_state: PortfolioState,
+        current_time: pd.Timestamp
+    ) -> List[CriticalEvent]:
+        """Check strategy-level drawdown against thresholds."""
+        events = []
+
+        # This is a simplified implementation
+        # In a full implementation, you'd track per-strategy performance
+        # For now, we'll implement a basic check based on portfolio composition
+
+        total_equity = portfolio_state.equity
+
+        # Example: Check if any strategy allocation exceeds safe limits
+        # This would need to be expanded based on actual strategy tracking
+
+        return events
+
+    def get_monitoring_status(self) -> Dict[str, Any]:
+        """Return current monitoring status for debugging and UI display."""
+        return {
+            "plugin_name": self.name,
+            "check_interval_seconds": self.params.check_interval_seconds,
+            "portfolio_state": {
+                "peak_value": self._portfolio_state.peak_value if self._portfolio_state else None,
+                "current_value": self._portfolio_state.current_value if self._portfolio_state else None,
+                "is_breached": self._portfolio_state.is_breached if self._portfolio_state else False,
+                "breach_time": self._portfolio_state.breach_time if self._portfolio_state else None,
+            },
+            "strategy_count": len(self._strategy_states),
+            "last_check": self._last_check_time,
+        }
+--- END FILE: plugins/portfolio_monitors/max_drawdown_detector/worker.py ---
+
+--- START FILE: plugins/portfolio_monitors/max_drawdown_detector/__init__.py ---
+# plugins/portfolio_monitors/max_drawdown_detector/__init__.py
+--- END FILE: plugins/portfolio_monitors/max_drawdown_detector/__init__.py ---
+
+--- START FILE: plugins/portfolio_monitors/max_drawdown_detector/tests/test_worker.py ---
+# plugins/portfolio_monitors/max_drawdown_detector/tests/test_worker.py
+"""
+Unit tests for the MaxDrawdownDetector PortfolioMonitor plugin.
+
+@layer: Plugin
+@dependencies: [pytest, pandas, backend.dtos]
+@responsibilities:
+    - Tests that the PortfolioMonitor correctly detects drawdown breaches
+    - Validates CriticalEvent generation
+    - Ensures proper state tracking and reset behavior
+"""
+
+import time
+from unittest.mock import MagicMock
+import pandas as pd
+
+from ..worker import MaxDrawdownDetector, DrawdownState
+from ..schema import MaxDrawdownDetectorParams
+from backend.dtos.execution.critical_event import CriticalEvent
+from backend.dtos.state.portfolio_state import PortfolioState
+
+
+class TestMaxDrawdownDetector:
+    """Test suite for the MaxDrawdownDetector PortfolioMonitor plugin."""
+
+    def test_initialization_with_default_parameters(self):
+        """Test that the plugin initializes correctly with default parameters."""
+        # Arrange
+        params = MaxDrawdownDetectorParams()
+        logger = MagicMock()
+
+        # Act
+        detector = MaxDrawdownDetector(
+            name="test_detector",
+            params=params,
+            logger=logger
+        )
+
+        # Assert
+        assert detector.name == "test_detector"
+        assert detector.params.check_interval_seconds == 60
+        assert detector.params.enable_notifications is True
+        assert detector._portfolio_state is None
+        assert detector._last_check_time is None
+
+    def test_portfolio_drawdown_detection_breach(self):
+        """Test that portfolio drawdown breaches are correctly detected."""
+        # Arrange
+        params = MaxDrawdownDetectorParams(
+            check_interval_seconds=1,
+            portfolio_max_drawdown_pct=10.0
+        )
+        logger = MagicMock()
+        detector = MaxDrawdownDetector(name="test_detector", params=params, logger=logger)
+
+        # Establish initial peak
+        portfolio_state_peak = PortfolioState(equity=10000.0, available_cash=10000.0, total_exposure_quote=0.0, open_positions=[], open_orders=[])
+        mock_context_peak = MagicMock()
+        mock_context_peak.portfolio_state = portfolio_state_peak
+        detector.process([], mock_context_peak)
+
+        time.sleep(1)
+
+        # Create mock portfolio state with drawdown breach
+        portfolio_state_drawdown = PortfolioState(
+            equity=9000.0,
+            available_cash=9000.0,
+            total_exposure_quote=0.0,
+            open_positions=[],
+            open_orders=[]
+        )
+
+        mock_context_drawdown = MagicMock()
+        mock_context_drawdown.portfolio_state = portfolio_state_drawdown
+
+        # Act
+        events = detector.process([], mock_context_drawdown)
+
+        # Assert
+        assert len(events) == 1
+        assert isinstance(events[0], CriticalEvent)
+        assert events[0].event_type == "MAX_DRAWDOWN_BREACHED"
+
+    def test_portfolio_drawdown_no_breach(self):
+        """Test that no events are generated when drawdown is within limits."""
+        # Arrange
+        params = MaxDrawdownDetectorParams(
+            check_interval_seconds=1,
+            portfolio_max_drawdown_pct=15.0
+        )
+        logger = MagicMock()
+        detector = MaxDrawdownDetector(name="test_detector", params=params, logger=logger)
+
+        # Establish initial peak
+        portfolio_state_peak = PortfolioState(equity=10000.0, available_cash=10000.0, total_exposure_quote=0.0, open_positions=[], open_orders=[])
+        mock_context_peak = MagicMock()
+        mock_context_peak.portfolio_state = portfolio_state_peak
+        detector.process([], mock_context_peak)
+
+        time.sleep(1)
+
+        # Create portfolio state with acceptable drawdown
+        portfolio_state_drawdown = PortfolioState(
+            equity=9000.0,
+            available_cash=9000.0,
+            total_exposure_quote=0.0,
+            open_positions=[],
+            open_orders=[]
+        )
+
+        mock_context_drawdown = MagicMock()
+        mock_context_drawdown.portfolio_state = portfolio_state_drawdown
+
+        # Act
+        events = detector.process([], mock_context_drawdown)
+
+        # Assert
+        assert len(events) == 0
+
+    def test_minimum_check_interval_enforced(self):
+        """Test that the minimum check interval is properly enforced."""
+        # Arrange
+        params = MaxDrawdownDetectorParams(check_interval_seconds=2, portfolio_max_drawdown_pct=20.0)
+        logger = MagicMock()
+        detector = MaxDrawdownDetector(name="test_detector", params=params, logger=logger)
+
+        # Establish peak and first check time
+        portfolio_state_peak = PortfolioState(equity=10000.0, available_cash=10000.0, total_exposure_quote=0.0, open_positions=[], open_orders=[])
+        mock_context_peak = MagicMock()
+        mock_context_peak.portfolio_state = portfolio_state_peak
+        detector.process([], mock_context_peak)
+
+        # Drawdown state that should trigger event
+        portfolio_state_drawdown = PortfolioState(equity=5000.0, available_cash=5000.0, total_exposure_quote=0.0, open_positions=[], open_orders=[])
+        mock_context_drawdown = MagicMock()
+        mock_context_drawdown.portfolio_state = portfolio_state_drawdown
+
+        # Act
+        time.sleep(1)
+        events1 = detector.process([], mock_context_drawdown) # Should not trigger, too soon
+        time.sleep(2)
+        events2 = detector.process([], mock_context_drawdown) # Should trigger
+
+        # Assert
+        assert len(events1) == 0
+        assert len(events2) == 1
+
+    def test_monitoring_status_report(self):
+        """Test that the monitoring status is correctly reported."""
+        # Arrange
+        params = MaxDrawdownDetectorParams()
+        logger = MagicMock()
+        detector = MaxDrawdownDetector(name="test_detector", params=params, logger=logger)
+
+        # Act
+        status = detector.get_monitoring_status()
+
+        # Assert
+        assert status["plugin_name"] == "test_detector"
+        assert status["check_interval_seconds"] == 60
+
+    def test_peak_value_updates_correctly(self):
+        """Test that peak values are updated when equity increases."""
+        # Arrange
+        params = MaxDrawdownDetectorParams(check_interval_seconds=1)
+        logger = MagicMock()
+        detector = MaxDrawdownDetector(name="test_detector", params=params, logger=logger)
+
+        # First, establish a peak
+        portfolio_state1 = PortfolioState(equity=10000.0, available_cash=10000.0, total_exposure_quote=0.0, open_positions=[], open_orders=[])
+        mock_context1 = MagicMock()
+        mock_context1.portfolio_state = portfolio_state1
+        detector.process([], mock_context1)
+
+        time.sleep(1)
+
+        # Now test with higher equity
+        portfolio_state2 = PortfolioState(equity=11000.0, available_cash=11000.0, total_exposure_quote=0.0, open_positions=[], open_orders=[])
+        mock_context2 = MagicMock()
+        mock_context2.portfolio_state = portfolio_state2
+        detector.process([], mock_context2)
+
+        # Assert
+        status = detector.get_monitoring_status()
+        assert status["portfolio_state"]["peak_value"] == 11000.0
+--- END FILE: plugins/portfolio_monitors/max_drawdown_detector/tests/test_worker.py ---
+
+--- START FILE: plugins/portfolio_monitors/max_drawdown_detector/tests/__init__.py ---
+# plugins/portfolio_monitors/max_drawdown_detector/tests/__init__.py
+--- END FILE: plugins/portfolio_monitors/max_drawdown_detector/tests/__init__.py ---
 
 --- START FILE: plugins/regime_filters/__init__.py ---
 
@@ -5328,17 +6877,20 @@ This service acts as the "Interactor" or "Command" layer for data persistence.
 @layer: Service
 @dependencies: [IAPIConnector, IDataPersistor, LogEnricher, DataCollectionLimits]
 """
-from typing import Optional
+from typing import Generator, List
 import pandas as pd
 
 from backend.core.interfaces.connectors import IAPIConnector
 from backend.core.interfaces.persistors import IDataPersistor
+from backend.assembly.connector_factory import IConnectorFactory
 from backend.config.schemas.platform_schema import DataCollectionLimits
-from backend.dtos.commands.fetch_period_command import FetchPeriodCommand
-from backend.dtos.commands.synchronization_command import SynchronizationCommand
-# TODO: Import future command DTOs when they are used
-# from backend.dtos.commands.extend_history_command import ExtendHistoryCommand
-# from backend.dtos.commands.fill_gaps_command import FillGapsCommand
+from backend.dtos.commands import (
+    FetchPeriodCommand,
+    SynchronizationCommand,
+    ExtendHistoryCommand,
+    FillGapsCommand
+)
+from backend.dtos.market.trade_tick import TradeTick
 from backend.utils.app_logger import LogEnricher
 
 
@@ -5348,117 +6900,105 @@ class DataCommandService:
     def __init__(
         self,
         persistor: IDataPersistor,
-        connector: IAPIConnector,
+        connector_factory: IConnectorFactory,
         limits: DataCollectionLimits,
         logger: LogEnricher
     ):
-        """Initializes the DataCommandService.
-
-        Args:
-            persistor (IDataPersistor): The data persistence component.
-            connector (IAPIConnector): The data source connector.
-            limits (DataCollectionLimits): The configured safety limits for
-                data collection operations.
-            logger (LogEnricher): The application's configured logger instance.
-        """
+        """Initializes the DataCommandService."""
         self._persistor = persistor
-        self._connector = connector
+        self._connector_factory = connector_factory
         self._limits = limits
         self._logger = logger
 
+
+    def _get_connector(self, name: str = 'kraken_public') -> IAPIConnector:
+        """Helper to get a connector from the factory and handle errors."""
+        connector = self._connector_factory.get_connector(name)
+        if not connector:
+            raise ValueError(f"Failed to get connector '{name}' from factory.")
+        return connector
+
     # --- Private "Motor" ---
 
-    def _fetch_and_save_chunk(
-        self, pair: str, since: int, until: Optional[int] = None
+    def _process_stream(
+        self, pair: str, trades_generator: Generator[List[TradeTick], None, None]
     ) -> int:
-        """Private helper to fetch and save a single chunk of trade data.
+        """Processes a stream of trade batches from a generator and saves them.
+
+        This is the central DRY helper for all write operations. It iterates
+        over a generator that yields batches of trades, saves each batch
+        immediately to the persistence layer, and keeps track of the total
+        count of saved trades. This ensures a memory-efficient receive-store
+        cycle.
 
         Args:
-            pair (str): The trading pair to process.
-            since (int): The start timestamp (nanoseconds) for the data fetch.
-            until (Optional[int]): The end timestamp (nanoseconds) for the
-                data fetch.
+            pair: The trading pair being processed.
+            trades_generator: A generator yielding lists of TradeTick DTOs.
 
         Returns:
-            int: The number of new trades that were successfully saved.
+            The total number of trades processed and saved.
         """
-        trades_chunk = self._connector.get_historical_trades(
-            pair=pair, since=since, until=until
-        )
-        if not trades_chunk:
-            return 0
-        self._persistor.save_trades(pair=pair, trades=trades_chunk)
-        return len(trades_chunk)
+        total_saved_count = 0
+        for trades_batch in trades_generator:
+            if trades_batch:
+                self._persistor.save_trades(pair=pair, trades=trades_batch)
+                batch_count = len(trades_batch)
+                total_saved_count += batch_count
+                self._logger.info(
+                    'data_command.chunk_saved_stream',
+                    values={'count': batch_count}
+                )
+        return total_saved_count
 
     # --- Public "Interactors" (Command Handlers) ---
 
     def fetch_period(self, command: FetchPeriodCommand) -> None:
-        """
-        Fetches a specific, bounded period of historical data, working backward
-        in daily chunks.
+        """Fetches a specific, bounded period of historical data idempotently.
 
-        It validates the requested period against platform limits before execution.
+        This method is robust against interruptions. Before fetching, it checks
+        for the latest existing data point. If the fetch operation is restarted,
+        it will automatically resume from the last saved data point, preventing
+        duplicate downloads and saving time.
+
+        It validates the requested period against platform limits and then
+        initiates a memory-efficient stream of data from the connector,
+        processing each batch as it arrives.
 
         Args:
-            command (FetchPeriodCommand): A DTO containing the 'pair',
-                'start_date', and optional 'end_date'.
+            command: A DTO containing the 'pair', 'start_date', and optional
+                'end_date'.
 
         Raises:
             ValueError: If the requested date range exceeds the configured
-                maximum limit in `platform.yaml`.
+                maximum limit.
         """
         self._logger.info(
             'data_command.fetch_period_start',
             values={'pair': command.pair}
         )
+        end_date = command.end_date or pd.Timestamp.utcnow()
+        start_date = command.start_date
 
-        # 1. Determine the start and end dates for the entire operation.
-        end_day = (command.end_date or pd.Timestamp.utcnow()).normalize()
-        start_day = command.start_date.normalize()
-
-        # 2. Validate the request against the platform's safety limits.
-        requested_days = (end_day - start_day).days + 1
+        # Central validation
+        requested_days = (end_date.normalize() - start_date.normalize()).days + 1
         if requested_days > self._limits.max_history_days:
             raise ValueError(
                 f"Requested history of {requested_days} days exceeds the "
                 f"maximum limit of {self._limits.max_history_days} days."
             )
 
-        # 3. Execute the chunking loop, working backward in time.
-        current_day = end_day
-        while current_day >= start_day:
-            day_str = current_day.strftime('%Y-%m-%d')
-            self._logger.info(
-                'data_command.fetching_chunk',
-                values={'pair': command.pair, 'date': day_str}
-            )
+        last_known_ts_ns = self._persistor.get_last_timestamp(command.pair)
+        start_date_ns = int(start_date.value)
 
-            chunk_start_ns = int(current_day.value)
+        effective_since_ns = max(start_date_ns, last_known_ts_ns)
 
-            if current_day == pd.Timestamp.utcnow().normalize():
-                chunk_end_ns = int(pd.Timestamp.utcnow().value)
-            else:
-                next_day_start = current_day + pd.Timedelta(days=1)
-                chunk_end_ns = int(next_day_start.value - 1)
-
-            saved_count = self._fetch_and_save_chunk(
-                pair=command.pair,
-                since=chunk_start_ns,
-                until=chunk_end_ns
-            )
-
-            if saved_count > 0:
-                self._logger.info(
-                    'data_command.chunk_saved',
-                    values={'count': saved_count, 'date': day_str}
-                )
-            else:
-                self._logger.info(
-                    'data_command.no_data_for_chunk',
-                    values={'date': day_str}
-                )
-
-            current_day -= pd.Timedelta(days=1)
+        connector = self._get_connector()
+        trades_generator = connector.get_historical_trades(
+            pair=command.pair,
+            since=effective_since_ns,  # Gebruik het slimme startpunt
+            until=int(end_date.value)
+        )
+        self._process_stream(command.pair, trades_generator)
 
         self._logger.info(
             'data_command.fetch_period_complete',
@@ -5466,19 +7006,230 @@ class DataCommandService:
         )
 
     def synchronize(self, command: SynchronizationCommand) -> None:
-        """Synchronizes the archive with the latest trades."""
-        # TODO: Implement full logic for synchronize
-        raise NotImplementedError("synchronize is not yet implemented.")
+        """Synchronizes the data archive with all trades since the last known timestamp.
+        
+        [... docstring blijft hetzelfde ...]
+        """
+        self._logger.info(
+            'data_command.sync_start',
+            values={'pair': command.pair}
+        )
 
-    def extend_history(self, command: object) -> None:
-        """Extends the existing historical archive further into the past."""
-        raise NotImplementedError("extend_history is not yet implemented.")
+        last_ts_ns = self._persistor.get_last_timestamp(command.pair)
 
-    def fill_gaps(self, command: object) -> None:
-        """Fills all identified gaps in the historical data."""
-        raise NotImplementedError("fill_gaps is not yet implemented.")
+        if last_ts_ns == 0:
+            self._logger.warning(
+                'data_command.sync_failed_no_data',
+                values={'pair': command.pair}
+            )
+            return
+
+        last_ts_date = pd.to_datetime(last_ts_ns, unit='ns', utc=True)
+        days_since_last_trade = (pd.Timestamp.utcnow() - last_ts_date).days
+        if days_since_last_trade > self._limits.max_history_days:
+            raise ValueError(
+                f"Archive for pair '{command.pair}' is {days_since_last_trade} "
+                f"days old, which exceeds the sync limit of "
+                f"{self._limits.max_history_days} days. "
+                f"Please use 'fetch_period' to fill the large gap."
+            )
+
+        connector = self._get_connector()
+        trades_generator = connector.get_historical_trades(
+            pair=command.pair,
+            since=last_ts_ns,
+            until=None
+        )
+
+        saved_count = self._process_stream(command.pair, trades_generator)
+
+        if saved_count > 0:
+            self._logger.info(
+                'data_command.sync_complete',
+                values={'pair': command.pair, 'count': saved_count}
+            )
+        else:
+            self._logger.info(
+                'data_command.archive_is_up_to_date',
+                values={'pair': command.pair}
+            )
+
+    def extend_history(self, command: ExtendHistoryCommand) -> None:
+        """Extends an existing data archive further back in time.
+
+        This method finds the oldest known data point in the archive for a
+        given pair and then fetches a specified number of preceding days
+        of historical data. It delegates the actual fetching to a generator
+        and processes the data via the central `_process_stream` helper,
+        ensuring a memory-efficient operation.
+
+        Args:
+            command (ExtendHistoryCommand): A DTO containing the trading pair
+                and the number of days to extend the history by.
+        """
+        self._logger.info(
+            'data_command.extend_history_start',
+            values={'pair': command.pair, 'days': command.period_days}
+        )
+
+        oldest_ts_ns = self._persistor.get_first_timestamp(command.pair)
+
+        if oldest_ts_ns == 0:
+            self._logger.warning(
+                'data_command.extend_failed_no_data',
+                values={'pair': command.pair}
+            )
+            return
+
+        until_ns = oldest_ts_ns - 1
+        start_ts = pd.to_datetime(until_ns, unit='ns',
+                                  utc=True) - pd.Timedelta(days=command.period_days)
+        since_ns = int(start_ts.value)
+
+        self._logger.info(
+            'data_command.extending_period',
+            values={
+                'pair': command.pair,
+                'start': start_ts.strftime('%Y-%m-%d'),
+                'end': pd.to_datetime(until_ns, unit='ns', utc=True).strftime('%Y-%m-%d')
+            }
+        )
+
+        connector = self._get_connector()
+        trades_generator = connector.get_historical_trades(
+            pair=command.pair,
+            since=since_ns,
+            until=until_ns
+        )
+
+        self._process_stream(command.pair, trades_generator)
+
+        self._logger.info(
+            'data_command.extend_history_complete',
+            values={'pair': command.pair}
+        )
+
+    def fill_gaps(self, command: FillGapsCommand) -> None:
+        """Finds and fills all gaps in an existing data archive.
+
+        This method retrieves a "coverage map" from the data persistor, which
+        outlines all contiguous blocks of available data. It then iterates
+        through this map, identifies any time periods between the blocks
+        (gaps), and initiates a data stream from the connector to fetch only
+        the missing data for each gap.
+
+        Args:
+            command (FillGapsCommand): A DTO containing the trading pair for
+                which to fill data gaps.
+        """
+        self._logger.info(
+            'data_command.fill_gaps_start',
+            values={'pair': command.pair}
+        )
+
+        coverage_map = self._persistor.get_data_coverage(command.pair)
+
+        # Sorteer de blokken op starttijd voor de zekerheid.
+        coverage_map.sort(key=lambda block: block.start_time)
+
+        if len(coverage_map) < 2:
+            self._logger.info(
+                'data_command.no_gaps_found',
+                values={'pair': command.pair}
+            )
+            return
+
+        gaps_filled = 0
+        # Itereer tot de voorlaatste blok om gaten tussen blokken te vinden.
+        for i in range(len(coverage_map) - 1):
+            block_a = coverage_map[i]
+            block_b = coverage_map[i+1]
+
+            gap_start_ns = int(block_a.end_time.value) + 1
+            gap_end_ns = int(block_b.start_time.value) - 1
+
+            # Controleer of er daadwerkelijk een gat is.
+            if gap_start_ns >= gap_end_ns:
+                continue
+
+            gaps_filled += 1
+            self._logger.info(
+                'data_command.gap_found',
+                values={
+                    'pair': command.pair,
+                    'start': pd.to_datetime(gap_start_ns, unit='ns', utc=True),
+                    'end': pd.to_datetime(gap_end_ns, unit='ns', utc=True)
+                }
+            )
+
+            connector = self._get_connector()
+            trades_generator = connector.get_historical_trades(
+                pair=command.pair,
+                since=gap_start_ns,
+                until=gap_end_ns
+            )
+
+            self._process_stream(command.pair, trades_generator)
+
+        self._logger.info(
+            'data_command.fill_gaps_complete',
+            values={'pair': command.pair, 'gaps_filled': gaps_filled}
+        )
 
 --- END FILE: services/data_command_service.py ---
+
+--- START FILE: services/data_query_service.py ---
+# In bestand: services/data_query_service.py
+"""
+Contains the DataQueryService, responsible for orchestrating read-only
+actions (Queries) against the data archives.
+
+This service acts as the "Inquiry" layer for data access, adhering to the
+CQRS principle by strictly separating read operations from write operations.
+
+@layer: Service
+@dependencies: [IDataPersistor, IAPIConnector, LogEnricher]
+"""
+from typing import List
+
+from backend.core.interfaces.persistors import IDataPersistor
+from backend.dtos.market.data_coverage import DataCoverage
+from backend.dtos.queries.coverage_query import CoverageQuery
+
+
+class DataQueryService:
+    """Orchestrates read-only inquiries for the historical data archive."""
+
+    def __init__(self, persistor: IDataPersistor):
+        """Initializes the DataQueryService.
+
+        Args:
+            persistor (IDataPersistor): The data persistence component that
+                provides access to the stored data.
+        """
+        self._persistor = persistor
+
+    def get_coverage(self, query: CoverageQuery) -> List[DataCoverage]:
+        """Retrieves the data coverage map for a specific trading pair.
+
+        This method acts as a simple "pass-through" to the persistence layer.
+        It takes a query object, extracts the trading pair, and calls the
+        corresponding method on the persistor to get the data coverage.
+
+        Args:
+            query (CoverageQuery): A DTO containing the 'pair' for which to
+                retrieve the coverage map.
+
+        Returns:
+            A list of DataCoverage DTOs, where each object represents a
+            contiguous block of available historical data.
+        """
+        # Delegeer de aanroep direct naar de persistor.
+        # De service is hier verantwoordelijk voor de 'orkestratie',
+        # zelfs als dat in dit geval een simpele 1-op-1 aanroep is.
+        return self._persistor.get_data_coverage(query.pair)
+
+--- END FILE: services/data_query_service.py ---
 
 --- START FILE: services/optimization_service.py ---
 # services/optimization_service.py
@@ -5752,6 +7503,182 @@ from .visualization_service import VisualizationService
 --- START FILE: tests/backend/__init__.py ---
 
 --- END FILE: tests/backend/__init__.py ---
+
+--- START FILE: tests/backend/assembly/test_connector_factory.py ---
+# In bestand: tests/backend/assembly/test_connector_factory.py
+"""
+Unit tests for the ConnectorFactory.
+
+@layer: Tests (Backend/Assembly)
+@dependencies: [pytest, pytest-mock]
+@responsibilities:
+    - Verify that the factory correctly builds connector instances from config.
+    - Verify that the factory handles requests for unknown connectors gracefully.
+    - Verify that the factory caches instances for efficiency (lazy loading).
+"""
+from unittest.mock import MagicMock
+from pytest_mock import MockerFixture
+
+from backend.config.schemas.connectors_schema import ConnectorsConfig
+from backend.config.schemas.connectors.kraken_schema import KrakenPublicConfig
+from backend.environments.api_connectors.kraken_connector import KrakenAPIConnector
+
+# De klasse die we gaan testen (bestaat nog niet)
+from backend.assembly.connector_factory import ConnectorFactory
+
+
+def test_factory_creates_known_connector_successfully(mocker: MockerFixture):
+    """
+    Tests if the factory correctly instantiates a connector based on a
+    valid configuration.
+    """
+    # Arrange
+    # 1. We simuleren de configuratie die de fabriek zal inlezen.
+    mock_kraken_config = KrakenPublicConfig(type='kraken_public')
+    mock_config = ConnectorsConfig.model_validate({
+        'kraken_public': mock_kraken_config
+    })
+
+    # 2. We 'patchen' de KrakenAPIConnector klasse. Dit betekent dat we
+    #    voorkomen dat de test de ECHTE connector probeert te bouwen.
+    #    In plaats daarvan houden we bij OF hij wordt aangeroepen.
+    mock_connector_class = mocker.patch(
+        'backend.assembly.connector_factory.KrakenAPIConnector'
+    )
+
+    mock_logger = MagicMock()
+    factory = ConnectorFactory(config=mock_config, logger=mock_logger)
+
+    # Act
+    connector_instance = factory.get_connector('kraken_public')
+
+    # Assert
+    # 1. Is de connector klasse aangeroepen met de juiste config en logger?
+    mock_connector_class.assert_called_once_with(
+        logger=mock_logger, config=mock_kraken_config
+    )
+    # 2. Geeft de fabriek de gemaakte instantie terug?
+    assert connector_instance is not None
+
+
+def test_factory_returns_none_for_unknown_connector():
+    """
+    Tests if the factory returns None when a non-existent connector
+    name is requested.
+    """
+    # Arrange
+    # Een lege configuratie.
+    empty_config = ConnectorsConfig.model_validate({})
+    mock_logger = MagicMock()
+    factory = ConnectorFactory(config=empty_config, logger=mock_logger)
+
+    # Act
+    result = factory.get_connector('unknown_connector')
+
+    # Assert
+    assert result is None
+    # Controleer of er een duidelijke foutmelding wordt gelogd.
+    mock_logger.error.assert_called_once_with(
+        "Connector 'unknown_connector' not found in configuration."
+    )
+
+
+def test_factory_uses_lazy_loading_and_caches_instances(mocker: MockerFixture):
+    """
+    Tests that a connector is only built once and then retrieved from a cache
+    on subsequent requests for the same name.
+    """
+    # Arrange
+    mock_kraken_config = KrakenPublicConfig(type='kraken_public')
+    mock_config = ConnectorsConfig.model_validate({
+        'kraken_public': mock_kraken_config
+    })
+
+    # We geven een specifieke mock instantie terug zodat we kunnen vergelijken.
+    mock_instance = MagicMock(spec=KrakenAPIConnector)
+    mock_connector_class = mocker.patch(
+        'backend.assembly.connector_factory.KrakenAPIConnector',
+        return_value=mock_instance
+    )
+
+    factory = ConnectorFactory(config=mock_config, logger=MagicMock())
+
+    # Act
+    # Vraag dezelfde connector twee keer aan.
+    first_call_result = factory.get_connector('kraken_public')
+    second_call_result = factory.get_connector('kraken_public')
+
+    # Assert
+    # 1. De bouwer (de klasse __init__) mag maar EEN keer zijn aangeroepen.
+    mock_connector_class.assert_called_once()
+
+    # 2. Beide aanroepen moeten exact dezelfde instantie teruggeven.
+    assert first_call_result is mock_instance
+    assert second_call_result is first_call_result
+
+def test_factory_closes_specific_connector(mocker: MockerFixture):
+    """
+    Tests that close_connector(name) closes the correct instance and
+    removes it from the cache, forcing a rebuild on the next call.
+    """
+    # Arrange
+    mock_kraken_config = KrakenPublicConfig(type='kraken_public')
+    mock_config = ConnectorsConfig.model_validate({'kraken_public': mock_kraken_config})
+
+    # Mock de klasse en de instantie die het teruggeeft
+    mock_instance = MagicMock(spec=KrakenAPIConnector)
+    mock_connector_class = mocker.patch(
+        'backend.assembly.connector_factory.KrakenAPIConnector',
+        return_value=mock_instance
+    )
+
+    factory = ConnectorFactory(config=mock_config, logger=MagicMock())
+
+    # Maak de connector aan en plaats hem in de cache.
+    connector_to_close = factory.get_connector('kraken_public')
+    assert connector_to_close is mock_instance
+
+    # Act
+    factory.close_connector('kraken_public')
+
+    # Assert
+    # 1. Is de .close() methode op de juiste instantie aangeroepen?
+    mock_instance.close.assert_called_once()
+
+    # 2. Vraag de connector opnieuw aan. De fabriek zou een NIEUWE moeten bouwen.
+    factory.get_connector('kraken_public')
+
+    # De bouwer (Klasse.__init__) zou nu in totaal TWEE keer moeten zijn aangeroepen.
+    assert mock_connector_class.call_count == 2
+
+
+def test_factory_closes_all_created_instances(mocker: MockerFixture):
+    """
+    Tests that the factory's close_all method calls .close() on every
+    connector instance it has created and cached.
+    """
+    # Arrange
+    mock_kraken_config = KrakenPublicConfig(type='kraken_public')
+    mock_config = ConnectorsConfig.model_validate({'kraken_public': mock_kraken_config})
+    
+    mock_instance = MagicMock(spec=KrakenAPIConnector)
+    mocker.patch(
+        'backend.assembly.connector_factory.KrakenAPIConnector',
+        return_value=mock_instance
+    )
+    factory = ConnectorFactory(config=mock_config, logger=MagicMock())
+
+    # Activeer de connector.
+    factory.get_connector('kraken_public')
+    
+    # Act
+    factory.close_all()
+
+    # Assert
+    # Is de .close() methode op onze gemaakte instantie aangeroepen?
+    mock_instance.close.assert_called_once()
+
+--- END FILE: tests/backend/assembly/test_connector_factory.py ---
 
 --- START FILE: tests/backend/assembly/test_context_builder.py ---
 # tests/backend/assembly/test_context_builder.py
@@ -6253,6 +8180,902 @@ def test_worker_builder_fails_on_invalid_params(mocker: MockerFixture):
 
 --- END FILE: tests/backend/assembly/__init__.py ---
 
+--- START FILE: tests/backend/config/test_platform_schema.py ---
+# tests/backend/config/schemas/test_platform_schema.py
+"""
+Comprehensive unit tests for the platform_schema.py.
+
+@layer: Tests (Backend/Config/Schemas)
+@dependencies: [pytest, pydantic]
+@responsibilities:
+    - Verify that valid platform configurations are successfully parsed
+    - Test all nested configuration structures (core, services, data, portfolio)
+    - Validate data ingestion profiles and buffer configurations
+    - Test logging configuration and profile definitions
+    - Ensure proper default value application
+    - Test validation rules for all numeric and structural constraints
+    - Validate error messages and edge cases
+    - Test real-world configuration scenarios
+"""
+import pytest
+from pydantic import ValidationError
+from typing import List
+
+# Import the LogLevel enum for proper typing
+from backend.core.enums import LogLevel
+
+# Import all platform schema models
+from backend.config.schemas.platform_schema import (
+    PlatformConfig,
+    CoreConfig,
+    LoggingConfig,
+    DataCollectionLimits,
+    DataIngestionConfig,
+    DataIngestionDefaults,
+    DataIngestionBufferConfig,
+    DataConfig,
+    PortfolioDefaults,
+)
+
+def test_data_ingestion_buffer_config_valid():
+    """Test DataIngestionBufferConfig with valid parameters."""
+    # Arrange & Act
+    buffer_config = DataIngestionBufferConfig(max_records=100000, max_seconds=3600)
+
+    # Assert
+    assert buffer_config.max_records == 100000
+    assert buffer_config.max_seconds == 3600
+
+
+def test_data_ingestion_buffer_config_validation_errors():
+    """Test DataIngestionBufferConfig validation rule enforcement."""
+    # Test zero max_records
+    with pytest.raises(ValidationError):
+        DataIngestionBufferConfig(max_records=0, max_seconds=300)
+
+    # Test negative max_records
+    with pytest.raises(ValidationError):
+        DataIngestionBufferConfig(max_records=-1000, max_seconds=300)
+
+    # Test zero max_seconds
+    with pytest.raises(ValidationError):
+        DataIngestionBufferConfig(max_records=10000, max_seconds=0)
+
+    # Test negative max_seconds
+    with pytest.raises(ValidationError):
+        DataIngestionBufferConfig(max_records=10000, max_seconds=-60)
+
+
+def test_data_ingestion_defaults_valid():
+    """Test DataIngestionDefaults with valid nested buffer configurations."""
+    # Arrange
+    historical_buffer = DataIngestionBufferConfig(max_records=250000, max_seconds=3600)
+    live_buffer = DataIngestionBufferConfig(max_records=10000, max_seconds=300)
+
+    # Act
+    defaults = DataIngestionDefaults(
+        historical_task=historical_buffer,
+        live_task=live_buffer
+    )
+
+    # Assert
+    assert defaults.historical_task.max_records == 250000
+    assert defaults.live_task.max_seconds == 300
+
+
+def test_data_ingestion_config_with_profiles():
+    """Test DataIngestionConfig with custom profiles."""
+    # Arrange
+    defaults = DataIngestionDefaults(
+        historical_task=DataIngestionBufferConfig(max_records=100000, max_seconds=1800),
+        live_task=DataIngestionBufferConfig(max_records=5000, max_seconds=150)
+    )
+
+    profiles = {
+        "power_user": DataIngestionBufferConfig(max_records=1000000, max_seconds=7200),
+        "minimal": DataIngestionBufferConfig(max_records=1000, max_seconds=60)
+    }
+
+    # Act
+    ingestion_config = DataIngestionConfig(defaults=defaults, profiles=profiles)
+
+    # Assert
+    assert len(ingestion_config.profiles) == 2
+    assert "power_user" in ingestion_config.profiles
+    assert ingestion_config.profiles["power_user"].max_records == 1000000
+    assert ingestion_config.profiles["minimal"].max_seconds == 60
+
+
+def test_logging_config_valid():
+    """Test LoggingConfig with valid profile definitions."""
+    # Arrange
+    profiles: dict[str, List[LogLevel]] = {
+        "developer": [LogLevel.DEBUG, LogLevel.INFO, LogLevel.WARNING, LogLevel.ERROR],
+        "production": [LogLevel.WARNING, LogLevel.ERROR, LogLevel.CRITICAL]
+    }
+
+    # Act
+    logging_config = LoggingConfig(profile="analysis", profiles=profiles)
+
+    # Assert
+    assert logging_config.profile == "analysis"
+    assert len(logging_config.profiles) == 2
+    assert LogLevel.DEBUG in logging_config.profiles["developer"]
+
+
+def test_core_config_valid():
+    """Test CoreConfig with valid platform settings."""
+    # Arrange
+    logging_config = LoggingConfig(
+        profile="analysis",
+        profiles={
+            "analysis": [LogLevel.DEBUG, LogLevel.INFO, LogLevel.WARNING, LogLevel.ERROR, LogLevel.CRITICAL, LogLevel.TRADE]
+        }
+    )
+
+    # Act
+    core_config = CoreConfig(
+        language="nl",
+        plugins_root_path="custom_plugins",
+        logging=logging_config
+    )
+
+    # Assert
+    assert core_config.language == "nl"
+    assert core_config.plugins_root_path == "custom_plugins"
+    assert core_config.logging.profile == "analysis"
+
+
+def test_core_config_defaults():
+    """Test CoreConfig default value application."""
+    # Arrange & Act
+    core_config = CoreConfig()
+
+    # Assert
+    assert core_config.language == "en"
+    assert core_config.plugins_root_path == "plugins"
+    assert core_config.logging.profile == "analysis"
+
+
+def test_data_collection_limits_valid():
+    """Test DataCollectionLimits with valid safety constraints."""
+    # Arrange & Act
+    limits = DataCollectionLimits(max_history_days=2000, warn_history_days=365)
+
+    # Assert
+    assert limits.max_history_days == 2000
+    assert limits.warn_history_days == 365
+
+
+def test_data_collection_limits_validation():
+    """Test DataCollectionLimits validation rules."""
+    # Test zero max_history_days
+    with pytest.raises(ValidationError):
+        DataCollectionLimits(max_history_days=0, warn_history_days=30)
+
+    # Test negative warn_history_days
+    with pytest.raises(ValidationError):
+        DataCollectionLimits(max_history_days=1000, warn_history_days=-10)
+
+
+def test_portfolio_defaults_valid():
+    """Test PortfolioDefaults with valid financial parameters."""
+    # Arrange & Act
+    defaults = PortfolioDefaults(initial_capital=50000.0, fees_pct=0.002)
+
+    # Assert
+    assert defaults.initial_capital == 50000.0
+    assert defaults.fees_pct == 0.002
+
+
+def test_portfolio_defaults_validation():
+    """Test PortfolioDefaults validation rules."""
+    # Test zero initial_capital
+    with pytest.raises(ValidationError):
+        PortfolioDefaults(initial_capital=0.0, fees_pct=0.001)
+
+    # Test negative initial_capital
+    with pytest.raises(ValidationError):
+        PortfolioDefaults(initial_capital=-10000.0, fees_pct=0.001)
+
+    # Test negative fees_pct
+    with pytest.raises(ValidationError):
+        PortfolioDefaults(initial_capital=10000.0, fees_pct=-0.001)
+
+
+def test_full_valid_platform_config_succeeds():
+    """
+    Tests that a complete and valid platform.yaml structure is successfully
+    validated by the PlatformConfig model. This is the "happy path" test.
+    """
+    # Arrange
+    valid_config_dict = {
+        "core": {
+            "language": "en",
+            "plugins_root_path": "plugins",
+            "logging": {
+                "profile": "analysis",
+                "profiles": {
+                    "analysis": ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL", "TRADE"]
+                }
+            }
+        },
+        "services": {
+            "data_collection": {
+                "limits": {
+                    "max_history_days": 1000,
+                    "warn_history_days": 365
+                }
+            },
+            "data_ingestion": {
+                "defaults": {
+                    "historical_task": {"max_records": 250000, "max_seconds": 3600},
+                    "live_task": {"max_records": 10000, "max_seconds": 300}
+                },
+                "profiles": {
+                    "local_power_user": {"max_records": 1000000, "max_seconds": 7200}
+                }
+            }
+        },
+        "data": {
+            "source_dir": "source_data"
+        },
+        "portfolio": {
+            "defaults": {
+                "initial_capital": 50000.0,
+                "fees_pct": 0.002
+            }
+        }
+    }
+
+    # Act & Assert
+    try:
+        PlatformConfig.model_validate(valid_config_dict)
+    except ValidationError as e:
+        pytest.fail(f"A valid configuration failed validation: {e}")
+
+def test_minimal_config_applies_defaults_correctly():
+    """
+    Tests that a minimal config (missing optional sections) is correctly
+    populated with default values by Pydantic's `default_factory`.
+    """
+    # Arrange
+    # Een minimale config die alleen de verplichte 'services' sectie bevat.
+    minimal_config_dict = {
+        "services": {
+            "data_ingestion": {
+                "defaults": {
+                    "historical_task": {"max_records": 1, "max_seconds": 1},
+                    "live_task": {"max_records": 1, "max_seconds": 1}
+                }
+            }
+        }
+    }
+
+    # Act
+    config = PlatformConfig.model_validate(minimal_config_dict)
+
+    # Assert
+    # Controleer of de standaardwaarden voor de 'core' sectie zijn toegepast.
+    assert config.core.language == 'en'
+    assert config.core.plugins_root_path == 'plugins'
+
+    # Controleer of de standaardwaarden voor de 'portfolio' sectie zijn toegepast.
+    assert config.portfolio.defaults.initial_capital == 10000.0
+    assert config.portfolio.defaults.fees_pct == 0.001
+
+def test_invalid_value_in_nested_config_fails():
+    """
+    Tests that validation rules (e.g., gt=0) are enforced even in
+    deeply nested parts of the configuration, like portfolio defaults.
+    """
+    # Arrange
+    invalid_config_dict = {
+        "services": { # Verplichte sectie
+            "data_ingestion": {
+                "defaults": {
+                    "historical_task": {"max_records": 1, "max_seconds": 1},
+                    "live_task": {"max_records": 1, "max_seconds": 1}
+                }
+            }
+        },
+        "portfolio": {
+            "defaults": {
+                # Deze waarde schendt de 'gt=0' (greater than zero) regel.
+                "initial_capital": -100.0
+            }
+        }
+    }
+
+    # Act & Assert
+    with pytest.raises(ValidationError) as exc_info:
+        PlatformConfig.model_validate(invalid_config_dict)
+
+    # Controleer of de foutmelding duidelijk aangeeft wat er mis is.
+    assert "portfolio.defaults.initial_capital" in str(exc_info.value)
+    assert "Input should be greater than 0" in str(exc_info.value)
+
+def test_platform_config_missing_required_nested_field_fails():
+    """
+    Tests that a configuration missing a required nested field (like
+    'historical_task') raises a ValidationError.
+    """
+    # Arrange
+    invalid_config_dict = {
+        "services": {
+            "data_ingestion": {
+                "defaults": {
+                    # 'historical_task' ontbreekt hier.
+                    "live_task": {"max_records": 10000, "max_seconds": 300}
+                }
+            }
+        }
+    }
+
+    # Act & Assert
+    with pytest.raises(ValidationError) as exc_info:
+        PlatformConfig.model_validate(invalid_config_dict)
+
+    assert "services.data_ingestion.defaults.historical_task" in str(exc_info.value)
+    assert "Field required" in str(exc_info.value)
+
+def test_valid_platform_config_with_ingestion_profiles_succeeds():
+    """
+    Tests that a valid platform.yaml structure, including the new flexible
+    ingestion profiles, is successfully validated by the PlatformConfig model.
+    """
+    # Arrange
+    # Dit is een Python-representatie van een complete en geldige platform.yaml
+    valid_config_dict = {
+        "core": {
+            "language": "en",
+            "plugins_root_path": "plugins"
+        },
+        "services": {
+            "data_ingestion": {
+                "defaults": {
+                    "historical_task": {
+                        "max_records": 250000,
+                        "max_seconds": 3600
+                    },
+                    "live_task": {
+                        "max_records": 10000,
+                        "max_seconds": 300
+                    }
+                },
+                "profiles": {
+                    "local_power_user": {
+                        "max_records": 1000000,
+                        "max_seconds": 7200
+                    }
+                }
+            }
+        },
+        "data": {
+            "source_dir": "source_data"
+        },
+        "portfolio": {
+            "defaults": {
+                "initial_capital": 10000.0
+            }
+        }
+    }
+
+    # Act & Assert
+    # Deze aanroep zou moeten slagen zonder een error.
+    try:
+        PlatformConfig.model_validate(valid_config_dict)
+    except ValidationError as e:
+        pytest.fail(f"A valid configuration failed validation: {e}")
+
+
+def test_platform_config_missing_default_ingestion_profile_fails():
+    """
+    Tests that a configuration missing a required default ingestion profile
+    (e.g., 'historical_task') raises a ValidationError.
+    """
+    # Arrange
+    invalid_config_dict = {
+        "services": {
+            "data_ingestion": {
+                "defaults": {
+                    # 'historical_task' ontbreekt hier
+                    "live_task": {
+                        "max_records": 10000,
+                        "max_seconds": 300
+                    }
+                }
+            }
+        }
+    }
+
+    # Act & Assert
+    with pytest.raises(ValidationError) as exc_info:
+        PlatformConfig.model_validate(invalid_config_dict)
+
+    # Controleer of de foutmelding nuttig is.
+    assert "services.data_ingestion.defaults.historical_task" in str(exc_info.value)
+    assert "Field required" in str(exc_info.value)
+
+--- END FILE: tests/backend/config/test_platform_schema.py ---
+
+--- START FILE: tests/backend/config/test_portfolio_schema.py ---
+# tests/backend/config/test_portfolio_schema.py
+"""
+Unit tests for the portfolio_schema.py.
+
+@layer: Tests (Backend/Config/Schemas)
+@dependencies: [pytest, pydantic]
+@responsibilities:
+    - Verify that valid portfolio configurations are successfully parsed
+    - Test the layered risk management structure
+    - Validate EventAction emergency response configurations
+    - Ensure proper default value application
+    - Test validation rules for all risk parameters
+"""
+
+import pytest
+from pydantic import ValidationError
+
+# Import all the portfolio schema models
+from backend.config.schemas.portfolio_schema import (
+    PortfolioBlueprint,
+    RiskPolicy,
+    PortfolioRiskConfig,
+    StrategyRiskConfig,
+    CapitalAllocationConfig,
+    EventAction,
+    StrategyLink,
+)
+
+
+def test_capital_allocation_config_valid():
+    """Test that CapitalAllocationConfig validates correctly with valid data."""
+    # Arrange & Act
+    config = CapitalAllocationConfig(percentage=50.0, max_quote_amount=25000.0)
+
+    # Assert
+    assert config.percentage == 50.0
+    assert config.max_quote_amount == 25000.0
+
+
+def test_capital_allocation_config_defaults():
+    """Test that CapitalAllocationConfig applies defaults correctly."""
+    # Arrange & Act
+    config = CapitalAllocationConfig(percentage=30.0, max_quote_amount=None)
+
+    # Assert
+    assert config.percentage == 30.0
+    assert config.max_quote_amount is None
+
+
+def test_capital_allocation_config_validation_errors():
+    """Test that CapitalAllocationConfig enforces validation rules."""
+    # Test percentage too high
+    with pytest.raises(ValidationError):
+        CapitalAllocationConfig(percentage=150.0, max_quote_amount=None)  # > 100
+
+    # Test percentage too low
+    with pytest.raises(ValidationError):
+        CapitalAllocationConfig(percentage=-10.0, max_quote_amount=None)  # < 0
+
+    # Test negative max_quote_amount
+    with pytest.raises(ValidationError):
+        CapitalAllocationConfig(percentage=50.0, max_quote_amount=-1000.0)
+
+
+def test_event_action_minimal_configuration():
+    """Test EventAction with minimal configuration (all optional fields)."""
+    # Arrange & Act
+    event_action = EventAction()
+
+    # Assert
+    assert event_action.block_new_signals_min is None
+    assert event_action.close_strategy_positions is None
+    assert event_action.notification_message is None
+
+
+def test_event_action_validation_rules():
+    """Test that EventAction enforces validation rules on numeric fields."""
+    # Test negative block time
+    with pytest.raises(ValidationError):
+        EventAction(block_new_signals_min=-30)
+
+    # Test invalid percentage reduction
+    with pytest.raises(ValidationError):
+        EventAction(reduce_position_size_pct_strategy=150.0)  # > 100
+
+    with pytest.raises(ValidationError):
+        EventAction(reduce_position_size_pct_strategy=-10.0)  # < 0
+
+
+def test_portfolio_risk_config_valid():
+    """Test PortfolioRiskConfig with valid configuration."""
+    # Arrange & Act
+    risk_config = PortfolioRiskConfig(
+        max_total_drawdown_pct=25.0,
+        max_position_size_pct_per_strategy=15.0,
+        max_correlated_positions=3
+    )
+
+    # Assert
+    assert risk_config.max_total_drawdown_pct == 25.0
+    assert risk_config.max_position_size_pct_per_strategy == 15.0
+    assert risk_config.max_correlated_positions == 3
+
+
+def test_portfolio_risk_config_validation_errors():
+    """Test PortfolioRiskConfig validation rule enforcement."""
+    # Test drawdown too high
+    with pytest.raises(ValidationError):
+        PortfolioRiskConfig(
+            max_total_drawdown_pct=150.0,  # > 100
+            max_position_size_pct_per_strategy=10.0,
+            max_correlated_positions=2
+        )
+
+    # Test negative position size
+    with pytest.raises(ValidationError):
+        PortfolioRiskConfig(
+            max_total_drawdown_pct=20.0,
+            max_position_size_pct_per_strategy=-5.0,  # < 0
+            max_correlated_positions=2
+        )
+
+    # Test invalid correlated positions
+    with pytest.raises(ValidationError):
+        PortfolioRiskConfig(
+            max_total_drawdown_pct=20.0,
+            max_position_size_pct_per_strategy=10.0,
+            max_correlated_positions=0  # < 1
+        )
+
+
+def test_strategy_risk_config_valid():
+    """Test StrategyRiskConfig with complete valid configuration."""
+    # Arrange
+    capital_alloc = CapitalAllocationConfig(percentage=40.0, max_quote_amount=20000.0)
+
+    # Act
+    risk_config = StrategyRiskConfig(
+        capital_allocation=capital_alloc,
+        max_drawdown_pct=12.0,
+        max_position_size_pct=8.0,
+        enabled=True
+    )
+
+    # Assert
+    assert risk_config.capital_allocation.percentage == 40.0
+    assert risk_config.capital_allocation.max_quote_amount == 20000.0
+    assert risk_config.max_drawdown_pct == 12.0
+    assert risk_config.max_position_size_pct == 8.0
+    assert risk_config.enabled is True
+
+
+def test_strategy_risk_config_defaults():
+    """Test StrategyRiskConfig default value application."""
+    # Arrange
+    capital_alloc = CapitalAllocationConfig(percentage=25.0, max_quote_amount=None)
+
+    # Act
+    risk_config = StrategyRiskConfig(
+        capital_allocation=capital_alloc,
+        max_drawdown_pct=10.0,
+        max_position_size_pct=5.0
+    )
+
+    # Assert
+    assert risk_config.enabled is True  # Should default to True
+
+
+def test_risk_policy_minimal_configuration():
+    """Test RiskPolicy with minimal configuration."""
+    # Arrange
+    portfolio_rules = PortfolioRiskConfig(
+        max_total_drawdown_pct=25.0,
+        max_position_size_pct_per_strategy=15.0,
+        max_correlated_positions=3
+    )
+
+    # Act
+    risk_policy = RiskPolicy(
+        portfolio_rules=portfolio_rules,
+        strategy_rules={},
+        event_responses={}
+    )
+
+    # Assert
+    assert risk_policy.portfolio_rules.max_total_drawdown_pct == 25.0
+    assert len(risk_policy.strategy_rules) == 0
+    assert len(risk_policy.event_responses) == 0
+
+
+def test_strategy_link_valid_configuration():
+    """Test StrategyLink with valid strategy configuration."""
+    # Arrange & Act
+    strategy_link = StrategyLink(
+        strategy_blueprint_path="runs/mss_fvg_strategy.yaml",
+        execution_environment_id="backtest_btc_eur"
+    )
+
+    # Assert
+    assert strategy_link.strategy_blueprint_path == "runs/mss_fvg_strategy.yaml"
+    assert strategy_link.execution_environment_id == "backtest_btc_eur"
+
+
+def test_portfolio_blueprint_minimal_valid():
+    """Test PortfolioBlueprint with minimal required configuration."""
+    # Arrange
+    strategy_link = StrategyLink(
+        strategy_blueprint_path="runs/test_strategy.yaml",
+        execution_environment_id="test_env"
+    )
+
+    portfolio_rules = PortfolioRiskConfig(
+        max_total_drawdown_pct=30.0,
+        max_position_size_pct_per_strategy=20.0,
+        max_correlated_positions=2
+    )
+
+    risk_policy = RiskPolicy(
+        portfolio_rules=portfolio_rules,
+        strategy_rules={},
+        event_responses={}
+    )
+
+    # Act
+    portfolio = PortfolioBlueprint(
+        display_name="Test Portfolio",
+        description="Minimal test configuration",
+        strategies=[strategy_link],
+        risk_policy=risk_policy
+    )
+
+    # Assert
+    assert portfolio.display_name == "Test Portfolio"
+    assert len(portfolio.strategies) == 1
+    assert portfolio.strategies[0].strategy_blueprint_path == "runs/test_strategy.yaml"
+    assert portfolio.risk_policy.portfolio_rules.max_total_drawdown_pct == 30.0
+
+
+def test_portfolio_blueprint_validation_missing_required():
+    """Test PortfolioBlueprint validation for missing required fields."""
+    # Test missing display_name
+    with pytest.raises(ValidationError):
+        # Missing display_name and other required fields
+        PortfolioBlueprint(
+            description="Missing display name",
+            strategies=[],
+            risk_policy={}  # Invalid - missing required fields
+        )
+
+
+def test_portfolio_blueprint_validation_invalid_strategy_config():
+    """Test PortfolioBlueprint validation for invalid strategy configuration."""
+    # Arrange & Act & Assert
+    with pytest.raises(ValidationError):
+        # Test invalid percentage in strategy rules
+        invalid_capital = CapitalAllocationConfig(percentage=150.0, max_quote_amount=None)  # Invalid - > 100
+
+        invalid_strategy_rules = {
+            "test_strategy": StrategyRiskConfig(
+                capital_allocation=invalid_capital,
+                max_drawdown_pct=10.0,
+                max_position_size_pct=5.0
+            )
+        }
+
+        portfolio_rules = PortfolioRiskConfig(
+            max_total_drawdown_pct=25.0,
+            max_position_size_pct_per_strategy=15.0,
+            max_correlated_positions=3
+        )
+
+        RiskPolicy(
+            portfolio_rules=portfolio_rules,
+            strategy_rules=invalid_strategy_rules,
+            event_responses={}
+        )
+
+
+def test_portfolio_blueprint_empty_strategies():
+    """Test PortfolioBlueprint with empty strategies list."""
+    # Arrange
+    portfolio_rules = PortfolioRiskConfig(
+        max_total_drawdown_pct=25.0,
+        max_position_size_pct_per_strategy=15.0,
+        max_correlated_positions=3
+    )
+
+    risk_policy = RiskPolicy(
+        portfolio_rules=portfolio_rules,
+        strategy_rules={},
+        event_responses={}
+    )
+
+    # Act
+    portfolio = PortfolioBlueprint(
+        display_name="Empty Portfolio",
+        description="Portfolio with no strategies",
+        strategies=[],  # Empty strategies list
+        risk_policy=risk_policy
+    )
+
+    # Assert
+    assert portfolio.display_name == "Empty Portfolio"
+    assert len(portfolio.strategies) == 0
+    assert portfolio.risk_policy.portfolio_rules.max_total_drawdown_pct == 25.0
+
+
+def test_event_responses_with_emergency_actions():
+    """Test event responses with emergency action configuration."""
+    # Arrange
+    portfolio_rules = PortfolioRiskConfig(
+        max_total_drawdown_pct=25.0,
+        max_position_size_pct_per_strategy=15.0,
+        max_correlated_positions=3
+    )
+
+    emergency_action = EventAction(
+        block_new_signals_min=1440,
+        close_all_portfolio_positions=True,
+        cancel_all_entry_orders_portfolio=True,
+        notification_message="CRITICAL: Portfolio maximum drawdown exceeded"
+    )
+
+    strategy_action = EventAction(
+        block_new_signals_min=60,
+        reduce_position_size_pct_strategy=50.0,
+        move_sl_to_breakeven_strategy=True,
+        notification_message="WARNING: Strategy exceeded drawdown limit"
+    )
+
+    # Act
+    risk_policy = RiskPolicy(
+        portfolio_rules=portfolio_rules,
+        strategy_rules={},
+        event_responses={
+            "MAX_DRAWDOWN_BREACHED": emergency_action,
+            "STRATEGY_DRAWDOWN_EXCEEDED": strategy_action
+        }
+    )
+
+    # Assert
+    assert len(risk_policy.event_responses) == 2
+    assert "MAX_DRAWDOWN_BREACHED" in risk_policy.event_responses
+    assert "STRATEGY_DRAWDOWN_EXCEEDED" in risk_policy.event_responses
+
+    # Test emergency actions
+    max_dd_event = risk_policy.event_responses["MAX_DRAWDOWN_BREACHED"]
+    assert max_dd_event.block_new_signals_min == 1440
+    assert max_dd_event.close_all_portfolio_positions is True
+
+    # Test strategy actions
+    strategy_dd_event = risk_policy.event_responses["STRATEGY_DRAWDOWN_EXCEEDED"]
+    assert strategy_dd_event.reduce_position_size_pct_strategy == 50.0
+    assert strategy_dd_event.move_sl_to_breakeven_strategy is True
+
+
+def test_portfolio_blueprint_real_world_example():
+    """Test PortfolioBlueprint with a realistic, complex configuration."""
+    # Arrange - Build component objects step by step
+    btc_strategy = StrategyLink(
+        strategy_blueprint_path="runs/mss_fvg_strategy.yaml",
+        execution_environment_id="backtest_btc_eur"
+    )
+
+    eth_strategy = StrategyLink(
+        strategy_blueprint_path="runs/eth_mean_reversion.yaml",
+        execution_environment_id="backtest_eth_eur"
+    )
+
+    disabled_strategy = StrategyLink(
+        strategy_blueprint_path="runs/multi_timeframe_momentum.yaml",
+        execution_environment_id="backtest_multi_asset"
+    )
+
+    # Strategy-specific risk rules (single source of truth)
+    btc_risk = StrategyRiskConfig(
+        capital_allocation=CapitalAllocationConfig(percentage=50.0, max_quote_amount=25000.0),
+        max_drawdown_pct=15.0,
+        max_position_size_pct=10.0,
+        enabled=True
+    )
+
+    eth_risk = StrategyRiskConfig(
+        capital_allocation=CapitalAllocationConfig(percentage=30.0, max_quote_amount=None),
+        max_drawdown_pct=12.0,
+        max_position_size_pct=8.0,
+        enabled=True
+    )
+
+    disabled_risk = StrategyRiskConfig(
+        capital_allocation=CapitalAllocationConfig(percentage=20.0, max_quote_amount=10000.0),
+        max_drawdown_pct=10.0,
+        max_position_size_pct=5.0,
+        enabled=False
+    )
+
+    portfolio_rules = PortfolioRiskConfig(
+        max_total_drawdown_pct=25.0,
+        max_position_size_pct_per_strategy=15.0,
+        max_correlated_positions=3
+    )
+
+    emergency_action = EventAction(
+        block_new_signals_min=1440,
+        close_all_portfolio_positions=True,
+        cancel_all_entry_orders_portfolio=True,
+        notification_message="EMERGENCY: Maximum drawdown breached. All positions closed."
+    )
+
+    strategy_action = EventAction(
+        block_new_signals_min=60,
+        reduce_position_size_pct_strategy=50.0,
+        move_sl_to_breakeven_strategy=True,
+        notification_message="WARNING: Strategy exceeded maximum drawdown."
+    )
+
+    risk_policy = RiskPolicy(
+        portfolio_rules=portfolio_rules,
+        strategy_rules={
+            "mss_fvg_strategy": btc_risk,
+            "eth_mean_reversion": eth_risk,
+            "multi_timeframe_momentum": disabled_risk
+        },
+        event_responses={
+            "MAX_DRAWDOWN_BREACHED": emergency_action,
+            "STRATEGY_DRAWDOWN_EXCEEDED": strategy_action
+        }
+    )
+
+    # Act
+    portfolio = PortfolioBlueprint(
+        display_name="Main Trading Portfolio",
+        description="Primary portfolio for EUR-based crypto trading strategies with comprehensive risk management",
+        strategies=[btc_strategy, eth_strategy, disabled_strategy],
+        risk_policy=risk_policy
+    )
+
+    # Assert basic structure
+    assert portfolio.display_name == "Main Trading Portfolio"
+    assert len(portfolio.strategies) == 3
+
+    # Assert strategy links (no risk config here - that's in RiskPolicy)
+    btc_strategy_found = next(s for s in portfolio.strategies if "btc" in s.execution_environment_id)
+    assert btc_strategy_found.strategy_blueprint_path == "runs/mss_fvg_strategy.yaml"
+    assert btc_strategy_found.execution_environment_id == "backtest_btc_eur"
+
+    # Assert disabled strategy
+    disabled_strategy_found = next(s for s in portfolio.strategies if "multi_timeframe" in s.strategy_blueprint_path)
+    assert disabled_strategy_found.strategy_blueprint_path == "runs/multi_timeframe_momentum.yaml"
+
+    # Assert risk policy (single source of truth)
+    assert portfolio.risk_policy.portfolio_rules.max_total_drawdown_pct == 25.0
+    assert len(portfolio.risk_policy.strategy_rules) == 3
+    assert len(portfolio.risk_policy.event_responses) == 2
+
+    # Assert strategy-specific risk rules are in the RiskPolicy
+    assert "mss_fvg_strategy" in portfolio.risk_policy.strategy_rules
+    btc_risk_from_policy = portfolio.risk_policy.strategy_rules["mss_fvg_strategy"]
+    assert btc_risk_from_policy.capital_allocation.percentage == 50.0
+    assert btc_risk_from_policy.capital_allocation.max_quote_amount == 25000.0
+    assert btc_risk_from_policy.enabled is True
+
+    # Assert disabled strategy risk config is in RiskPolicy
+    disabled_risk_from_policy = portfolio.risk_policy.strategy_rules["multi_timeframe_momentum"]
+    assert disabled_risk_from_policy.enabled is False
+
+    # Assert event responses
+    emergency_response = portfolio.risk_policy.event_responses["MAX_DRAWDOWN_BREACHED"]
+    assert emergency_response.block_new_signals_min == 1440
+    assert emergency_response.close_all_portfolio_positions is True
+--- END FILE: tests/backend/config/test_portfolio_schema.py ---
+
+--- START FILE: tests/backend/config/__init__.py ---
+
+--- END FILE: tests/backend/config/__init__.py ---
+
 --- START FILE: tests/backend/core/test_context_recoreder.py ---
 # tests/backend/core/test_context_recorder.py
 """Unit tests for the ContextRecorder."""
@@ -6727,34 +9550,31 @@ def sample_trades() -> list[TradeTick]:
         TradeTick(price=1.2, volume=12.0, timestamp=pd.to_datetime("2023-01-01 10:02:00", utc=True), side='buy', order_type='market'),
     ]
 
-def test_save_trades_and_get_last_timestamp(tmp_path: Path, sample_trades: list[TradeTick]):
+def test_save_trades_and_get_first_and_last_timestamp(tmp_path: Path, sample_trades: list[TradeTick]):
     """
-    Tests the core workflow: saving trades and then retrieving the last timestamp.
+    Tests the core workflow: saving trades and then retrieving the first
+    and last timestamps.
     """
     # Arrange
     data_dir = tmp_path
     pair = "BTC_EUR"
     persistor = ParquetPersistor(data_dir=data_dir)
     
-    # Test 1: get_last_timestamp for a non-existent dataset
-    assert persistor.get_last_timestamp(pair) == 0, "Should return 0 if no dataset exists."
+    # Test 1: get_first_timestamp en get_last_timestamp voor een niet-bestaande dataset
+    assert persistor.get_first_timestamp(pair) == 0, "Should return 0 for first_timestamp if no dataset exists."
+    assert persistor.get_last_timestamp(pair) == 0, "Should return 0 for last_timestamp if no dataset exists."
 
     # Test 2: save_trades
     persistor.save_trades(pair, sample_trades)
-
-    # <<< DE FIX (DEEL 1): Controleer op de MAP, niet het bestand >>>
+    
     expected_dataset_path = data_dir / pair
     assert expected_dataset_path.is_dir(), "Parquet dataset directory should be created."
     
-    # <<< DE FIX (DEEL 2): Lees uit de MAP >>>
-    df = pd.read_parquet(expected_dataset_path) # pyright: ignore
-    assert len(df) == 3
-    # Sorteren is nodig omdat de leesvolgorde van partities niet gegarandeerd is
-    df.sort_values('timestamp', inplace=True)
-    assert df['price'].iloc[-1] == 1.2
-
-    # Test 3: get_last_timestamp for an existing dataset
+    # Test 3: get_first_timestamp en get_last_timestamp voor een bestaande dataset
+    first_ts_ns = sample_trades[0].timestamp.value
     last_ts_ns = sample_trades[-1].timestamp.value
+
+    assert persistor.get_first_timestamp(pair) == first_ts_ns, "Should return the earliest timestamp."
     assert persistor.get_last_timestamp(pair) == last_ts_ns, "Should return the latest timestamp."
 
 def test_get_data_coverage_for_non_existent_file(tmp_path: Path):
@@ -6934,127 +9754,174 @@ MOCK_KRAKEN_ERROR_RESPONSE = {
     "error": ["EQuery:Invalid pair"]
 }
 
-
-def test_get_historical_trades_success(mocker: MockerFixture):
-    mock_logger = MagicMock()
-    mock_config = KrakenPublicConfig()
-    
-    # Mock de eerste call met data, en de tweede zonder nieuwe data
-    mock_response_page1 = MagicMock()
-    mock_response_page1.json.return_value = MOCK_KRAKEN_SUCCESS_RESPONSE
-    mock_response_page2 = MagicMock()
-    mock_response_page2.json.return_value = {
-        "error": [], 
-        "result": {
-            "XXBTZEUR": [["60000.20", "0.05", 1617225601.5678, "s", "l", ""]],
-            "last": MOCK_KRAKEN_SUCCESS_RESPONSE["result"]["last"]
-        }
-    }
-    mocker.patch('requests.Session.get', side_effect=[mock_response_page1, mock_response_page2])
-    mocker.patch('time.sleep')
-
-    connector = KrakenAPIConnector(logger=mock_logger, config=mock_config)
-    trades = connector.get_historical_trades(pair="XXBTZEUR", since=0)
-
-    assert len(trades) == 2
-    assert trades[0].price == 60000.10
-    assert trades[1].price == 60000.20
-
-
-def test_get_historical_trades_handles_api_error(mocker: MockerFixture):
-    mock_logger = MagicMock()
-    mock_config = KrakenPublicConfig()
-    
-    mocker.patch('requests.Session.get', return_value=MagicMock(json=MagicMock(return_value=MOCK_KRAKEN_ERROR_RESPONSE)))
-
-    connector = KrakenAPIConnector(logger=mock_logger, config=mock_config)
-    trades = connector.get_historical_trades(pair="INVALIDPAIR", since=0)
-
-    assert trades == []
-    # FIX: De assert controleert nu de correcte, specifiekere foutmelding.
-    mock_logger.error.assert_called_once_with("Kraken API error for endpoint '/Trades': ['EQuery:Invalid pair']")
-
-
-def test_get_historical_trades_respects_time_window(mocker: MockerFixture):
-    mock_logger = MagicMock()
-    mock_config = KrakenPublicConfig()
-    
-    SINCE_NS = 1000 * 1_000_000_000
-    UNTIL_NS = 3000 * 1_000_000_000
-
-    # Pagina 1 bevat een valide trade en een trade die we al hebben
-    mock_response_page1 = MagicMock()
-    mock_response_page1.json.return_value = { "error": [], "result": { "XXBTZEUR": [
-        ["1000.0", "1.0", 1000.0, "b", "m", ""], 
-        ["1500.0", "1.5", 1500.0, "b", "m", ""]
-    ], "last": str(1500 * 1_000_000_000) } }
-    
-    # Pagina 2 bevat een trade NA het venster
-    mock_response_page2 = MagicMock()
-    mock_response_page2.json.return_value = { "error": [], "result": { "XXBTZEUR": [["3500.0", "3.5", 3500.0, "s", "l", ""]], "last": str(3500 * 1_000_000_000) } }
-
-    mock_get = mocker.patch(
-        'requests.Session.get', side_effect=[mock_response_page1, mock_response_page2])
-    mocker.patch('time.sleep')
-
-    connector = KrakenAPIConnector(logger=mock_logger, config=mock_config)
-    trades = connector.get_historical_trades(pair="XXBTZEUR", since=SINCE_NS, until=UNTIL_NS)
-
-    assert len(trades) == 1
-    assert trades[0].price == 1500.0
-    assert mock_get.call_count == 2
-
-
-def test_get_historical_trades_retries_on_network_error(mocker: MockerFixture):
-    mock_logger = MagicMock()
-    mock_config = KrakenPublicConfig(
-        retries=KrakenAPIRetryConfig(max_attempts=3, delay_seconds=1))
-
-    mock_success_response = MagicMock()
-    mock_success_response.json.return_value = MOCK_KRAKEN_SUCCESS_RESPONSE
-    
-    mocked_get = mocker.patch('requests.Session.get', side_effect=[
-        requests.RequestException("First network error"),
-        requests.RequestException("Second network error"),
-        mock_success_response,
-        MagicMock(json=MagicMock(
-            return_value={"error": [],
-                          "result": {"last": MOCK_KRAKEN_SUCCESS_RESPONSE["result"]["last"]}}))
-    ])
-    mocker.patch('time.sleep')
-
-    connector = KrakenAPIConnector(logger=mock_logger, config=mock_config)
-    trades = connector.get_historical_trades(pair="XXBTZEUR", since=0)
-
-    assert mocked_get.call_count == 4
-    assert len(trades) == 2
-    assert mock_logger.error.call_count == 2
-
-def test_get_historical_ohlcv_success(mocker: MockerFixture):
+def test_get_historical_trades_streams_batches_successfully(mocker: MockerFixture):
     """
-    Tests if the connector correctly fetches and parses OHLCV data into a DataFrame.
+    Tests if the generator correctly yields all trade batches until the API is exhausted.
     """
     # Arrange
     mock_logger = MagicMock()
-    mock_config = KrakenPublicConfig()
+    mock_config = KrakenPublicConfig(type='kraken_public')
+    mock_response_page1 = MagicMock(json=lambda: MOCK_KRAKEN_SUCCESS_RESPONSE)
+    mock_response_page2 = MagicMock(json=lambda: {
+        "error": [], "result": {"last": MOCK_KRAKEN_SUCCESS_RESPONSE["result"]["last"]}
+    })
+    mocker.patch(
+        'requests.Session.get', side_effect=[mock_response_page1, mock_response_page2]
+    )
+    mocker.patch('time.sleep')
+    connector = KrakenAPIConnector(logger=mock_logger, config=mock_config)
 
-    mock_response = MagicMock()
-    mock_response.json.return_value = MOCK_KRAKEN_OHLCV_SUCCESS_RESPONSE
+    # Act
+    trades_generator = connector.get_historical_trades(pair="XXBTZEUR", since=0)
+    all_trades = [trade for batch in list(trades_generator) for trade in batch]
+
+    # Assert
+    assert len(all_trades) == 2
+    assert all_trades[0].price == 60000.10
+    assert requests.Session.get.call_count == 2
+
+def test_get_historical_trades_handles_api_error(mocker: MockerFixture):
+    """
+    Tests that the generator produces no items if the API returns an error.
+    """
+    # Arrange
+    mock_logger = MagicMock()
+    mock_config = KrakenPublicConfig(type='kraken_public')
+    mock_response = MagicMock(json=lambda: MOCK_KRAKEN_ERROR_RESPONSE)
     mocker.patch('requests.Session.get', return_value=mock_response)
+    connector = KrakenAPIConnector(logger=mock_logger, config=mock_config)
+
+    # Act
+    trades_generator = connector.get_historical_trades(pair="INVALIDPAIR", since=0)
+    all_trades = list(trades_generator) # Consumeer de (lege) generator
+
+    # Assert
+    assert all_trades == [] # De generator zou niets moeten yielden
+    mock_logger.error.assert_called_once_with(
+        "Kraken API error for endpoint '/Trades': ['EQuery:Invalid pair']"
+    )
+
+
+def test_get_historical_trades_respects_time_window(mocker: MockerFixture):
+    """
+    Tests that the generator stops yielding when the 'until' timestamp is passed.
+    """
+    # Arrange
+    mock_logger = MagicMock()
+    mock_config = KrakenPublicConfig(type='kraken_public')
+    SINCE_NS = 1000 * 1_000_000_000
+    UNTIL_NS = 2000 * 1_000_000_000
+
+    # API geeft 3 trades terug, waarvan de laatste buiten het 'until' venster valt.
+    mock_response_data = { "error": [], "result": { "XXBTZEUR": [
+        ["1500.0", "1.5", 1500.0, "b", "m", ""], # Binnen venster
+        ["2500.0", "2.5", 2500.0, "s", "l", ""]  # Buiten venster
+    ], "last": str(2500 * 1_000_000_000) } }
+    mocker.patch('requests.Session.get', return_value=MagicMock(json=lambda: mock_response_data))
+    connector = KrakenAPIConnector(logger=mock_logger, config=mock_config)
+
+    # Act
+    trades_generator = connector.get_historical_trades(
+        pair="XXBTZEUR", since=SINCE_NS, until=UNTIL_NS
+    )
+    all_trades = [trade for batch in trades_generator for trade in batch]
+
+    # Assert
+    assert len(all_trades) == 1
+    assert all_trades[0].price == 1500.0
+    # De API wordt maar één keer aangeroepen, omdat de generator stopt na de eerste batch.
+    requests.Session.get.assert_called_once()
+
+
+def test_get_historical_trades_retries_on_network_error(mocker: MockerFixture):
+    """
+    Tests that the generator functions correctly after the retry logic succeeds.
+    """
+    # Arrange
+    mock_logger = MagicMock()
+    mock_config = KrakenPublicConfig(type='kraken_public',retries=KrakenAPIRetryConfig(max_attempts=3, delay_seconds=1))
+    mock_success_response = MagicMock(json=lambda: MOCK_KRAKEN_SUCCESS_RESPONSE)
+    # Een lege 'stop' response voor de tweede call
+    mock_stop_response = MagicMock(json=lambda: {
+        "error": [], "result": {"last": MOCK_KRAKEN_SUCCESS_RESPONSE["result"]["last"]}
+    })
+
+    # Mock faalt 2x, slaagt dan 2x.
+    mocked_get = mocker.patch('requests.Session.get', side_effect=[
+        requests.RequestException("Network error 1"),
+        requests.RequestException("Network error 2"),
+        mock_success_response,
+        mock_stop_response
+    ])
+    mocker.patch('time.sleep')
+    connector = KrakenAPIConnector(logger=mock_logger, config=mock_config)
+
+    # Act
+    trades_generator = connector.get_historical_trades(pair="XXBTZEUR", since=0)
+    all_trades = [trade for batch in trades_generator for trade in batch]
+
+    # Assert
+    assert len(all_trades) == 2 # Het eindresultaat is correct
+    assert mocked_get.call_count == 4 # 2x fail, 1x success, 1x stop-call
+    assert mock_logger.error.call_count == 2 # 2x error gelogd
+
+def test_get_historical_ohlcv_streams_batches_successfully(mocker: MockerFixture):
+    """
+    Tests if the generator-based get_historical_ohlcv correctly yields all
+    DataFrame batches until the API is exhausted.
+    """
+    # Arrange
+    mock_logger = MagicMock()
+    mock_config = KrakenPublicConfig(type='kraken_public')
+
+    # Mock de API:
+    # Pagina 1: Heeft 2 candles en verwijst naar een 'last' timestamp.
+    mock_response_page1 = MagicMock()
+    mock_response_page1.json.return_value = MOCK_KRAKEN_OHLCV_SUCCESS_RESPONSE
+
+    # Pagina 2: Geeft aan dat er geen nieuwe data is (stop-signaal).
+    # De 'last' is hetzelfde als de 'since' die we zouden meegeven.
+    mock_response_page2 = MagicMock()
+    mock_response_page2.json.return_value = {
+        "error": [],
+        "result": {
+            "last": MOCK_KRAKEN_OHLCV_SUCCESS_RESPONSE["result"]["last"]
+        }
+    }
+
+    mocker.patch(
+        'requests.Session.get',
+        side_effect=[mock_response_page1, mock_response_page2]
+    )
+    mocker.patch('time.sleep') # Voorkom wachttijd in de test
 
     connector = KrakenAPIConnector(logger=mock_logger, config=mock_config)
 
     # Act
-    df = connector.get_historical_ohlcv(pair="XXBTZEUR", timeframe="15m", since=0)
+    # Roep de generator aan.
+    ohlcv_generator = connector.get_historical_ohlcv(
+        pair="XXBTZEUR", timeframe="15m", since=0
+    )
+
+    # Consumeer de generator: verzamel alle yielded DataFrames in een lijst
+    # en voeg ze samen tot één grote DataFrame.
+    all_dfs = list(ohlcv_generator)
+    final_df = pd.concat(all_dfs) if all_dfs else pd.DataFrame()
 
     # Assert
-    assert isinstance(df, pd.DataFrame)
-    assert len(df) == 2
-    assert list(df.columns) == ["open", "high", "low", "close", "vwap", "volume", "count"]
-    assert isinstance(df.index, pd.DatetimeIndex)
-    assert df.index.name == "timestamp"
-    assert df.iloc[0]['open'] == 60000.1
-    assert df.iloc[1]['close'] == 60008.0
+    assert not final_df.empty
+    assert isinstance(final_df, pd.DataFrame)
+    assert len(final_df) == 2 # Totaal aantal candles is correct
+    assert list(final_df.columns) == [
+        "open", "high", "low", "close", "vwap", "volume", "count"
+    ]
+    assert isinstance(final_df.index, pd.DatetimeIndex)
+    assert final_df.index.name == "timestamp"
+    assert final_df.iloc[0]['open'] == 60000.1
+    assert final_df.iloc[1]['close'] == 60008.0
+
+    # Controleer of de API twee keer is aangeroepen (1x data, 1x stop-call).
+    assert requests.Session.get.call_count == 2
 
 --- END FILE: tests/backend/environments/test_kraken_connector.py ---
 
@@ -7074,55 +9941,84 @@ from pytest_mock import MockerFixture
 
 from backend.core.interfaces.connectors import IAPIConnector
 from backend.core.interfaces.persistors import IDataPersistor
+from backend.assembly.connector_factory import IConnectorFactory
 from backend.config.schemas.platform_schema import DataCollectionLimits
 from backend.dtos.market.trade_tick import TradeTick
 from backend.dtos.commands.fetch_period_command import FetchPeriodCommand
+from backend.dtos.commands.synchronization_command import SynchronizationCommand
+from backend.dtos.commands.extend_history_command import ExtendHistoryCommand
+from backend.dtos.commands.fill_gaps_command import FillGapsCommand
+from backend.dtos.market.data_coverage import DataCoverage
+
 
 # De klasse die we gaan testen
 from services.data_command_service import DataCommandService
 
-def test_fetch_period_works_backward_in_chunks(mocker: MockerFixture):
+def test_fetch_period_processes_stream_correctly(mocker: MockerFixture):
     """
-    Tests the happy path for fetch_period: fetching a valid period backward
-    in daily, sequential chunks.
-    """
-    # --- Arrange ---
-    # Request om 2 dagen aan historie op te halen
-    command = FetchPeriodCommand(
-        pair="BTC/EUR",
-        start_date=pd.to_datetime("2025-10-05", utc=True)
-    )
+    Tests if fetch_period correctly initiates a stream for a bounded
+    period and processes the resulting batches.
 
-    MOCK_NOW = pd.to_datetime("2025-10-06 15:00:00", utc=True)
-    mocker.patch('pandas.Timestamp.utcnow', return_value=MOCK_NOW)
+    Args:
+        mocker (MockerFixture): The pytest-mock fixture.
+    """
+    # Arrange
+    PAIR = "BTC/EUR"
+    START_DATE = pd.to_datetime("2023-01-01", utc=True)
+    END_DATE = pd.to_datetime("2023-01-02", utc=True)
+    command = FetchPeriodCommand(pair=PAIR, start_date=START_DATE, end_date=END_DATE)
 
     mock_persistor = mocker.MagicMock(spec=IDataPersistor)
-    mock_connector = mocker.MagicMock(spec=IAPIConnector)
+    mock_persistor.get_last_timestamp.return_value = 0
     mock_logger = mocker.MagicMock()
-    # Stel een ruime limiet in die niet wordt overschreden
-    mock_limits = DataCollectionLimits(max_history_days=365)
+    mock_limits = DataCollectionLimits(max_history_days=365) # Ruime limiet
 
-    # Definieer de data die de connector zal "teruggeven"
-    trades_today = [TradeTick(price=1.0, volume=1, timestamp=MOCK_NOW, side='buy', order_type='market')]
-    trades_yesterday = [TradeTick(price=2.0, volume=2, timestamp=MOCK_NOW - pd.Timedelta(days=1), side='buy', order_type='market')]
+    # Mock de connector om een generator terug te geven die 2 batches yield
+    batch1 = [TradeTick(price=1.0, volume=1, timestamp=START_DATE, side='buy', order_type='market')]
+    batch2 = [TradeTick(price=2.0, volume=2, timestamp=END_DATE, side='buy', order_type='market')]
 
-    def get_trades_side_effect(pair, since, until=None):
-        if since == int(pd.to_datetime("2025-10-06 00:00:00", utc=True).value): return trades_today
-        if since == int(pd.to_datetime("2025-10-05 00:00:00", utc=True).value): return trades_yesterday
-        return []
-    mock_connector.get_historical_trades.side_effect = get_trades_side_effect
+    def mock_generator():
+        yield batch1
+        yield batch2
 
-    # --- Act ---
-    service = DataCommandService(persistor=mock_persistor, connector=mock_connector, logger=mock_logger, limits=mock_limits)
-    service.fetch_period(command=command)
+    mock_connector = mocker.MagicMock(spec=IAPIConnector)
+    mock_connector.get_historical_trades.return_value = mock_generator()
 
-    # --- Assert ---
-    # De connector moet exact 2 keer zijn aangeroepen (voor 6 en 5 oktober)
-    assert mock_connector.get_historical_trades.call_count == 2
-    calls = mock_connector.get_historical_trades.call_args_list
-    assert calls[0] == call(pair=command.pair, since=int(pd.to_datetime("2025-10-06 00:00:00", utc=True).value), until=int(MOCK_NOW.value))
-    assert calls[1] == call(pair=command.pair, since=int(pd.to_datetime("2025-10-05 00:00:00", utc=True).value), until=int(pd.to_datetime("2025-10-05 23:59:59.999999999", utc=True).value))
+    mock_factory = mocker.MagicMock(spec=IConnectorFactory)
+    mock_factory.get_connector.return_value = mock_connector
 
+    service = DataCommandService(
+        persistor=mock_persistor,
+        connector_factory=mock_factory,
+        logger=mock_logger,
+        limits=mock_limits
+    )
+
+    # Act
+    service.fetch_period(command)
+
+    # Assert
+    # 1. Is de juiste connector opgevraagd bij de fabriek?
+    mock_factory.get_connector.assert_called_once_with('kraken_public') # Aanname van een default
+
+    # 2. Is de stream correct gestart met de grenzen uit het commando?
+    mock_connector.get_historical_trades.assert_called_once_with(
+        pair=PAIR,
+        since=int(START_DATE.value),
+        until=int(END_DATE.value)
+    )
+
+    # 3. Zijn BEIDE batches correct opgeslagen door de persistor?
+    assert mock_persistor.save_trades.call_count == 2
+    expected_calls = [
+        mocker.call(pair=PAIR, trades=batch1),
+        mocker.call(pair=PAIR, trades=batch2)
+    ]
+    mock_persistor.save_trades.assert_has_calls(expected_calls)
+
+    # 4. Is de logging correct?
+    mock_logger.info.assert_any_call('data_command.fetch_period_start', values={'pair': PAIR})
+    mock_logger.info.assert_any_call('data_command.fetch_period_complete', values={'pair': PAIR})
 
 def test_fetch_period_raises_error_if_period_exceeds_max_limit(mocker: MockerFixture):
     """
@@ -7132,7 +10028,7 @@ def test_fetch_period_raises_error_if_period_exceeds_max_limit(mocker: MockerFix
     # --- Arrange ---
     # Stel een strikte limiet in van slechts 30 dagen
     mock_limits = DataCollectionLimits(max_history_days=30)
-    
+
     # Een request voor 31 dagen aan data, wat de limiet overschrijdt
     start_date_too_far = pd.Timestamp.utcnow() - pd.Timedelta(days=31)
     command = FetchPeriodCommand(
@@ -7143,18 +10039,298 @@ def test_fetch_period_raises_error_if_period_exceeds_max_limit(mocker: MockerFix
     mock_persistor = mocker.MagicMock(spec=IDataPersistor)
     mock_connector = mocker.MagicMock(spec=IAPIConnector)
     mock_logger = mocker.MagicMock()
+    mock_factory = mocker.MagicMock(spec=IConnectorFactory)
+    mock_factory.get_connector.return_value = mock_connector
 
     # --- Act & Assert ---
-    service = DataCommandService(persistor=mock_persistor, connector=mock_connector, logger=mock_logger, limits=mock_limits)
-    
+    service = DataCommandService(
+        persistor=mock_persistor,
+        connector_factory=mock_factory,
+        logger=mock_logger,
+        limits=mock_limits
+    )
+
     # We verwachten dat de methode een ValueError gooit met een duidelijke melding
-    with pytest.raises(ValueError, match="Requested history of 32 days exceeds the maximum limit of 30 days."):
+    with pytest.raises(ValueError,
+                       match="Requested history of 32 days exceeds the maximum limit of 30 days."):
         service.fetch_period(command=command)
 
     # Verifieer dat er GEEN calls zijn gedaan naar de connector of persistor
     mock_connector.get_historical_trades.assert_not_called()
 
+def test_synchronize_fetches_and_saves_streamed_data(mocker: MockerFixture):
+    """
+    Tests if synchronize() correctly processes a stream of new data from
+    the connector's generator.
+
+    Args:
+        mocker (MockerFixture): The pytest-mock fixture.
+    """
+    # Arrange
+    PAIR = "BTC/EUR"
+    LAST_KNOWN_TS_NS = 1_000_000_000 * 1000
+    command = SynchronizationCommand(pair=PAIR, exchange_id="kraken_public")
+
+    # --- DE FIX: Mock de huidige tijd ---
+    # Zorg ervoor dat de veiligheidscheck slaagt door "nu" in de buurt
+    # van de laatste bekende timestamp in te stellen.
+    MOCK_NOW = pd.to_datetime(LAST_KNOWN_TS_NS + 5000, unit='ns', utc=True)
+    mocker.patch('pandas.Timestamp.utcnow', return_value=MOCK_NOW)
+    # ------------------------------------
+
+    mock_persistor = mocker.MagicMock(spec=IDataPersistor)
+    mock_persistor.get_last_timestamp.return_value = LAST_KNOWN_TS_NS
+
+    # Mock de connector om een generator terug te geven die één batch yield.
+    new_trades_batch = [
+        TradeTick(
+            price=1.0, volume=1,
+            timestamp=pd.to_datetime(LAST_KNOWN_TS_NS + 1, unit='ns', utc=True),
+            side='buy', order_type='market'
+        ),
+    ]
+
+    def mock_generator():
+        yield new_trades_batch
+
+    mock_connector = mocker.MagicMock(spec=IAPIConnector)
+    mock_connector.get_historical_trades.return_value = mock_generator()
+
+    mock_factory = mocker.MagicMock(spec=IConnectorFactory)
+    mock_factory.get_connector.return_value = mock_connector
+
+    mock_logger = mocker.MagicMock()
+    mock_limits = DataCollectionLimits()
+
+    service = DataCommandService(
+        persistor=mock_persistor,
+        connector_factory=mock_factory,
+        logger=mock_logger,
+        limits=mock_limits
+    )
+
+    # Act
+    service.synchronize(command)
+
+    # Assert (deze blijven hetzelfde)
+    mock_persistor.get_last_timestamp.assert_called_once_with(PAIR)
+    mock_factory.get_connector.assert_called_once_with('kraken_public')
+    mock_connector.get_historical_trades.assert_called_once_with(
+        pair=PAIR, since=LAST_KNOWN_TS_NS, until=None
+    )
+    mock_persistor.save_trades.assert_called_once_with(
+        pair=PAIR, trades=new_trades_batch
+    )
+    mock_logger.info.assert_any_call(
+        'data_command.sync_complete',
+        values={'pair': PAIR, 'count': 1}
+    )
+
+def test_extend_history_works_backward_from_oldest_point(mocker: MockerFixture):
+    """
+    Tests if extend_history correctly initiates a stream backward in time
+    from the oldest known data point and saves the result.
+
+    Args:
+        mocker (MockerFixture): The pytest-mock fixture.
+    """
+    # Arrange
+    PAIR = "ETH/EUR"
+    OLDEST_KNOWN_TS = pd.to_datetime("2023-01-15", utc=True)
+    DAYS_TO_EXTEND = 5
+    command = ExtendHistoryCommand(pair=PAIR, period_days=DAYS_TO_EXTEND)
+
+    # Mock de persistor om onze "oudste" datum terug te geven
+    mock_persistor = mocker.MagicMock(spec=IDataPersistor)
+    mock_persistor.get_first_timestamp.return_value = int(OLDEST_KNOWN_TS.value)
+
+    # Mock de connector om een generator met een test-batch terug te geven
+    new_trades_batch = [
+        TradeTick(price=1.0, volume=1, timestamp=OLDEST_KNOWN_TS - pd.Timedelta(days=1), side='buy', order_type='market')
+    ]
+    def mock_generator():
+        yield new_trades_batch
+    mock_connector = mocker.MagicMock(spec=IAPIConnector)
+    mock_connector.get_historical_trades.return_value = mock_generator()
+
+    mock_factory = mocker.MagicMock(spec=IConnectorFactory)
+    mock_factory.get_connector.return_value = mock_connector
+   
+    mock_logger = mocker.MagicMock()
+    # Mock limits om de ValueError te vermijden in de (niet geteste) helpers
+    mock_limits = DataCollectionLimits(max_history_days=365)
+    
+    service = DataCommandService(
+        persistor=mock_persistor,
+        connector_factory=mock_factory,
+        logger=mock_logger,
+        limits=mock_limits
+    )
+
+    # Act
+    service.extend_history(command)
+
+    # Assert
+    # 1. Is de oudste timestamp correct opgevraagd?
+    mock_persistor.get_first_timestamp.assert_called_once_with(PAIR)
+    mock_factory.get_connector.assert_called_once_with('kraken_public')
+
+    # 2. Is de connector aangeroepen met de correcte, terugberekende periode?
+    expected_until_ns = int(OLDEST_KNOWN_TS.value) - 1
+    expected_start_date = pd.to_datetime(expected_until_ns, unit='ns', utc=True) - pd.Timedelta(days=DAYS_TO_EXTEND)
+    expected_since_ns = int(expected_start_date.value)
+
+    mock_connector.get_historical_trades.assert_called_once_with(
+        pair=PAIR,
+        since=expected_since_ns,
+        until=expected_until_ns
+    )
+
+    # 3. Is de batch uit de stream correct opgeslagen?
+    mock_persistor.save_trades.assert_called_once_with(pair=PAIR, trades=new_trades_batch)
+
+    # 4. Is de gebruiker correct geïnformeerd?
+    mock_logger.info.assert_any_call('data_command.extend_history_complete', values={'pair': PAIR})
+
+def test_fill_gaps_fetches_only_missing_data(mocker: MockerFixture):
+    """
+    Tests if fill_gaps correctly identifies a gap between data blocks and
+    fetches only the data required to fill that gap.
+
+    Args:
+        mocker (MockerFixture): The pytest-mock fixture.
+    """
+    # Arrange
+    PAIR = "XRP/EUR"
+    command = FillGapsCommand(pair=PAIR)
+
+    # Simuleer een datakaart met een gat van 1 minuut
+    block1_end = pd.to_datetime("2023-01-01 10:00:00", utc=True)
+    block2_start = pd.to_datetime("2023-01-01 10:01:00", utc=True)
+
+    coverage_map = [
+        DataCoverage(
+            start_time=pd.to_datetime("2023-01-01 09:00:00", utc=True),
+            end_time=block1_end,
+            trade_count=100
+        ),
+        DataCoverage(
+            start_time=block2_start,
+            end_time=pd.to_datetime("2023-01-01 11:00:00", utc=True),
+            trade_count=100
+        ),
+    ]
+
+    mock_persistor = mocker.MagicMock(spec=IDataPersistor)
+    mock_persistor.get_data_coverage.return_value = coverage_map
+
+    # De trades die precies in het gat vallen
+    missing_trades_batch = [
+        TradeTick(price=0.5, volume=1000, timestamp=block1_end + pd.Timedelta(seconds=30), side='buy', order_type='market')
+    ]
+    def mock_generator():
+        yield missing_trades_batch
+    mock_connector = mocker.MagicMock(spec=IAPIConnector)
+    mock_connector.get_historical_trades.return_value = mock_generator()
+
+    mock_factory = mocker.MagicMock(spec=IConnectorFactory)
+    mock_factory.get_connector.return_value = mock_connector
+
+    mock_logger = mocker.MagicMock()
+    service = DataCommandService(
+        persistor=mock_persistor,
+        connector_factory=mock_factory,
+        logger=mock_logger,
+        limits=mocker.MagicMock() # Niet van toepassing voor deze test
+    )
+
+    # Act
+    service.fill_gaps(command)
+
+    # Assert
+    # 1. Is de datakaart correct opgevraagd?
+    mock_persistor.get_data_coverage.assert_called_once_with(PAIR)
+    
+    mock_factory.get_connector.assert_called_once_with('kraken_public')
+
+    # 2. Is de connector aangeroepen met de PRECIEZE grenzen van het gat?
+    expected_since_ns = int(block1_end.value) + 1
+    expected_until_ns = int(block2_start.value) - 1
+
+    mock_connector.get_historical_trades.assert_called_once_with(
+        pair=PAIR,
+        since=expected_since_ns,
+        until=expected_until_ns
+    )
+
+    # 3. Is de data voor het gat correct opgeslagen?
+    mock_persistor.save_trades.assert_called_once_with(
+        pair=PAIR, trades=missing_trades_batch
+    )
+
+    # 4. Is de logging correct?
+    mock_logger.info.assert_any_call('data_command.fill_gaps_complete', values={'pair': PAIR, 'gaps_filled': 1})
+
 --- END FILE: tests/services/test_data_command_service.py ---
+
+--- START FILE: tests/services/test_data_query_service.py ---
+# In bestand: tests/services/test_data_query_service.py
+"""
+Unit tests for the DataQueryService's inquiries.
+"""
+from unittest.mock import MagicMock
+import pandas as pd
+from pytest_mock import MockerFixture
+
+# De interfaces die we gaan mocken
+from backend.core.interfaces.persistors import IDataPersistor
+
+# De DTO's die we nodig hebben voor de commando's en resultaten
+from backend.dtos.market.data_coverage import DataCoverage
+from backend.dtos.queries.coverage_query import CoverageQuery
+
+# De klasse die we gaan testen (bestaat nog niet in de juiste vorm)
+from services.data_query_service import DataQueryService
+
+
+
+
+# --- De Tests ---
+
+def test_get_coverage_calls_persistor_and_returns_data(mocker: MockerFixture):
+    """
+    Tests if get_coverage correctly calls the persistor's get_data_coverage
+    method and returns its data unmodified.
+    """
+    # Arrange
+    PAIR = "BTC/EUR"
+    command = CoverageQuery(pair=PAIR)
+    mock_coverage_data = [
+        DataCoverage(
+            start_time=pd.to_datetime("2023-01-01", utc=True),
+            end_time=pd.to_datetime("2023-01-02", utc=True),
+            trade_count=1000
+        )
+    ]
+    mock_persistor = mocker.MagicMock(spec=IDataPersistor)
+    mock_persistor.get_data_coverage.return_value = mock_coverage_data
+
+    # DE FIX: De __init__ van de service verwacht nu ook een connector_factory.
+    # We geven een simpele MagicMock mee omdat deze specifieke test die niet gebruikt.
+    service = DataQueryService(
+        persistor=mock_persistor
+    )
+
+    # Act
+    result = service.get_coverage(command)
+
+    # Assert
+    mock_persistor.get_data_coverage.assert_called_once_with(PAIR)
+    assert result == mock_coverage_data
+
+
+
+--- END FILE: tests/services/test_data_query_service.py ---
 
 --- START FILE: tests/services/test_strategy_operator.py ---
 # tests/services/test_strategy_operator.py

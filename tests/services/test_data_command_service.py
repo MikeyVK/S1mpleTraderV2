@@ -57,7 +57,7 @@ def test_fetch_period_processes_stream_correctly(mocker: MockerFixture):
 
     service = DataCommandService(
         persistor=mock_persistor,
-        connector=mock_connector,
+        connector_factory=mock_factory,
         logger=mock_logger,
         limits=mock_limits
     )
@@ -107,12 +107,16 @@ def test_fetch_period_raises_error_if_period_exceeds_max_limit(mocker: MockerFix
     mock_persistor = mocker.MagicMock(spec=IDataPersistor)
     mock_connector = mocker.MagicMock(spec=IAPIConnector)
     mock_logger = mocker.MagicMock()
+    mock_factory = mocker.MagicMock(spec=IConnectorFactory)
+    mock_factory.get_connector.return_value = mock_connector
 
     # --- Act & Assert ---
-    service = DataCommandService(persistor=mock_persistor,
-                                 connector_factory=mock_factory,
-                                 logger=mock_logger,
-                                 limits=mock_limits)
+    service = DataCommandService(
+        persistor=mock_persistor,
+        connector_factory=mock_factory,
+        logger=mock_logger,
+        limits=mock_limits
+    )
 
     # We verwachten dat de methode een ValueError gooit met een duidelijke melding
     with pytest.raises(ValueError,
@@ -133,7 +137,7 @@ def test_synchronize_fetches_and_saves_streamed_data(mocker: MockerFixture):
     # Arrange
     PAIR = "BTC/EUR"
     LAST_KNOWN_TS_NS = 1_000_000_000 * 1000
-    command = SynchronizationCommand(pair=PAIR)
+    command = SynchronizationCommand(pair=PAIR, exchange_id="kraken_public")
 
     # --- DE FIX: Mock de huidige tijd ---
     # Zorg ervoor dat de veiligheidscheck slaagt door "nu" in de buurt

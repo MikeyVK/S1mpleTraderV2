@@ -1,0 +1,1 @@
+# plugins/portfolio_monitors/max_drawdown_detector/__init__.py
