@@ -1,50 +1,22 @@
 # **Bijlage D: De Plugin Development Experience & IDE**
 
-**Versie:** 3.0
-**Status:** Definitief
-Dit document beschrijft de architectuur en de gebruikerservaring (UX) voor de web-based Integrated Development Environment (IDE) voor plugins binnen S1mpleTrader V3.
+**Versie:** 3.0 · **Status:** Definitief · **Laatst Bijgewerkt:** 2025-10-14
 
-## **Inhoudsopgave**
-
-1. [Executive Summary](#executive-summary)
-2. [Kernfilosofie: De Glijdende Schaal van Abstractie](#d1-kernfilosofie-de-glijdende-schaal-van-abstractie)
-3. [De MVP: De "Intelligente Plugin Generator"](#d2-de-mvp-de-intelligente-plugin-generator)
-4. [De Glijdende Schaal Visualisatie](#d3-de-glijdende-schaal-visualisatie)
-5. [Plugin Browser & Discovery](#d4-plugin-browser--discovery)
-6. [Event Configuration Wizard](#d5-event-configuration-wizard)
-7. [Event Topology Viewer](#d6-event-topology-viewer)
-8. [De Toekomstvisie: Gelaagde Web IDE](#d7-de-toekomstvisie-gelaagde-web-ide)
-9. [UX/UI Mockups](#d8-uxui-mockups)
-10. [Architectuur voor Plugin Internationalisatie](#d9-architectuur-voor-plugin-internationalisatie)
+Dit document beschrijft de architectuur en de gebruikerservaring (UX) voor de web-based Integrated Development Environment (IDE) voor plugins binnen S1mpleTrader V3. Het doel van deze IDE is om het ontwikkelen van plugins te transformeren van een puur technische taak naar een laagdrempelige, creatieve en domein-specifieke functie voor kwantitatieve analisten ("quants").
 
 ---
 
-## **Executive Summary**
+## **Inhoudsopgave**
 
-Dit document schetst de visie voor de S1mpleTrader V3 Plugin IDE, een web-based ontwikkelomgeving die is ontworpen om het creëren van plugins te transformeren van een technische taak naar een intuïtief, creatief proces. De kernfilosofie is de **"glijdende schaal van abstractie"**, die complexiteit volledig opt-in maakt.
-
-### **🎯 Kernkenmerken**
-
-**1. Glijdende Schaal van Abstractie**
--   De IDE ondersteunt meerdere niveaus van complexiteit, van een "no-code" visuele bouwer tot een "pro-code" embedded editor, waardoor het toegankelijk is voor zowel niet-programmeurs als ervaren ontwikkelaars.
-
-**2. Scheiding van ROL en CAPABILITIES**
--   De IDE begeleidt de ontwikkelaar bij het maken van de cruciale architecturale keuze voor de **ROL** van een worker (`StandardWorker` vs. `EventDrivenWorker`) en het selecteren van de benodigde **CAPABILITIES** (`state`, `events`, `journaling`) via een visuele matrix.
-
-**3. Intelligente Plugin Generator (MVP)**
--   Een multi-step wizard die de ontwikkelaar door het creatieproces leidt, van basisidentificatie tot het definiëren van dependencies en event-configuraties.
--   De wizard genereert context-bewuste boilerplate-code, inclusief docstrings, type hints en `TODO`-commentaren die zijn afgestemd op de gekozen ROL en CAPABILITIES.
-
-**4. Geavanceerde Discovery & Debugging Tools**
--   Een verbeterde **Plugin Browser** met multi-dimensionale filtering (op type, sub-categorie, capabilities, etc.) en een visueel badge-systeem.
--   Een **Event Topology Viewer** en **Causale ID Tracer** bieden diepgaand inzicht in de event-gedreven workflows en de beslissingsketen van trades.
-
-### **🔑 Design Principes**
-
-✅ **Progressive Disclosure** - Begin simpel, onthul complexiteit alleen wanneer nodig.
-✅ **Visuele Feedback** - Toon direct de architecturale impact van elke keuze.
-✅ **Guided Exploration** - Help de gebruiker de juiste tools en abstractieniveaus te kiezen.
-✅ **"Fail Fast" Validatie** - Valideer configuraties en event-chains tijdens het ontwerpproces, niet pas tijdens runtime.
+1. [Kernfilosofie: De Glijdende Schaal van Abstractie](#d1-kernfilosofie-de-glijdende-schaal-van-abstractie)
+2. [De MVP: De "Intelligente Plugin Generator"](#d2-de-mvp-de-intelligente-plugin-generator)
+3. [De Glijdende Schaal Visualisatie](#d3-de-glijdende-schaal-visualisatie)
+4. [Plugin Browser & Discovery](#d4-plugin-browser--discovery)
+5. [Event Configuration Wizard](#d5-event-configuration-wizard)
+6. [Event Topology Viewer](#d6-event-topology-viewer)
+7. [De Toekomstvisie: Gelaagde Web IDE](#d7-de-toekomstvisie-gelaagde-web-ide)
+8. [UX/UI Mockups](#d8-uxui-mockups)
+9. [Architectuur voor Plugin Internationalisatie](#d9-architectuur-voor-plugin-internationalisatie)
 
 ---
 
@@ -62,13 +34,13 @@ De fundamentele uitdaging van elk plugin-systeem is de balans tussen gebruiksgem
     *   Duidelijke "Single Responsibility" per type
 
 2.  **ROL & Capabilities** - De scheiding van *Hoe* en *Wat*
-    *   **ROL (Declaratief via Klasse):** De ontwikkelaar kiest de fundamentele ROL van de worker. Dit bepaalt *hoe* de worker wordt aangeroepen.
-        *   `StandardWorker`: Neemt deel aan de georkestreerde pijplijn.
-        *   `EventDrivenWorker`: Reageert autonoom op events.
-    *   **CAPABILITIES (Configuratief via Manifest):** De ontwikkelaar "zet" extra vaardigheden aan in het `manifest.yaml`. Dit bepaalt *wat* de worker extra kan.
-        *   `state`: Voor intern geheugen.
-        *   `events`: Om te publiceren of te reageren op custom events.
-        *   `journaling`: Om bij te dragen aan het strategy journal.
+    * **ROL (Declaratief via Klasse):** De ontwikkelaar kiest de fundamentele ROL van de worker. Dit bepaalt *hoe* de worker wordt aangeroepen.
+        * `StandardWorker`: Neemt deel aan de georkestreerde pijplijn.
+        * `EventDrivenWorker`: Reageert autonoom op events.
+    * **CAPABILITIES (Configuratief via Manifest):** De ontwikkelaar "zet" extra vaardigheden aan in het `manifest.yaml`. Dit bepaalt *wat* de worker extra kan.
+        * `state`: Voor intern geheugen.
+        * `events`: Om te publiceren of te reageren op custom events.
+        * `journaling`: Om bij te dragen aan het strategy journal.
 
 3.  **Event-Driven Workflows** - Van impliciete pijplijn naar custom events
     *   **Niveau 1:** Impliciete pijplijnen (95% van gebruik) - "Het werkt gewoon"
@@ -77,10 +49,10 @@ De fundamentele uitdaging van elk plugin-systeem is de balans tussen gebruiksgem
 
 ### **D.1.2. Kernprincipes**
 
-1.  **Progressive Disclosure:** Begin simpel, onthul complexiteit alleen wanneer nodig
-2.  **Visuele Feedback:** Toon direct de impact van keuzes op architectuur
-3.  **Guided Exploration:** Help de gebruiker de juiste abstractieniveau te kiezen
-4.  **Fail-Fast Validatie:** Valideer tijdens design-time, niet runtime
+1. **Progressive Disclosure:** Begin simpel, onthul complexiteit alleen wanneer nodig
+2. **Visuele Feedback:** Toon direct de impact van keuzes op architectuur
+3. **Guided Exploration:** Help de gebruiker de juiste abstractieniveau te kiezen
+4. **Fail-Fast Validatie:** Valideer tijdens design-time, niet runtime
 
 ---
 
@@ -96,19 +68,19 @@ Het hart van de MVP is een intelligent, multi-step formulier dat de ontwikkelaar
 
 **Velden:**
 
-*   **Display Naam**
-    *   **UI Element:** Tekstveld
-    *   **Voorbeeld:** `Smart DCA Opportunity Scorer`
-    *   **Validatie:** Uniek binnen project
+* **Display Naam**  
+  * **UI Element:** Tekstveld  
+  * **Voorbeeld:** `Smart DCA Opportunity Scorer`  
+  * **Validatie:** Uniek binnen project
 
-*   **Technische Naam**
-    *   **UI Element:** *Read-only* tekstveld (auto-gegenereerd)
-    *   **Voorbeeld:** `smart_dca_opportunity_scorer`
-    *   **Logica:** Automatisch `snake_case` conversie
+* **Technische Naam**  
+  * **UI Element:** *Read-only* tekstveld (auto-gegenereerd)  
+  * **Voorbeeld:** `smart_dca_opportunity_scorer`  
+  * **Logica:** Automatisch `snake_case` conversie
 
-*   **Beschrijving & Auteur**
-    *   **UI Element:** Textarea & tekstveld
-    *   **Doel:** Verrijken [`manifest.yaml`](../../plugins/) en docstrings
+* **Beschrijving & Auteur**  
+  * **UI Element:** Textarea & tekstveld  
+  * **Doel:** Verrijken [`manifest.yaml`](../../plugins/) en docstrings
 
 #### **Step 2: Worker Type Selector - 5+27 Taxonomie**
 
@@ -140,9 +112,9 @@ OpportunityWorker ▼
 ```
 
 **Visuele Feedback:**
--   Rechts toont een "Preview Card" de geselecteerde combinatie
--   Icon + naam + beschrijving + "Typische use cases" lijst
--   Link naar voorbeelden: "Bekijk 12 bestaande plugins van dit type"
+- Rechts toont een "Preview Card" de geselecteerde combinatie
+- Icon + naam + beschrijving + "Typische use cases" lijst
+- Link naar voorbeelden: "Bekijk 12 bestaande plugins van dit type"
 
 #### **Step 3: Rol & Capability Selector**
 
@@ -212,17 +184,17 @@ Reden: "Position management workers hebben doorgaans state nodig om bijvoorbeeld
 
 **UI Tabs:**
 
-1.  **Triggers** - Wanneer moet deze plugin draaien?
-    -   Dropdown: Predefined triggers
-    -   Custom event input met autocomplete
-    
-2.  **Publishes** - Wat publiceert deze plugin?
-    -   Event naam + DTO type selector
-    -   Validatie: uniek binnen project
+1. **Triggers** - Wanneer moet deze plugin draaien?
+   - Dropdown: Predefined triggers
+   - Custom event input met autocomplete
+   
+2. **Publishes** - Wat publiceert deze plugin?
+   - Event naam + DTO type selector
+   - Validatie: uniek binnen project
 
-3.  **Advanced**
-    -   `requires_all` checkbox (wacht op alle triggers)
-    -   Event chain preview diagram
+3. **Advanced**
+   - `requires_all` checkbox (wacht op alle triggers)
+   - Event chain preview diagram
 
 **Zie [D.5 Event Configuration Wizard](#d5-event-configuration-wizard) voor details.**
 
@@ -263,9 +235,9 @@ Reden: "Position management workers hebben doorgaans state nodig om bijvoorbeeld
 ```
 
 **Intelligente Features:**
--   Autocomplete van vaak gebruikte kolommen
--   Real-time validatie tegen platform capabilities
--   Waarschuwing als verplichte data niet standaard beschikbaar is
+- Autocomplete van vaak gebruikte kolommen
+- Real-time validatie tegen platform capabilities
+- Waarschuwing als verplichte data niet standaard beschikbaar is
 
 #### **Step 6: Review & Generate**
 
@@ -287,13 +259,13 @@ Plugin: Smart DCA Opportunity Scorer
 
 **Rechts:** Live preview van gegenereerde bestanden (tabs)
 
--   [`manifest.yaml`](../../plugins/)
--   [`worker.py`](../../plugins/) (skeleton met TODOs)
--   [`schema.py`](../../plugins/)
--   [`tests/test_worker.py`](../../plugins/)
+- [`manifest.yaml`](../../plugins/)
+- [`worker.py`](../../plugins/) (skeleton met TODOs)
+- [`schema.py`](../../plugins/)
+- [`tests/test_worker.py`](../../plugins/)
 
 **Actions:**
--   [← Back] [Generate Plugin] [Generate & Open in Editor]
+- [← Back] [Generate Plugin] [Generate & Open in Editor]
 
 ### **D.2.2. De Template Engine - Intelligente Code Generatie**
 
@@ -376,10 +348,10 @@ class SmartDcaOpportunityScorer(BaseEventAwareWorker):
 
 **Key Features van Template Engine:**
 
-1.  **Context-Aware Imports:** Alleen nodige imports op basis van capabilities
-2.  **Inline Documentation:** Gegenereerde code bevat contextuele TODOs en voorbeelden
-3.  **Type Hints:** Volledige type annotations voor IDE support
-4.  **Example Code:** Commentaar met concrete voorbeelden relevant voor gekozen type
+1. **Context-Aware Imports:** Alleen nodige imports op basis van capabilities
+2. **Inline Documentation:** Gegenereerde code bevat contextuele TODOs en voorbeelden
+3. **Type Hints:** Volledige type annotations voor IDE support
+4. **Example Code:** Commentaar met concrete voorbeelden relevant voor gekozen type
 
 ---
 
@@ -438,20 +410,20 @@ Een interactieve visualisatie die de quant helpt de juiste combinatie van ROL en
 
 ### **D.3.3. Interactive Features**
 
-1.  **Live Code Comparison:**
-    -   Click op elk niveau toont side-by-side code comparison
-    -   "Wat is het verschil?" tussen niveau N en N+1
+1. **Live Code Comparison:**
+   - Click op elk niveau toont side-by-side code comparison
+   - "Wat is het verschil?" tussen niveau N en N+1
 
-2.  **Dependency Preview:**
-    -   Visuele "web" van wat elk niveau vereist
-    -   Testing complexity indicator
+2. **Dependency Preview:**
+   - Visuele "web" van wat elk niveau vereist
+   - Testing complexity indicator
 
-3.  **Performance Impact:**
-    -   Geschatte performance overhead per niveau
-    -   Memory footprint indicator
+3. **Performance Impact:**
+   - Geschatte performance overhead per niveau
+   - Memory footprint indicator
 
-4.  **Similar Plugins:**
-    -   "12 plugins gebruiken dit niveau" → bekijk voorbeelden
+4. **Similar Plugins:**
+   - "12 plugins gebruiken dit niveau" → bekijk voorbeelden
 
 ---
 
@@ -542,10 +514,10 @@ Visuele badges voor snelle herkenning:
 
 ### **D.4.3. Quick Actions**
 
--   **View:** Bekijk volledige details + dependencies graph
--   **Edit:** Open in editor (lokale IDE of web IDE)
--   **Clone:** Maak kopie als startpunt voor nieuwe plugin
--   **Event Topology:** (alleen voor event-aware) → Opens visualizer
+- **View:** Bekijk volledige details + dependencies graph
+- **Edit:** Open in editor (lokale IDE of web IDE)
+- **Clone:** Maak kopie als startpunt voor nieuwe plugin
+- **Event Topology:** (alleen voor event-aware) → Opens visualizer
 
 ### **D.4.4. Dependency Graph Visualizer**
 
@@ -706,10 +678,10 @@ Voor plugins die [`BaseEventAwareWorker`](../../backend/core/base_worker.py) geb
 
 **Key Features:**
 
-1.  **Real-time Validation:** Event chain validator runs tijdens configuratie
-2.  **Subscriber Discovery:** Toont automatisch welke plugins luisteren
-3.  **Impact Analysis:** "2 downstream plugins will be affected"
-4.  **Cycle Detection:** Visuele waarschuwing bij circular dependencies
+1. **Real-time Validation:** Event chain validator runs tijdens configuratie
+2. **Subscriber Discovery:** Toont automatisch welke plugins luisteren
+3. **Impact Analysis:** "2 downstream plugins will be affected"
+4. **Cycle Detection:** Visuele waarschuwing bij circular dependencies
 
 ---
 
@@ -718,12 +690,13 @@ Voor plugins die [`BaseEventAwareWorker`](../../backend/core/base_worker.py) geb
 ### **D.6.1. Standalone Event Debugging Tool**
 
 Toegankelijk via:
--   Plugin Browser → Event-aware plugin → [Event Topology]
--   Top menu → Tools → Event Topology Viewer
+- Plugin Browser → Event-aware plugin → [Event Topology]
+- Top menu → Tools → Event Topology Viewer
 
 **Purpose:** Visueel debuggen en begrijpen van complexe event chains.
 
 ### **D.6.2. UI Layout**
+
 ```
 ┌───────────────────────────────────────────────────────────────┐
 │  Event Topology Viewer                                         │
@@ -799,25 +772,25 @@ Toegankelijk via:
 
 ### **D.6.3. Interactive Features**
 
-1.  **Hover Effects:**
-    -   Hover over node → Highlight dependencies
-    -   Hover over edge → Show payload DTO schema
+1. **Hover Effects:**
+   - Hover over node → Highlight dependencies
+   - Hover over edge → Show payload DTO schema
 
-2.  **Click Actions:**
-    -   Click node → Show detailed panel
-    -   Double-click node → Open plugin editor
-    -   Click edge → Show event contract details
+2. **Click Actions:**
+   - Click node → Show detailed panel
+   - Double-click node → Open plugin editor
+   - Click edge → Show event contract details
 
-3.  **Layout Algorithms:**
-    -   Hierarchical (default)
-    -   Force-directed
-    -   Circular
-    -   Timeline (chronological flow)
+3. **Layout Algorithms:**
+   - Hierarchical (default)
+   - Force-directed
+   - Circular
+   - Timeline (chronological flow)
 
-4.  **Export Options:**
-    -   PNG/SVG voor documentatie
-    -   JSON voor programmatic analysis
-    -   PlantUML voor diagrammen
+4. **Export Options:**
+   - PNG/SVG voor documentatie
+   - JSON voor programmatic analysis
+   - PlantUML voor diagrammen
 
 ---
 
@@ -827,31 +800,31 @@ Na de MVP wordt de Web IDE uitgebreid tot een volwaardige ontwikkelomgeving door
 
 ### **Laag 1: De "No-Code" Strategie Bouwer**
 
-*   **Concept:** Visueel canvas met drag-and-drop LEGO-blokjes
-*   **Interface:** Block-based programming (zoals Scratch/Blockly)
-*   **Voorbeeld:** `[EMA(10)]` → `[Kruist Boven]` → `[EMA(50)]` → `[Genereer Long Signaal]`
-*   **Testen:** Scenario-bouwer met "Gegeven X, verwacht Y"
-*   **Doelgroep:** Quants zonder programmeerervaring
+* **Concept:** Visueel canvas met drag-and-drop LEGO-blokjes
+* **Interface:** Block-based programming (zoals Scratch/Blockly)
+* **Voorbeeld:** `[EMA(10)]` → `[Kruist Boven]` → `[EMA(50)]` → `[Genereer Long Signaal]`
+* **Testen:** Scenario-bouwer met "Gegeven X, verwacht Y"
+* **Doelgroep:** Quants zonder programmeerervaring
 
 ### **Laag 2: De "Low-Code" Scripting Helper**
 
-*   **Concept:** "Mad Libs" benadering - vul alleen kernlogica in
-*   **Interface:** Formulier met Python expression fields
-*   **Abstractie:** Platform abstraheert DTO's en interfaces compleet
-*   **Testen:** Test Data Generator UI + Assertie Helper
-*   **Doelgroep:** Gemiddelde quant met basis Python kennis
+* **Concept:** "Mad Libs" benadering - vul alleen kernlogica in
+* **Interface:** Formulier met Python expression fields
+* **Abstractie:** Platform abstraheert DTO's en interfaces compleet
+* **Testen:** Test Data Generator UI + Assertie Helper
+* **Doelgroep:** Gemiddelde quant met basis Python kennis
 
 ### **Laag 3: De "Pro-Code" Embedded IDE**
 
-*   **Concept:** Volledige Monaco Editor (VS Code engine) in browser
-*   **Features:**
-    -   Syntax highlighting
-    -   IntelliSense voor S1mpleTrader-specifieke code
-    -   Real-time linting (Pylint/Mypy)
-    -   Integrated terminal
-    -   Git integration
-*   **Testen:** Handmatig pytest schrijven in tabblad
-*   **Doelgroep:** Ervaren ontwikkelaars
+* **Concept:** Volledige Monaco Editor (VS Code engine) in browser
+* **Features:**
+  - Syntax highlighting
+  - IntelliSense voor S1mpleTrader-specifieke code
+  - Real-time linting (Pylint/Mypy)
+  - Integrated terminal
+  - Git integration
+* **Testen:** Handmatig pytest schrijven in tabblad
+* **Doelgroep:** Ervaren ontwikkelaars
 
 ---
 
@@ -1107,29 +1080,29 @@ plugins/fvg_detector/
 
 **Abstractie in de IDE:**
 
-1.  **Parameter Wizard:** Bij het definiëren van parameters in [`schema.py`](../../plugins/), vraagt de IDE om:
-    -   Technical field name: `threshold`
-    -   Display label (EN): `Entry Threshold`
-    -   Display label (NL): `Instap Drempel`
-    -   Help text (EN): `Minimum score to trigger entry`
-    -   Help text (NL): `Minimale score om in te stappen`
+1. **Parameter Wizard:** Bij het definiëren van parameters in [`schema.py`](../../plugins/), vraagt de IDE om:
+   - Technical field name: `threshold`
+   - Display label (EN): `Entry Threshold`
+   - Display label (NL): `Instap Drempel`
+   - Help text (EN): `Minimum score to trigger entry`
+   - Help text (NL): `Minimale score om in te stappen`
 
-2.  **Auto-generatie:** Het systeem genereert automatisch:
-    ```yaml
-    # locales/en.yaml
-    parameters:
-      threshold:
-        label: "Entry Threshold"
-        help: "Minimum score to trigger entry"
-    
-    # locales/nl.yaml
-    parameters:
-      threshold:
-        label: "Instap Drempel"
-        help: "Minimale score om in te stappen"
-    ```
+2. **Auto-generatie:** Het systeem genereert automatisch:
+   ```yaml
+   # locales/en.yaml
+   parameters:
+     threshold:
+       label: "Entry Threshold"
+       help: "Minimum score to trigger entry"
+   
+   # locales/nl.yaml
+   parameters:
+     threshold:
+       label: "Instap Drempel"
+       help: "Minimale score om in te stappen"
+   ```
 
-3.  **Visueel Context:** Context visualisaties (grafieken, lijnen) worden op dezelfde manier behandeld
+3. **Visueel Context:** Context visualisaties (grafieken, lijnen) worden op dezelfde manier behandeld
 
 **Resultaat:** De quant vult simpele tekstvelden in, het platform zorgt automatisch voor volledige i18n-infrastructuur.
 
@@ -1140,55 +1113,55 @@ plugins/fvg_detector/
 ### **D.10.1. MVP Features (v3.0)**
 
 ✅ **Intelligente Plugin Generator**
--   5 worker types + 27 sub-categorieën selector
--   Capability matrix met visual feedback
--   Event configuration wizard (3 niveaus)
--   Smart dependency builder
--   Context-aware code generation
+- 5 worker types + 27 sub-categorieën selector
+- Capability matrix met visual feedback
+- Event configuration wizard (3 niveaus)
+- Smart dependency builder
+- Context-aware code generation
 
 ✅ **Glijdende Schaal Visualisatie**
--   Interactive complexity ladder
--   Decision tree helper
--   Live code comparison
--   Similar plugins discovery
+- Interactive complexity ladder
+- Decision tree helper
+- Live code comparison
+- Similar plugins discovery
 
 ✅ **Enhanced Plugin Browser**
--   Multi-dimensionale filtering
--   Badge system
--   Dependency graph viewer
--   Event topology preview
+- Multi-dimensionale filtering
+- Badge system
+- Dependency graph viewer
+- Event topology preview
 
 ✅ **Event Tooling**
--   Event configuration wizard
--   Event chain validation preview
--   Predefined triggers library
--   Custom event builder
+- Event configuration wizard
+- Event chain validation preview
+- Predefined triggers library
+- Custom event builder
 
 ### **D.10.2. Future Enhancements**
 
 **Phase 2: No-Code Builder**
--   Visual block programming interface
--   Drag-and-drop strategy canvas
--   Auto-generated tests
+- Visual block programming interface
+- Drag-and-drop strategy canvas
+- Auto-generated tests
 
 **Phase 3: Low-Code Helper**
--   Expression-based logic builder
--   Template library
--   Guided testing UI
+- Expression-based logic builder
+- Template library
+- Guided testing UI
 
 **Phase 4: Pro-Code IDE**
--   Full Monaco editor integration
--   IntelliSense voor S1mpleTrader
--   Integrated debugging
--   Git workflow
+- Full Monaco editor integration
+- IntelliSense voor S1mpleTrader
+- Integrated debugging
+- Git workflow
 
 ### **D.10.3. Cross-References**
 
 Voor diepere technische details:
--   **Plugin Anatomie:** [`4_DE_PLUGIN_ANATOMIE.md`](4_DE_PLUGIN_ANATOMIE.md)
--   **Event Architectuur:** [`1_BUS_COMMUNICATION_ARCHITECTURE.md`](1_BUS_COMMUNICATION_ARCHITECTURE.md)
--   **Worker Taxonomie:** [`2_ARCHITECTURE.md`](2_ARCHITECTURE.md#24-het-worker-ecosysteem-5-gespecialiseerde-rollen)
--   **Base Worker Hierarchie:** [`backend/core/base_worker.py`](../../backend/core/base_worker.py)
+- **Plugin Anatomie:** [`4_DE_PLUGIN_ANATOMIE.md`](4_DE_PLUGIN_ANATOMIE.md)
+- **Event Architectuur:** [`1_BUS_COMMUNICATION_ARCHITECTURE.md`](1_BUS_COMMUNICATION_ARCHITECTURE.md)
+- **Worker Taxonomie:** [`2_ARCHITECTURE.md`](2_ARCHITECTURE.md#24-het-worker-ecosysteem-5-gespecialiseerde-rollen)
+- **Base Worker Hierarchie:** [`backend/core/base_worker.py`](../../backend/core/base_worker.py)
 
 ---
 
