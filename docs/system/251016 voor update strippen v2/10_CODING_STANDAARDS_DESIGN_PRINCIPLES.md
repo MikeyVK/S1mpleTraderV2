@@ -1,7 +1,8 @@
 # **10. Coding Standaarden & Design Principles**
 
+**Versie:** 3.0 (V3 Architectuur Updates)
 **Status:** Definitief
-Dit document beschrijft de verplichte standaarden en best practices voor het schrijven van alle code binnen het S1mpleTrader-project.
+Dit document beschrijft de verplichte standaarden en best practices voor het schrijven van alle code binnen het S1mpleTrader V2 project.
 
 ## **Inhoudsopgave**
 
@@ -19,7 +20,7 @@ Dit document beschrijft de verplichte standaarden en best practices voor het sch
 
 ## **Executive Summary**
 
-Dit document legt de fundering voor een consistente, leesbare, onderhoudbare en robuuste codebase voor S1mpleTrader. Het naleven van deze standaarden is niet optioneel en is cruciaal voor het succes van het project.
+Dit document legt de fundering voor een consistente, leesbare, onderhoudbare en robuuste codebase voor S1mpleTrader V3. Het naleven van deze standaarden is niet optioneel en is cruciaal voor het succes van het project. De V3-architectuur introduceert en versterkt verschillende kernprincipes.
 
 ### **🎯 Kernprincipes**
 
@@ -153,7 +154,7 @@ Naast de algemene [PEP 8]-richtlijnen hanteren we een aantal strikte, aanvullend
 
 ## **10.3. Dependency Injection Principes** ⭐
 
-De S1mpleTrader-architectuur is gebouwd op strikte dependency injection principes om testbaarheid, flexibiliteit en onderhoudbaarheid te maximaliseren.
+**NIEUW IN V3**: De S1mpleTrader V3 architectuur is gebouwd op strikte dependency injection principes om testbaarheid, flexibiliteit en onderhoudbaarheid te maximaliseren.
 
 ### **10.3.1. Constructor Injection als Standaard**
 
@@ -192,7 +193,7 @@ class BadOperator:
 
 ### **10.3.2. ROL-definitie en Capability-injectie**
 
-Componenten hangen af van abstracties ([`IStatePersistor`](../../backend/core/interfaces/persistors.py:IStatePersistor), [`IJournalPersistor`](../../backend/core/interfaces/persistors.py:IJournalPersistor), [`IEventHandler`](../../backend/core/interfaces/event_handler.py:IEventHandler)), niet van concrete implementaties. De architectuur scheidt de **ROL** van een worker (hoe deze wordt aangeroepen) van zijn **CAPABILITIES** (extra vaardigheden).
+Componenten hangen af van abstracties ([`IStatePersistor`](../../backend/core/interfaces/persistors.py:IStatePersistor), [`IJournalPersistor`](../../backend/core/interfaces/persistors.py:IJournalPersistor), [`IEventHandler`](../../backend/core/interfaces/event_handler.py:IEventHandler)), niet van concrete implementaties. De nieuwe architectuur scheidt de **ROL** van een worker (hoe deze wordt aangeroepen) van zijn **CAPABILITIES** (extra vaardigheden).
 
 1.  **De ROL wordt bepaald door de basisklasse:**
     *   `StandardWorker`: Doet mee aan de georkestreerde pijplijn en implementeert de `process()` methode.
@@ -268,7 +269,7 @@ Complexe object-constructie gebeurt via **gespecialiseerde, gecentraliseerde fac
 *   `EventAdapterFactory`: De **enige** bron voor het creëren van `IEventHandler` (EventAdapter) instanties.
 *   `OperatorFactory`: Creëert `BaseOperator` instanties op basis van configuratie.
 
-**EventAdapterFactory Voorbeeld:**
+**EventAdapterFactory Voorbeeld (Nieuw Kernpatroon):**
 ```python
 # backend/assembly/event_adapter_factory.py
 from backend.core.interfaces.event_handler import IEventHandler
@@ -404,7 +405,7 @@ def test_stateful_worker_commits_state():
 
 ## **10.4. Configuratie-Gedreven Design** ⭐
 
-"**YAML is intelligentie, code is mechanica**"
+**NIEUW IN V3**: "YAML is intelligentie, code is mechanica"
 
 ### **10.4.1. Operators.yaml als Perfecte Scheiding**
 
@@ -542,9 +543,10 @@ class BaseOperator:
 
 ### **10.5.2. Traceability via Causaal ID Framework**
 
-Het systeem maakt gebruik van een rijk causaal framework.
+**V3 UPDATE:** Van simpele CorrelationID naar rijk causaal framework.
 
 ```python
+# V3: Getypeerde causale IDs
 from uuid import uuid4
 
 # OpportunityID - "Waarom werd deze trade overwogen?"
@@ -572,7 +574,7 @@ threat = CriticalEvent(
 
 ### **10.6.1. De Testfilosofie: Elk .py Bestand Heeft een Test**
 
-De "Testen als Voorwaarde"-filosofie wordt uitgebreid naar **alle** Python bestanden in het project, inclusief de architecturale contracten zelf (Schema's, DTOs en Interfaces). Dit garandeert de robuustheid van de "Contract-Gedreven Architectuur" vanaf de basis.
+**V3.1 UPDATE**: De "Testen als Voorwaarde"-filosofie wordt uitgebreid naar **alle** Python bestanden in het project, inclusief de architecturale contracten zelf (Schema's, DTOs en Interfaces). Dit garandeert de robuustheid van de "Contract-Gedreven Architectuur" vanaf de basis.
 
 **Kernprincipe:** Geen enkel .py bestand is compleet zonder een corresponderend test bestand. Dit geldt voor:
 - **Worker implementaties** (`worker.py` → `tests/test_worker.py`)
@@ -817,7 +819,7 @@ De architectuur is gebouwd op de **SOLID**\-principes en een aantal kern-ontwerp
 
 ### **10.8.1. De Synergie: Configuratie- & Contract-gedreven Executie**
 
-Het meest krachtige concept is de combinatie van configuratie- en contract-gedreven werken. De code is de motor; **de configuratie is de bestuurder, en de contracten zijn de verkeersregels die zorgen dat de bestuurder binnen de lijntjes blijft.**
+Het meest krachtige concept van V2 is de combinatie van configuratie- en contract-gedreven werken. De code is de motor; **de configuratie is de bestuurder, en de contracten zijn de verkeersregels die zorgen dat de bestuurder binnen de lijntjes blijft.**
 
 *   **Configuratie-gedreven:** De *volledige samenstelling* van een strategie (welke plugins, in welke volgorde, met welke parameters) wordt gedefinieerd in een strategy\_blueprint.yaml. Dit maakt het mogelijk om strategieën drastisch te wijzigen zonder één regel code aan te passen.
 *   **Contract-gedreven:** Elk stukje configuratie en data wordt gevalideerd door een strikt **Pydantic-schema**. Dit werkt op twee niveaus:
@@ -828,23 +830,23 @@ Bij het starten van een Operation, leest de applicatie de YAML-bestanden en bouw
 
 ### **10.8.2. SOLID in de Praktijk**
 
-Voorbeelden met worker categorieën en [`BaseOperator`](../../backend/core/operators/base_operator.py).
+**V3 UPDATES:** Voorbeelden met V3 worker categorieën en [`BaseOperator`](../../backend/core/operators/base_operator.py).
 
 *   **SRP (Single Responsibility Principle):** Elke klasse heeft één duidelijke taak.
-    *   Een [`FVGDetector`](../../plugins/signal_generators/fvg_entry_detector/worker.py) ([`OpportunityWorker`](../../backend/core/base_worker.py:OpportunityWorker)) detecteert alleen Fair Value Gaps. Het transformeren naar een trade plan gebeurt in een aparte [`LimitEntryPlanner`](../../plugins/entry_planners/) ([`PlanningWorker`](../../backend/core/base_worker.py:PlanningWorker)).
-    *   [`BaseOperator`](../../backend/core/operators/base_operator.py) heeft één verantwoordelijkheid: het uitvoeren van een workforce volgens zijn configuratie. De *intelligentie* (welke execution strategy) zit in [`operators.yaml`](../../config/operators.yaml).
+    *   ***V3 voorbeeld:*** Een [`FVGDetector`](../../plugins/signal_generators/fvg_entry_detector/worker.py) ([`OpportunityWorker`](../../backend/core/base_worker.py:OpportunityWorker)) detecteert alleen Fair Value Gaps. Het transformeren naar een trade plan gebeurt in een aparte [`LimitEntryPlanner`](../../plugins/entry_planners/) ([`PlanningWorker`](../../backend/core/base_worker.py:PlanningWorker)).
+    *   ***V3 voorbeeld:*** [`BaseOperator`](../../backend/core/operators/base_operator.py) heeft één verantwoordelijkheid: het uitvoeren van een workforce volgens zijn configuratie. De *intelligentie* (welke execution strategy) zit in [`operators.yaml`](../../config/operators.yaml).
 
 *   **OCP (Open/Closed Principle):** Uitbreidbaar zonder bestaande code te wijzigen.
-    *   Wil je een nieuwe exit-strategie toevoegen? Je maakt simpelweg een nieuwe exit\_planner-plugin ([`PlanningWorker`](../../backend/core/base_worker.py:PlanningWorker)); de [`PlanningOperator`](../../backend/core/operators/base_operator.py) hoeft hiervoor niet aangepast te worden.
-    *   Wil je een nieuwe execution strategy? Voeg deze toe aan [`ExecutionStrategy`](../../backend/core/enums.py:ExecutionStrategy) enum en implementeer de logica in [`BaseOperator._execute_custom()`](../../backend/core/operators/base_operator.py) - alle operators krijgen automatisch deze capability.
+    *   ***V3 voorbeeld:*** Wil je een nieuwe exit-strategie toevoegen? Je maakt simpelweg een nieuwe exit\_planner-plugin ([`PlanningWorker`](../../backend/core/base_worker.py:PlanningWorker)); de [`PlanningOperator`](../../backend/core/operators/base_operator.py) hoeft hiervoor niet aangepast te worden.
+    *   ***V3 voorbeeld:*** Wil je een nieuwe execution strategy? Voeg deze toe aan [`ExecutionStrategy`](../../backend/core/enums.py:ExecutionStrategy) enum en implementeer de logica in [`BaseOperator._execute_custom()`](../../backend/core/operators/base_operator.py) - alle operators krijgen automatisch deze capability.
 
 *   **DIP (Dependency Inversion Principle):** Hoge-level modules hangen af van abstracties.
-    *   De Operations-service hangt af van de [`IAPIConnector`](../../backend/core/interfaces/connectors.py:IAPIConnector)-interface, niet van de specifieke KrakenAPIConnector.
-    *   Een worker die state nodig heeft (ongeacht zijn ROL), hangt af van de [`IStatePersistor`](../../backend/core/interfaces/persistors.py:IStatePersistor)-interface, niet van `JsonPersistor`. De `WorkerBuilder` injecteert de concrete persistor op basis van de manifest-configuratie. Testing met een `MockPersistor` is hierdoor triviaal.
+    *   ***V3 voorbeeld:*** De Operations-service hangt af van de [`IAPIConnector`](../../backend/core/interfaces/connectors.py:IAPIConnector)-interface, niet van de specifieke KrakenAPIConnector.
+    *   ***V3 voorbeeld:*** Een worker die state nodig heeft (ongeacht zijn ROL), hangt af van de [`IStatePersistor`](../../backend/core/interfaces/persistors.py:IStatePersistor)-interface, niet van `JsonPersistor`. De `WorkerBuilder` injecteert de concrete persistor op basis van de manifest-configuratie. Testing met een `MockPersistor` is hierdoor triviaal.
 
 ### **10.8.3. Kernpatronen**
 
-Nieuwe factories en patterns.
+**V3 UPDATES:** Nieuwe factories en patterns.
 
 *   **Factory Pattern:** Het Assembly Team gebruikt factories om componenten te creëren:
     *   [`ComponentBuilder`](../../backend/assembly/component_builder.py) - Centraliseert het ontdekken, valideren en creëren van alle plugins
@@ -914,9 +916,9 @@ class PluginEventAdapter:
 
 *   **DTO's (Data Transfer Objects):** Pydantic-modellen zorgen voor een voorspelbare en type-veilige dataflow tussen alle componenten.
 
-**DTO Updates:**
+**V3 DTO Updates:**
 ```python
-# backend/dtos/pipeline/signal.py
+# backend/dtos/pipeline/signal.py (V3: OpportunitySignal)
 from pydantic import BaseModel, Field
 from uuid import UUID
 
@@ -932,7 +934,7 @@ class Signal(BaseModel):
     direction: str  # 'long' or 'short'
     signal_type: str
 
-# backend/dtos/execution/critical_event.py
+# backend/dtos/execution/critical_event.py (V3: ThreatSignal)
 class CriticalEvent(BaseModel):
     """Critical event DTO for threat detection."""
     
@@ -944,7 +946,7 @@ class CriticalEvent(BaseModel):
     severity: str  # 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL'
     details: Dict[str, Any]
 
-# backend/dtos/pipeline/trade_plan.py
+# backend/dtos/pipeline/trade_plan.py (V3: Enhanced)
 class TradePlan(BaseModel):
     """Complete trade plan DTO."""
     
@@ -964,7 +966,7 @@ class TradePlan(BaseModel):
 
 ### **10.8.4. Event-Driven Design Patterns** ⭐
 
-Patterns voor event-aware workflows.
+**NIEUW IN V3**: Patterns voor event-aware workflows.
 
 #### **10.8.4.1. Event Publishing Best Practices**
 
@@ -1165,9 +1167,9 @@ class DCAOpportunityScorer(BaseEventAwareWorker):
 
 ---
 
-**Voor meer details over de architectuur, zie:**
--   [`2_ARCHITECTURE.md`](2_ARCHITECTURE.md) - Complete architectuur
+**Voor meer details over V3 architectuur, zie:**
+-   [`2_ARCHITECTURE.md`](2_ARCHITECTURE.md) - Complete V3 architectuur
 -   [`3_DE_CONFIGURATIE_TREIN.md`](3_DE_CONFIGURATIE_TREIN.md) - Configuratie-gedreven design
 -   [`4_DE_PLUGIN_ANATOMIE.md`](4_DE_PLUGIN_ANATOMIE.md) - Plugin development guide
 
-**Einde Document**
+**Einde Document 10 v3.0**

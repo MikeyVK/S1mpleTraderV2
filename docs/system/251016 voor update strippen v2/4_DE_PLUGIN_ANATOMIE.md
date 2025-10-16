@@ -1,7 +1,8 @@
 # **4\. De Anatomie van een Plugin**
 
+Versie: 3.0 (V3 Worker Taxonomie & Gelaagde Capaciteiten)
 Status: Definitief
-Dit document beschrijft de gedetailleerde structuur en de technische keuzes achter de plugins in de S1mpleTrader-architectuur.
+Dit document beschrijft de gedetailleerde structuur en de technische keuzes achter de plugins in de S1mpleTrader V2 architectuur.
 
 ## **Inhoudsopgave**
 
@@ -10,13 +11,13 @@ Dit document beschrijft de gedetailleerde structuur en de technische keuzes acht
 3. [Formaat Keuzes: YAML vs. JSON](#42-formaat-keuzes-yaml-vs-json)
 4. [Het Manifest: De Zelfbeschrijvende ID-kaart](#43-het-manifest-de-zelfbeschrijvende-id-kaart)
 5. [De Worker & het BaseWorker Raamwerk](#44-de-worker--het-baseworker-raamwerk)
-6. [Gelaagde Plugin Capaciteiten](#45-gelaagde-plugin-capaciteiten)
+6. [Gelaagde Plugin Capaciteiten](#45-gelaagde-plugin-capaciteiten-nieuw-in-v3)
 
 ---
 
 ## **Executive Summary**
 
-Dit document beschrijft de plugin anatomie van S1mpleTrader, een modulair systeem gebouwd op vier kernprincipes:
+Dit document beschrijft de plugin anatomie van S1mpleTrader V3, een modulair systeem gebouwd op vier kernprincipes:
 
 ### **🎯 Kernkenmerken**
 
@@ -45,8 +46,8 @@ Dit document beschrijft de plugin anatomie van S1mpleTrader, een modulair systee
 
 ---
 
-**Architectuur Kenmerken:**
--   5 Worker Categorieën: Context, Opportunity, Threat, Planning, Execution
+**V3 Architectuur Updates:**
+-   5 Worker Categorieën (van 4): Context, Opportunity, Threat, Planning, Execution
 -   27 Sub-Categorieën voor fijnmazige classificatie
 -   Gelaagde Plugin Capaciteiten (opt-in complexiteit)
 -   Event Configuration support voor expert workflows
@@ -132,24 +133,30 @@ De identification-sectie bevat alle beschrijvende metadata.
 *   **display_name**: De naam zoals deze in de UI wordt getoond.
 *   **type**: De **cruciale** categorie die bepaalt tot welke van de vijf functionele pijlers de plugin behoort. Toegestane waarden zijn:
     *   [`context_worker`](backend/core/enums.py:WorkerType) - "De Cartograaf" - Verrijkt marktdata met context
-    *   [`opportunity_worker`](backend/core/enums.py:WorkerType) - "De Verkenner" - Herkent handelskansen
-    *   [`threat_worker`](backend/core/enums.py:WorkerType) - "De Waakhond" - Detecteert risico's
-    *   [`planning_worker`](backend/core/enums.py:WorkerType) - "De Strateeg" - Transformeert kansen naar plannen
+    *   [`opportunity_worker`](backend/core/enums.py:WorkerType) - "De Verkenner" - Herkent handelskansen (NIEUW in V3)
+    *   [`threat_worker`](backend/core/enums.py:WorkerType) - "De Waakhond" - Detecteert risico's (hernoemd van monitor_worker)
+    *   [`planning_worker`](backend/core/enums.py:WorkerType) - "De Strateeg" - Transformeert kansen naar plannen (NIEUW in V3)
     *   [`execution_worker`](backend/core/enums.py:WorkerType) - "De Uitvoerder" - Voert plannen uit en beheert posities
+
+    **Deprecation Notes:**
+    -   ⚠️ `analysis_worker` is **DEPRECATED** - gebruik [`opportunity_worker`](backend/core/enums.py:WorkerType) voor signal detection of [`planning_worker`](backend/core/enums.py:WorkerType) voor trade planning
+    -   ⚠️ `monitor_worker` is **DEPRECATED** - gebruik [`threat_worker`](backend/core/enums.py:WorkerType)
     
-*   **subtype**: De **sub-categorie** binnen het worker type. Zie sectie 4.3.1b voor alle 27 sub-categorieën.
+*   **subtype**: De **sub-categorie** binnen het worker type (NIEUW in V3). Zie sectie 4.3.1b voor alle 27 sub-categorieën.
 *   **version**: De semantische versie van de plugin (bv. 1.0.1).
 *   **description**: Een korte, duidelijke beschrijving van de functionaliteit.
 *   **author**: De naam van de ontwikkelaar.
 
-**Rationale voor de Indeling:**
-De [`OpportunityWorker`](backend/core/base_worker.py) categorie richt zich op patroonherkenning en signaal generatie, terwijl [`PlanningWorker`](backend/core/base_worker.py) zich focust op trade constructie (entry/exit planning, sizing, routing).
+**Rationale voor de Split:**
+De oorspronkelijke [`AnalysisWorker`](backend/core/base_worker.py) categorie combineerde twee fundamenteel verschillende verantwoordelijkheden:
+-   **Pure analyse** (patroonherkenning, signaal generatie) → Nu [`OpportunityWorker`](backend/core/base_worker.py)
+-   **Trade constructie** (entry/exit planning, sizing, routing) → Nu [`PlanningWorker`](backend/core/base_worker.py)
 
 Deze scheiding zorgt voor conceptuele zuiverheid en sluit beter aan bij hoe een quant denkt over strategievorming.
 
 ### **4.3.1b. De 27 Sub-Categorieën**
 
-De architectuur biedt een verfijnde taxonomie met **27 sub-categorieën** verdeeld over de 5 worker types. Deze sub-categorieën bieden fijnmazige classificatie voor betere organisatie, filtering en begrip van plugin functionaliteit.
+V3 introduceert een verfijnde taxonomie met **27 sub-categorieën** verdeeld over de 5 worker types. Deze sub-categorieën bieden fijnmazige classificatie voor betere organisatie, filtering en begrip van plugin functionaliteit.
 
 #### **ContextType (7 sub-categorieën)**
 

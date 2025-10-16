@@ -1,7 +1,8 @@
 # **6. Frontend Integratie: De UI als Intelligente IDE**
 
+Versie: 3.0 (V3 Architectuur - Volledige V3 Support)
 Status: Definitief
-Dit document beschrijft de volledige gebruikersworkflow en de frontend-architectuur die nodig is om de optimale gebruikerservaring te realiseren.
+Dit document beschrijft de volledige gebruikersworkflow en de frontend-architectuur die nodig is om de "supercharged" V3-ervaring te realiseren.
 
 ## **Inhoudsopgave**
 
@@ -10,13 +11,13 @@ Dit document beschrijft de volledige gebruikersworkflow en de frontend-architect
 3. [De Werkruimtes: Een Context-Bewuste Workflow](#62-de-werkruimtes-een-context-bewuste-workflow)
 4. [De "Top-Down" Configuratie Flow](#63-de-top-down-configuratie-flow)
 5. [Het Frontend-Backend Contract: BFF & TypeScript](#64-het-frontend-backend-contract-bff--typescript)
-6. [Architectuur Features](#65-architectuur-features)
+6. [V3 Architectuur Features](#65-v3-architectuur-features)
 
 ---
 
 ## **Executive Summary**
 
-Dit document beschrijft de frontendstrategie, die de web-UI transformeert van een simpele presentatielaag naar de **primaire, geïntegreerde ontwikkelomgeving (IDE)** voor de kwantitatieve strateeg. De architectuur is ontworpen om de fundamentele architectuur volledig te ondersteunen, waardoor de "Bouwen → Meten → Leren"-cyclus wordt versneld van uren naar minuten.
+Dit document beschrijft de V3-frontendstrategie, die de web-UI transformeert van een simpele presentatielaag naar de **primaire, geïntegreerde ontwikkelomgeving (IDE)** voor de kwantitatieve strateeg. De architectuur is ontworpen om de zes fundamentele paradigma-shifts van V3 volledig te ondersteunen, waardoor de "Bouwen → Meten → Leren"-cyclus wordt versneld van uren naar minuten.
 
 ### **🎯 Kernkenmerken**
 
@@ -45,8 +46,8 @@ Dit document beschrijft de frontendstrategie, die de web-UI transformeert van ee
 
 De kern van de V3-frontendstrategie is een paradigmaverschuiving: de web-UI is niet langer een simpele presentatielaag, maar de **primaire, geïntegreerde ontwikkelomgeving (IDE)** voor de kwantitatieve strateeg. Elke stap in de workflow, van het beheren van operaties tot het diepgaand analyseren van resultaten, vindt plaats binnen een naadloze, interactieve webapplicatie.
 
-**Architectuur Ondersteuning:**
--   Volledige ondersteuning voor 5 worker categorieën
+**V3 Uitbreidingen:**
+-   Volledige ondersteuning voor 5 worker categorieën (was 4)
 -   27 sub-categorieën voor fijnmazige classificatie
 -   Event configuratie wizard (3 niveaus: Implicit/Predefined/Custom)
 -   Operator gedrag configuratie UI
@@ -62,7 +63,7 @@ De hoofdnavigatie van de applicatie wordt gevormd door een reeks "werkruimtes". 
 
 | **OPERATION MANAGEMENT** | **STRATEGY BUILDER** | **BACKTESTING & ANALYSIS** | **LIVE MONITORING** | **PLUGIN DEVELOPMENT** |
 
-### **6.2.1. Werkruimte Updates**
+### **6.2.1. V3 Werkruimte Updates**
 
 **STRATEGY BUILDER** (Grootste update):
 -   **5 Worker Categorieën** gevisualiseerd (Context, Opportunity, Threat, Planning, Execution)
@@ -116,7 +117,7 @@ Deze werkruimte wordt **altijd gestart vanuit de context van een specifieke Oper
 
 De wizard toont alleen de handelsparen en timeframes die beschikbaar zijn binnen de ExecutionEnvironment(s) van de actieve Operation.
 
-#### **6.3.2. Visuele Workforce Builder** ⭐
+#### **6.3.2. Visuele Workforce Builder (V3 Update)** ⭐
 
 **5-Categorieën Layout:**
 
@@ -215,7 +216,7 @@ De wizard toont alleen de handelsparen en timeframes die beschikbaar zijn binnen
 └─────────────────────────────────────────────────────────────┘
 ```
 
-6.3.2a. Plugin Bibliotheek - Dynamische Filtering op Multiple Dimensies
+6.3.2a. Plugin Bibliotheek (V3 Update)Dynamische Filtering op Multiple Dimensies:// Frontend: Plugin filtering interface
 interface PluginFilter {
   workerType?: WorkerType;           // Context, Opportunity, Threat, Planning, Execution
   subType?: SubType;                 // 27 sub-categorieën
@@ -269,7 +270,7 @@ UI Visualisatie:┌────────────────────�
 │                                                              │
 └─────────────────────────────────────────────────────────────┘
 
-#### **6.3.2b. Operator Configuration UI**
+#### **6.3.2b. Operator Configuration UI** ⭐ NIEUW
 
 **Doel:** Visuele editor voor [`operators.yaml`](config/operators.yaml) die quants in staat stelt operator gedrag te configureren zonder YAML te bewerken.
 
@@ -373,8 +374,7 @@ function DataFlowPreview({ config }: { config: OperatorConfig }) {
 }
 ```
 
-6.3.3. Event & Capability Configuratie
-De event-configuratie is onlosmakelijk verbonden met de events-capability in het manifest.yaml. De UI toont de configuratie-opties binnen de context van de worker die de events-capability heeft aangevraagd. Geen aparte "Event Configuration Wizard" - de configuratie wordt direct beheerd in het paneel van de betreffende worker.
+6.3.3. Event & Capability ConfiguratieIn de V3-architectuur is de event-configuratie onlosmakelijk verbonden met de events-capability in het manifest.yaml. De UI moet dit reflecteren door de configuratie-opties te tonen binnen de context van de worker die de events-capability heeft aangevraagd.Geen aparte "Event Configuration Wizard" meer. In plaats daarvan wordt de configuratie direct beheerd in het paneel van de betreffende worker.
 
 6.3.4. Configuratie Paneel (Enhanced)Wanneer een plugin wordt geplaatst, verschijnt er een paneel met een automatisch gegenereerd formulier op basis van de schema.py en het manifest.yaml van de plugin.V3 Enhancements:Capabilities Indicators: Toont welke capabilities (state, events, journaling) zijn ingeschakeld in het manifest.Inline Capability Configuratie: Biedt direct de mogelijkheid om de details van een capability te configureren (bv. de wirings voor de events-capability).Voorbeeld: EventDrivenWorker Configuratie┌─────────────────────────────────────────────────────────────┐
 │  PLUGIN CONFIGURATION: Adaptive DCA Planner                  │
@@ -771,7 +771,7 @@ interface ActiveThreat {
     *   **Plugin Registry Viewer:** Een overzichtstabel van alle ontdekte plugins met V3 sub-categorie filtering.
     *   **Plugin Creator Wizard:** Een formulier om de boilerplate-code voor een nieuwe plugin te genereren, inclusief keuze voor capabilities (stateful/event-aware/journaling).
     *   **Unit Test Runner:** Een UI-knop per plugin om de bijbehorende unit tests op de backend uit te voeren.
-    *   **Capability Selector:** Visuele wizard voor het kiezen van plugin capabilities (BaseWorker, BaseStatefulWorker, BaseEventAwareWorker, BaseJournalingWorker).
+    *   **Capability Selector (NIEUW):** Visuele wizard voor het kiezen van plugin capabilities (BaseWorker, BaseStatefulWorker, BaseEventAwareWorker, BaseJournalingWorker).
 *   **Backend Interactie:** De UI communiceert met een `PluginQueryService` en een `PluginEditorService`.
 
 ---
@@ -784,9 +784,9 @@ De naadloze ervaring wordt technisch mogelijk gemaakt door twee kernprincipes:
 
 2.  **Contractuele Zekerheid met TypeScript:** We formaliseren het contract. Een tool in de ontwikkel-workflow leest de Pydantic-modellen en genereert automatisch corresponderende **TypeScript interfaces**. Een wijziging in de backend die niet in de frontend wordt doorgevoerd, leidt onmiddellijk tot een **compile-fout**, niet tot een onverwachte bug in productie.
 
-### **6.4.1. DTO Interfaces**
+### **6.4.1. V3 DTO Interfaces**
 
-**DTOs voor causale traceability:**
+**Nieuwe V3 DTOs voor causale traceability:**
 
 ```typescript
 // backend/dtos/pipeline/opportunity_signal.ts (gegenereerd uit Pydantic)
@@ -855,9 +855,9 @@ interface OperatorConfig {
 }
 ```
 
-### **6.4.2. BFF API Endpoints**
+### **6.4.2. BFF API Endpoints (V3 Updates)**
 
-**Endpoints voor causale analyse:**
+**Nieuwe V3 endpoints voor causale analyse:**
 
 ```typescript
 // GET /api/v3/analysis/causal-chain/:tradeId
@@ -907,11 +907,11 @@ Deze aanpak zorgt voor een robuust, ontkoppeld en tegelijkertijd perfect gesynch
 
 ---
 
-## **6.5. Architectuur Features: Samenvatting**
+## **6.5. V3 Architectuur Features: Samenvatting**
 
-6.5.1. De Architectuur in de UI| # | Kenmerk | UI Impact | Componenten || 1 | 5 Worker Categorieën | Visuele workforce met 5 secties + 27 sub-categorie filters | Workforce Builder, Plugin Library || 2 | Causaal ID Framework | Volledige "waarom"-analyse in Trade Explorer | Trade Explorer, Journal Viewer, Causal Reconstruction || 3 | Ledger/Journal Scheiding | Gescheiden views voor operationele staat vs analytische historie | Live Dashboard, Journal Viewer || 4 | Data-Gedreven Operators | Visuele operator configuratie editor | Operator Configuration UI || 5 | Unified Persistence | Transparant voor UI (backend implementatie detail) | N/A || 6 | Manifest-Gedreven Capabilities | Capability indicators & inline configuratie in worker paneel | Plugin Cards, Configuration Panel |
+6.5.1. De 6 Paradigma-Shifts in de UI| # | Shift | UI Impact | Componenten || 1 | 5 Worker Categorieën | Visuele workforce met 5 secties + 27 sub-categorie filters | Workforce Builder, Plugin Library || 2 | Causaal ID Framework | Volledige "waarom"-analyse in Trade Explorer | Trade Explorer, Journal Viewer, Causal Reconstruction || 3 | Ledger/Journal Scheiding | Gescheiden views voor operationele staat vs analytische historie | Live Dashboard, Journal Viewer || 4 | Data-Gedreven Operators | Visuele operator configuratie editor | Operator Configuration UI || 5 | Unified Persistence | Transparant voor UI (backend implementatie detail) | N/A || 6 | Manifest-Gedreven Capabilities | Capability indicators & inline configuratie in worker paneel. De oude "gelaagde" capabilities zijn vervangen. | Plugin Cards, Configuration Panel |
 
-### **6.5.2. UI Componenten**
+### **6.5.2. Nieuwe UI Componenten (V3)**
 
 **Strategy Builder:**
 -   ✨ **5-Worker Categorieën Layout** met visuele scheiding
@@ -935,7 +935,7 @@ Deze aanpak zorgt voor een robuust, ontkoppeld en tegelijkertijd perfect gesynch
 
 ### **6.5.3. TypeScript Type Safety**
 
-**Het systeem biedt volledige type safety voor:**
+**V3 biedt volledige type safety voor:**
 -   ✅ Alle 5 worker categorieën + 27 sub-types
 -   ✅ Event configuration (triggers, publishes, requiresAll)
 -   ✅ Operator configuration (execution + aggregation strategies)
@@ -1035,9 +1035,9 @@ De V3 frontend integratie transfor mee de UI van een simpele presentatielaag naa
 
 ---
 
-**Einde Frontend Integratie Document**
+**Einde Frontend Integratie Document V3.0**
 
 **Versie Historie:**
 -   V1.0 (2023): Initiële versie met 4 worker categorieën
 -   V2.0 (2024): Details hersteld
--   Huidige versie: Volledige architectuur support - 5 worker categorieën, causaal ID framework, operator configuratie UI, event wizard
+-   V3.0 (2025-10-14): Volledige V3 architectuur support - 5 worker categorieën, causaal ID framework, operator configuratie UI, event wizard

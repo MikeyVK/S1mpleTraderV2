@@ -1,5 +1,5 @@
 
-# **S1mpleTrader: Complete System Design**
+# **S1mpleTrader V3: Complete System Design**
 
 **Versie:** 3.0  
 **Status:** Definitief Ontwerp  
@@ -27,7 +27,7 @@
 
 ## **1. Executive Summary**
 
-Dit document beschrijft het complete systeemontwerp voor S1mpleTrader, een configuratie-gedreven, event-driven trading platform gebouwd op strikte SOLID principes en dependency injection.
+Dit document beschrijft het complete systeemontwerp voor S1mpleTrader V3, een configuratie-gedreven, event-driven trading platform gebouwd op strikte SOLID principes en dependency injection.
 
 ### **1.1. Kernprincipes**
 
@@ -65,16 +65,16 @@ S1mpleTraderV2/
 │   │   └── schemas/
 │   │       ├── __init__.py
 │   │       ├── platform_schema.py
-│   │   ├── operators_schema.py
-│   │   ├── schedule_schema.py
-│   │   ├── event_map_schema.py
-│   │   ├── wiring_map_schema.py
-│   │   ├── operation_schema.py
-│   │   ├── strategy_blueprint_schema.py
-│   │   ├── plugin_manifest_schema.py
-│   │   ├── connectors_schema.py
-│   │   ├── data_sources_schema.py
-│   │   ├── environments_schema.py
+│   │       ├── operators_schema.py          # NIEUW V3
+│   │       ├── schedule_schema.py           # NIEUW V3
+│   │       ├── event_map_schema.py          # NIEUW V3
+│   │       ├── wiring_map_schema.py         # NIEUW V3
+│   │       ├── operation_schema.py          # V3 (was portfolio_schema.py)
+│   │       ├── strategy_blueprint_schema.py # V3 (was run_schema.py)
+│   │       ├── plugin_manifest_schema.py
+│   │       ├── connectors_schema.py
+│   │       ├── data_sources_schema.py       # NIEUW V3
+│   │       ├── environments_schema.py        # NIEUW V3
 │   │       └── connectors/
 │   │           ├── __init__.py
 │   │           └── kraken_schema.py
@@ -82,46 +82,46 @@ S1mpleTraderV2/
 │   ├── core/
 │   │   ├── __init__.py
 │   │   ├── constants.py
-│   │   ├── enums.py
+│   │   ├── enums.py                         # V3 uitgebreid
 │   │   │
-│   │   ├── base_worker.py
-│   │   ├── strategy_ledger.py
-│   │   ├── strategy_journal.py
-│   │   ├── event_bus.py
-│   │   ├── scheduler.py
+│   │   ├── base_worker.py                   # V3.2 met StandardWorker & EventDrivenWorker
+│   │   ├── strategy_ledger.py               # NIEUW V3 (operationele staat)
+│   │   ├── strategy_journal.py              # NIEUW V3 (causale geschiedenis)
+│   │   ├── event_bus.py                     # NIEUW V3
+│   │   ├── scheduler.py                     # NIEUW V3
 │   │   │
 │   │   ├── operators/
 │   │   │   ├── __init__.py
-│   │   │   └── base_operator.py
+│   │   │   └── base_operator.py             # V3.1 'domme' uitvoerder
 │   │   │
 │   │   └── interfaces/
 │   │       ├── __init__.py
 │   │       ├── worker.py                    # IWorker protocol
 │   │       ├── operator.py                  # IOperator protocol
-│   │       ├── event_handler.py
-│   │       ├── connectors.py
-│   │       ├── persistors.py
+│   │       ├── event_handler.py             # NIEUW V3
+│   │       ├── connectors.py                # IAPIConnector
+│   │       ├── persistors.py                # NIEUW V3 (IDataPersistor, IStatePersistor, IJournalPersistor)
 │   │       ├── execution.py                 # IExecutionHandler
 │   │       └── environment.py               # IExecutionEnvironment
 │   │
 │   ├── assembly/
 │   │   ├── __init__.py
-│   │   ├── context_builder.py               # bootstrap orchestrator
+│   │   ├── context_builder.py               # V3 bootstrap orchestrator
 │   │   ├── plugin_registry.py
-│   │   ├── worker_builder.py
-│   │   ├── operator_factory.py
-│   │   ├── persistor_factory.py
+│   │   ├── worker_builder.py                # V3 met DI injection
+│   │   ├── operator_factory.py              # NIEUW V3
+│   │   ├── persistor_factory.py             # NIEUW V3
 │   │   ├── connector_factory.py
-│   │   ├── plugin_event_adapter.py
-│   │   ├── event_wiring_factory.py
-│   │   ├── event_chain_validator.py
+│   │   ├── plugin_event_adapter.py          # NIEUW V3
+│   │   ├── event_wiring_factory.py          # NIEUW V3
+│   │   ├── event_chain_validator.py         # NIEUW V3
 │   │   ├── dependency_validator.py
-│   │   └── config_validator.py
+│   │   └── config_validator.py              # NIEUW V3 (unified validation)
 │   │
 │   ├── dtos/
 │   │   ├── __init__.py
 │   │   │
-│   │   ├── config/
+│   │   ├── config/                          # NIEUW V3 (config DTOs)
 │   │   │   ├── __init__.py
 │   │   │   ├── operator_config.py
 │   │   │   ├── schedule_config.py
@@ -130,17 +130,17 @@ S1mpleTraderV2/
 │   │   │
 │   │   ├── state/
 │   │   │   ├── __init__.py
-│   │   │   ├── trading_context.py
-│   │   │   ├── ledger_state.py
-│   │   │   ├── journal_entry.py
-│   │   │   ├── operation_parameters.py
-│   │   │   ├── bootstrap_result.py
-│   │   │   ├── operation_summary.py
-│   │   │   └── scheduled_tick.py
+│   │   │   ├── trading_context.py           # V3 enhanced
+│   │   │   ├── ledger_state.py              # NIEUW V3
+│   │   │   ├── journal_entry.py             # NIEUW V3
+│   │   │   ├── operation_parameters.py      # NIEUW V3
+│   │   │   ├── bootstrap_result.py          # NIEUW V3
+│   │   │   ├── operation_summary.py         # NIEUW V3
+│   │   │   └── scheduled_tick.py            # NIEUW V3
 │   │   │
 │   │   ├── pipeline/
 │   │   │   ├── __init__.py
-│   │   │   ├── signal.py
+│   │   │   ├── signal.py                    # V3 met opportunity_id
 │   │   │   ├── entry_signal.py
 │   │   │   ├── risk_defined_signal.py
 │   │   │   ├── trade_plan.py
@@ -148,9 +148,9 @@ S1mpleTraderV2/
 │   │   │
 │   │   ├── execution/
 │   │   │   ├── __init__.py
-│   │   │   ├── critical_event.py
+│   │   │   ├── critical_event.py            # V3 met threat_id
 │   │   │   ├── execution_directive.py
-│   │   │   └── shutdown_signal.py
+│   │   │   └── shutdown_signal.py           # NIEUW V3
 │   │   │
 │   │   ├── market/
 │   │   │   ├── __init__.py
@@ -176,14 +176,14 @@ S1mpleTraderV2/
 │   │   └── persistors/
 │   │       ├── __init__.py
 │   │       ├── parquet_persistor.py
-│   │       └── json_persistor.py
+│   │       └── json_persistor.py            # NIEUW V3 (atomic + append modes)
 │   │
 │   ├── environments/
 │   │   ├── __init__.py
-│   │   ├── base_environment.py
-│   │   ├── backtest_environment.py
-│   │   ├── paper_environment.py
-│   │   ├── live_environment.py
+│   │   ├── base_environment.py              # NIEUW V3
+│   │   ├── backtest_environment.py          # V3 enhanced
+│   │   ├── paper_environment.py             # V3 enhanced
+│   │   ├── live_environment.py              # V3 enhanced
 │   │   └── api_connectors/
 │   │       ├── __init__.py
 │   │       └── kraken_connector.py
@@ -197,8 +197,8 @@ S1mpleTraderV2/
 │
 ├── services/
 │   ├── __init__.py
-│   ├── operation_service.py
-│   ├── scheduler_service.py
+│   ├── operation_service.py                 # NIEUW V3 (replaces strategy_operator)
+│   ├── scheduler_service.py                 # NIEUW V3
 │   │
 │   ├── data_services/
 │   │   ├── __init__.py
@@ -255,7 +255,7 @@ S1mpleTraderV2/
 │   │   └── fundamental_enrichment/          # ContextType: FUNDAMENTAL_ENRICHMENT
 │   │       └── onchain_metrics_enricher/
 │   │
-│   ├── opportunity_workers/
+│   ├── opportunity_workers/                 # NIEUW V3
 │   │   ├── __init__.py
 │   │   │
 │   │   ├── technical_pattern/               # OpportunityType: TECHNICAL_PATTERN
@@ -289,7 +289,7 @@ S1mpleTraderV2/
 │   │   └── ml_prediction/                   # OpportunityType: ML_PREDICTION
 │   │       └── pattern_recognition_ai/
 │   │
-│   ├── threat_workers/
+│   ├── threat_workers/                      # NIEUW V3 (was monitor_workers)
 │   │   ├── __init__.py
 │   │   │
 │   │   ├── portfolio_risk/                  # ThreatType: PORTFOLIO_RISK
@@ -318,7 +318,7 @@ S1mpleTraderV2/
 │   │   └── external_event/                  # ThreatType: EXTERNAL_EVENT
 │   │       └── news_event_monitor/
 │   │
-│   ├── planning_workers/
+│   ├── planning_workers/                    # NIEUW V3
 │   │   ├── __init__.py
 │   │   │
 │   │   ├── entry_planning/                  # PlanningPhase: ENTRY_PLANNING
@@ -374,14 +374,14 @@ S1mpleTraderV2/
 ├── config/
 │   ├── __init__.py
 │   ├── platform.yaml
-│   ├── operators.yaml
-│   ├── schedule.yaml
-│   ├── event_map.yaml
-│   ├── wiring_map.yaml
+│   ├── operators.yaml                       # NIEUW V3
+│   ├── schedule.yaml                        # NIEUW V3
+│   ├── event_map.yaml                       # NIEUW V3
+│   ├── wiring_map.yaml                      # NIEUW V3
 │   ├── connectors.yaml
-│   ├── data_sources.yaml
-│   ├── environments.yaml
-│   ├── operation.yaml
+│   ├── data_sources.yaml                    # NIEUW V3
+│   ├── environments.yaml                    # NIEUW V3
+│   ├── operation.yaml                       # V3 (was portfolio.yaml)
 │   ├── index.yaml
 │   │
 │   ├── runs/
@@ -402,7 +402,7 @@ S1mpleTraderV2/
 │   │
 │   ├── cli/
 │   │   ├── __init__.py
-│   │   ├── run_operation_entrypoint.py
+│   │   ├── run_operation_entrypoint.py             # V3 entrypoint
 │   │   ├── run_data_cli.py
 │   │   ├── presenters/
 │   │   │   ├── __init__.py
@@ -418,7 +418,7 @@ S1mpleTraderV2/
 │       │   ├── main.py
 │       │   └── routers/
 │       │       ├── __init__.py
-│       │       ├── operations_router.py
+│       │       ├── operations_router.py     # NIEUW V3
 │       │       ├── backtest_router.py
 │       │       └── plugins_router.py
 │       │
@@ -488,10 +488,10 @@ S1mpleTraderV2/
 │   └── en.yaml
 │
 ├── tools/
-│   ├── migrate_v2_to_v3.py
-│   └── validate_event_chains.py
+│   ├── migrate_v2_to_v3.py                  # NIEUW V3
+│   └── validate_event_chains.py             # NIEUW V3
 │
-├── run_operation.py
+├── run_operation.py                         # V3 entrypoint (was run_backtest_cli.py)
 ├── run_supervisor.py
 ├── run_web.py
 ├── requirements.txt
@@ -1464,7 +1464,7 @@ class JournalEntry(BaseModel):
 **Type:** Data Contract DTO  
 **Layer:** Backend (DTO)  
 **Dependencies:** `[Pydantic, UUID, datetime]`  
-**Beschrijving:** Signal DTO met opportunity_id voor causale traceability.
+**Beschrijving:** V3 Signal DTO met opportunity_id voor causale traceability.
 
 **Responsibilities:**
 - Representeert een gedetecteerde handelskans
@@ -1474,7 +1474,7 @@ class JournalEntry(BaseModel):
 ```python
 # backend/dtos/pipeline/signal.py
 """
-Signal DTO with opportunity_id for causal traceability.
+V3 Signal DTO with opportunity_id for causal traceability.
 
 @layer: Backend (DTO)
 @dependencies: [Pydantic, UUID, datetime]
@@ -1492,7 +1492,7 @@ class Signal(BaseModel):
     """
     Represents a detected trading opportunity.
     
-    Uses OpportunityID instead of generic correlation_id
+    V3 Enhancement: Uses OpportunityID instead of generic correlation_id
     for full causal traceability.
     """
     
@@ -1519,7 +1519,7 @@ class Signal(BaseModel):
 **Type:** Data Contract DTO  
 **Layer:** Backend (DTO)  
 **Dependencies:** `[Pydantic, UUID, datetime]`  
-**Beschrijving:** CriticalEvent DTO met threat_id voor causale traceability.
+**Beschrijving:** V3 CriticalEvent DTO met threat_id voor causale traceability.
 
 **Responsibilities:**
 - Representeert een gedetecteerd risico of bedreiging
@@ -1529,7 +1529,7 @@ class Signal(BaseModel):
 ```python
 # backend/dtos/execution/critical_event.py
 """
-CriticalEvent DTO with threat_id for causal traceability.
+V3 CriticalEvent DTO with threat_id for causal traceability.
 
 @layer: Backend (DTO)
 @dependencies: [Pydantic, UUID, datetime]
@@ -1547,7 +1547,7 @@ class CriticalEvent(BaseModel):
     """
     Represents a detected threat or risk.
     
-    Uses ThreatID for full causal traceability.
+    V3 Enhancement: Uses ThreatID for full causal traceability.
     """
     
     threat_id: UUID = Field(
@@ -1579,7 +1579,7 @@ class CriticalEvent(BaseModel):
 **Type:** Data Contract DTO  
 **Layer:** Backend (DTO)  
 **Dependencies:** `[Pydantic, pandas, datetime]`  
-**Beschrijving:** TradingContext - volledig en direct gecreëerd door ExecutionEnvironment.
+**Beschrijving:** V3 TradingContext - volledig en direct gecreëerd door ExecutionEnvironment.
 
 **Responsibilities:**
 - Bevat volledige trading context voor één tick
@@ -1590,7 +1590,7 @@ class CriticalEvent(BaseModel):
 ```python
 # backend/dtos/state/trading_context.py
 """
-TradingContext - complete and directly created by ExecutionEnvironment.
+V3 TradingContext - complete and directly created by ExecutionEnvironment.
 
 @layer: Backend (DTO)
 @dependencies: [Pydantic, pandas, datetime]
@@ -1609,7 +1609,7 @@ class TradingContext(BaseModel):
     """
     Complete trading context for a single tick.
     
-    Created by ExecutionEnvironment, includes strategy_link_id.
+    V3 Enhancement: Created by ExecutionEnvironment, includes strategy_link_id.
     """
     
     # Core identifiers
@@ -1713,7 +1713,7 @@ class IEventHandler(Protocol):
 **Type:** Interface Contract (Protocol)  
 **Layer:** Backend (Core Interfaces)  
 **Dependencies:** `[typing, Protocol, pandas]`  
-**Beschrijving:** Persistence Suite - drie gespecialiseerde interfaces.
+**Beschrijving:** V3 Persistence Suite - drie gespecialiseerde interfaces.
 
 **Responsibilities:**
 - Definieert IDataPersistor voor marktdata (Parquet)
@@ -1723,7 +1723,7 @@ class IEventHandler(Protocol):
 ```python
 # backend/core/interfaces/persistors.py
 """
-Persistence Suite - three specialized interfaces.
+V3 Persistence Suite - three specialized interfaces.
 
 @layer: Backend (Core Interfaces)
 @dependencies: [typing, Protocol, pandas]
@@ -2853,7 +2853,7 @@ class ContextBuilder:
 **Type:** Enumerations  
 **Layer:** Backend (Core)  
 **Dependencies:** `[enum]`  
-**Beschrijving:** Uitgebreide enums met alle worker types en sub-types.
+**Beschrijving:** V3 uitgebreide enums met alle worker types en sub-types.
 
 **Responsibilities:**
 - Definieert WorkerType enum (5 categorieën)
@@ -2864,7 +2864,7 @@ class ContextBuilder:
 ```python
 # backend/core/enums.py
 """
-Extended enums with all worker types and sub-types.
+V3 extended enums with all worker types and sub-types.
 
 @layer: Backend (Core)
 @dependencies: [enum]
@@ -2880,7 +2880,7 @@ from enum import Enum
 
 class WorkerType(str, Enum):
     """
-    The 5 fundamental worker categories in the architecture.
+    The 5 fundamental worker categories in V3 architecture.
     
     Each represents a distinct functional role:
     - CONTEXT_WORKER: Enriches market data with context
@@ -2899,7 +2899,7 @@ class WorkerType(str, Enum):
 # === SUB-TYPE ENUMS (27 TOTAL) ===
 
 class ContextType(str, Enum):
-    """Sub-categories for ContextWorker plugins."""
+    """7 sub-categories for ContextWorker plugins."""
     REGIME_CLASSIFICATION = "regime_classification"
     STRUCTURAL_ANALYSIS = "structural_analysis"
     INDICATOR_CALCULATION = "indicator_calculation"
@@ -2909,7 +2909,7 @@ class ContextType(str, Enum):
     FUNDAMENTAL_ENRICHMENT = "fundamental_enrichment"
 
 class OpportunityType(str, Enum):
-    """Sub-categories for OpportunityWorker plugins."""
+    """7 sub-categories for OpportunityWorker plugins."""
     TECHNICAL_PATTERN = "technical_pattern"
     MOMENTUM_SIGNAL = "momentum_signal"
     MEAN_REVERSION = "mean_reversion"
@@ -2919,7 +2919,7 @@ class OpportunityType(str, Enum):
     ML_PREDICTION = "ml_prediction"
 
 class ThreatType(str, Enum):
-    """Sub-categories for ThreatWorker plugins."""
+    """5 sub-categories for ThreatWorker plugins."""
     PORTFOLIO_RISK = "portfolio_risk"
     MARKET_RISK = "market_risk"
     SYSTEM_HEALTH = "system_health"
@@ -2927,14 +2927,14 @@ class ThreatType(str, Enum):
     EXTERNAL_EVENT = "external_event"
 
 class PlanningPhase(str, Enum):
-    """Sub-categories for PlanningWorker plugins."""
+    """4 sub-categories for PlanningWorker plugins."""
     ENTRY_PLANNING = "entry_planning"
     EXIT_PLANNING = "exit_planning"
     SIZE_PLANNING = "size_planning"
     ORDER_ROUTING = "order_routing"
 
 class ExecutionType(str, Enum):
-    """Sub-categories for ExecutionWorker plugins."""
+    """4 sub-categories for ExecutionWorker plugins."""
     TRADE_INITIATION = "trade_initiation"
     POSITION_MANAGEMENT = "position_management"
     RISK_SAFETY = "risk_safety"
@@ -3300,7 +3300,7 @@ class StrategyLedger:
     """
     Fast, operational ledger.
     
-    "The Dumb Ledger" - only current state, no history.
+    V3 Philosophy: "The Dumb Ledger" - only current state, no history.
     History and causal data lives in StrategyJournal.
     """
     
@@ -3449,7 +3449,7 @@ class StrategyJournal:
     """
     Intelligent notary.
     
-    Complete causal history with OpportunityID, ThreatID,
+    V3 Philosophy: Complete causal history with OpportunityID, ThreatID,
     TradeID for full "why" analysis.
     """
     
@@ -3587,7 +3587,7 @@ class StrategyJournal:
 **Type:** Base Class (Abstract)
 **Layer:** Backend (Core)
 **Dependencies:** `[abc, typing]`
-**Beschrijving:** Architectuur met ROL-definiërende basisklassen.
+**Beschrijving:** V3.2 architectuur met ROL-definiërende basisklassen.
 
 **Responsibilities:**
 - Definieert `BaseWorker` als de absolute basis.
@@ -3677,7 +3677,7 @@ class BaseOperator:
     """
     Generic, configuration-driven operator.
     
-    "Dumb executor, setup-phase is smart"
+    V3.1 Philosophy: "Dumb executor, setup-phase is smart"
     Behavior is determined by its configuration and the pre-prepared
     list of workers it receives.
     """
@@ -4131,7 +4131,7 @@ class SchedulerService:
 **Type:** Entrypoint  
 **Layer:** Frontend  
 **Dependencies:** `[argparse, services.operation_service]`  
-**Beschrijving:** CLI entrypoint voor het draaien van een operatie.
+**Beschrijving:** CLI entrypoint voor het draaien van een operation.
 
 **Responsibilities:**
 - Parst command-line argumenten
@@ -4161,7 +4161,7 @@ from backend.utils.app_logger import setup_logger
 def main():
     """Main CLI entrypoint."""
     parser = argparse.ArgumentParser(
-        description="Run S1mpleTrader Operation"
+        description="Run S1mpleTrader V3 Operation"
     )
     parser.add_argument(
         'operation',
@@ -4532,14 +4532,14 @@ Volgens TDD adagium en dependency principes:
 
 ### **Fase 1: Configuratie Schemas + Voorbeeld YAML**
 
-1. ✅ `backend/core/enums.py` (alle enums)
+1. ✅ `backend/core/enums.py` (alle V3 enums)
 2. ✅ `backend/config/schemas/operators_schema.py` + `config/operators.yaml`
 3. ✅ `backend/config/schemas/schedule_schema.py` + `config/schedule.yaml`
 4. ✅ `backend/config/schemas/event_map_schema.py` + `config/event_map.yaml`
 5. ✅ `backend/config/schemas/wiring_map_schema.py` + `config/wiring_map.yaml`
 6. ✅ `backend/config/schemas/operation_schema.py` + update `config/operation.yaml`
 7. ✅ `backend/config/schemas/strategy_blueprint_schema.py` + voorbeelden in `config/runs/`
-8. ✅ Update `backend/config/schemas/plugin_manifest_schema.py`
+8. ✅ Update `backend/config/schemas/plugin_manifest_schema.py` voor V3
 
 **Tests:** `tests/unit/config/test_*_schema.py` voor elk schema
 
@@ -4581,7 +4581,7 @@ Volgens TDD adagium en dependency principes:
 26. ✅ `backend/core/scheduler.py`
 27. ✅ `backend/core/strategy_ledger.py`
 28. ✅ `backend/core/strategy_journal.py`
-29. ✅ Update `backend/core/base_worker.py` (hiërarchie)
+29. ✅ Update `backend/core/base_worker.py` (V3 hierarchy)
 30. ✅ `backend/core/operators/base_operator.py`
 
 **Tests:**
@@ -4600,12 +4600,12 @@ Volgens TDD adagium en dependency principes:
 
 31. ✅ `backend/assembly/persistor_factory.py`
 32. ✅ `backend/assembly/operator_factory.py`
-33. ✅ Update `backend/assembly/worker_builder.py` (DI injection)
+33. ✅ Update `backend/assembly/worker_builder.py` (V3 DI injection)
 34. ✅ `backend/assembly/plugin_event_adapter.py`
 35. ✅ `backend/assembly/event_wiring_factory.py`
 36. ✅ `backend/assembly/event_chain_validator.py`
-37. ✅ Update `backend/assembly/context_builder.py` (bootstrap orchestrator)
-38. ✅ Update `backend/assembly/plugin_registry.py` (manifest validation)
+37. ✅ Update `backend/assembly/context_builder.py` (V3 bootstrap orchestrator)
+38. ✅ Update `backend/assembly/plugin_registry.py` (V3 manifest validation)
 
 **Tests:**
 - `tests/unit/assembly/test_persistor_factory.py`
@@ -4633,9 +4633,9 @@ Volgens TDD adagium en dependency principes:
 ### **Fase 7: Execution Environments**
 
 41. ✅ `backend/environments/base_environment.py` (abstract base)
-42. ✅ Update `backend/environments/backtest_environment.py` (TradingContext creation)
-43. ✅ Update `backend/environments/paper_environment.py` (TradingContext creation)
-44. ✅ Update `backend/environments/live_environment.py` (TradingContext creation)
+42. ✅ Update `backend/environments/backtest_environment.py` (V3 TradingContext creation)
+43. ✅ Update `backend/environments/paper_environment.py` (V3 TradingContext creation)
+44. ✅ Update `backend/environments/live_environment.py` (V3 TradingContext creation)
 
 **Tests:**
 - `tests/unit/environments/test_backtest_environment.py`
@@ -4646,10 +4646,10 @@ Volgens TDD adagium en dependency principes:
 
 ### **Fase 8: Services**
 
-45. ✅ `services/operation_service.py`
+45. ✅ `services/operation_service.py` (replaces strategy_operator.py)
 46. ✅ `services/scheduler_service.py`
-47. ✅ Update `services/data_query_service.py` (compatibiliteit)
-48. ✅ Update `services/data_command_service.py` (compatibiliteit)
+47. ✅ Update `services/data_query_service.py` (V3 compatibility)
+48. ✅ Update `services/data_command_service.py` (V3 compatibility)
 
 **Tests:**
 - `tests/unit/services/test_operation_service.py`
@@ -4660,7 +4660,7 @@ Volgens TDD adagium en dependency principes:
 
 ### **Fase 9: Plugin Migration & Creation**
 
-49. ✅ Migreer bestaande plugins naar de nieuwe structuur
+49. ✅ Migreer bestaande plugins naar V3 structure
    - Update manifests (type + subtype)
    - Herstructureer in correcte directories
    - Update naar nieuwe base classes waar nodig
@@ -4678,9 +4678,9 @@ Volgens TDD adagium en dependency principes:
 
 ### **Fase 10: Frontend & CLI**
 
-51. ✅ `frontends/cli/run_operation_entrypoint.py` (entrypoint)
+51. ✅ `frontends/cli/run_operation_entrypoint.py` (V3 entrypoint)
 52. ✅ Update `frontends/web/api/routers/operations_router.py`
-53. ✅ Update Web UI componenten
+53. ✅ Update Web UI componenten voor V3 concepts
 
 ---
 
@@ -4703,21 +4703,21 @@ Volgens TDD adagium en dependency principes:
 
 ## **13. Aanvullende Component Beschrijvingen**
 
-### **13.1. backend/assembly/worker_builder.py**
+### **13.1. backend/assembly/worker_builder.py (V3.2 Enhanced)**
 
 **Bestandsnaam:** `worker_builder.py`
 **Plek in architectuur:** Backend > Assembly
 **Type:** Builder/Assembler
 **Layer:** Backend (Assembly)
 **Dependencies:** `[PluginRegistry, PersistorFactory, EventAdapterFactory]`
-**Beschrijving:** `WorkerBuilder` die de volledige workforce assembleert, classificeert, valideert en injecteert.
+**Beschrijving:** V3.2 `WorkerBuilder` die de volledige workforce assembleert, classificeert, valideert en injecteert.
 
 **Responsibilities:**
 -   Implementeert het **Geprepareerde Workforce Model**: classificeert workers en retourneert een `WorkforceDTO`.
 -   Implementeert het **Manifest-Gedreven Capability Model**: valideert of de ROL (basisklasse) van de worker overeenkomt met de intentie in het manifest (`capabilities.events.enabled`).
 -   Implementeert het **Gecentraliseerde Factory Model**: fungeert als "klant" van de `PersistorFactory` en `EventAdapterFactory` om dependencies te creëren en te injecteren.
 
-**(Pseudo-code):**
+**V3.2 Enhancements (Pseudo-code):**
 ```python
 class WorkerBuilder:
     def __init__(
@@ -5117,7 +5117,7 @@ class BaseExecutionEnvironment(ABC):
     """
     Abstract base for all execution environments.
     
-    Creates complete TradingContext directly,
+    V3 Enhancement: Creates complete TradingContext directly,
     including strategy_link_id.
     """
     
@@ -5161,7 +5161,7 @@ class BaseExecutionEnvironment(ABC):
         """
         Create complete TradingContext.
         
-        Environment creates complete context including strategy_link_id.
+        V3: Environment creates complete context including strategy_link_id.
         """
         return TradingContext(
             timestamp=datetime.now(),
@@ -5253,7 +5253,7 @@ class ScheduledTick(BaseModel):
 
 ### **14.1. De Testfilosofie: Elk .py Bestand Heeft een Test** ⭐
 
-De "Testen als Voorwaarde"-filosofie wordt uitgebreid naar **alle** Python bestanden in het project, inclusief de architecturale contracten zelf (Schema's, DTOs en Interfaces). Dit garandeert de robuustheid van de "Contract-Gedreven Architectuur" vanaf de basis.
+**V3.1 UPDATE**: De "Testen als Voorwaarde"-filosofie wordt uitgebreid naar **alle** Python bestanden in het project, inclusief de architecturale contracten zelf (Schema's, DTOs en Interfaces). Dit garandeert de robuustheid van de "Contract-Gedreven Architectuur" vanaf de basis.
 
 **Kernprincipe:** Geen enkel .py bestand is compleet zonder een corresponderend test bestand. Dit geldt voor:
 - **Worker implementaties** (`worker.py` → `tests/test_worker.py`)
@@ -5768,7 +5768,7 @@ for warning in result.warnings:
 ### **Sprint 5: Assembly Layer (Weken 7-8)**
 - OperatorFactory
 - PersistorFactory
-- WorkerBuilder (met DI)
+- WorkerBuilder (V3 met DI)
 - PluginEventAdapter
 - EventWiringFactory
 - EventChainValidator
@@ -5776,9 +5776,9 @@ for warning in result.warnings:
 
 ### **Sprint 6: Environments (Week 9)**
 - BaseExecutionEnvironment
-- BacktestEnvironment
-- PaperEnvironment
-- LiveEnvironment
+- BacktestEnvironment V3
+- PaperEnvironment V3
+- LiveEnvironment V3
 
 ### **Sprint 7: Services (Week 10)**
 - OperationService
@@ -5791,7 +5791,7 @@ for warning in result.warnings:
 - Update alle manifests
 - Herstructureer directories
 
-### **Sprint 9: Integratie (Week 13)**
+### **Sprint 9: Integration (Week 13)**
 - End-to-end tests
 - Event chain tests
 - Multi-strategy tests
@@ -5805,6 +5805,6 @@ for warning in result.warnings:
 
 ---
 
-**EINDE SYSTEEMONTWERP**
+**EINDE SYSTEEMONTWERP V3.0**
 
-Dit complete systeemontwerp volgt strikt de beschreven principes en implementeert de volledige architectuur zoals beschreven in de documentatie. Alle componenten zijn ontworpen volgens TDD principes met 100% test coverage requirement.
+Dit complete systeemontwerp volgt strikt de principes uit hoofdstuk 10 en implementeert de volledige V3 architectuur zoals beschreven in de documentatie. Alle componenten zijn ontworpen volgens TDD principes met 100% test coverage requirement.

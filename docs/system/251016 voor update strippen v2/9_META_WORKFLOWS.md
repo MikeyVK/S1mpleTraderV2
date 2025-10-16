@@ -1,5 +1,6 @@
 # **9. Meta Workflows: Van Analyse tot Inzicht**
 
+**Versie:** 3.0 (V3 Architectuur - 5-Worker Model)
 **Status:** Definitief
 Dit document beschrijft de architectuur en de rol van de "Meta Workflows", de hoog-niveau services voor geavanceerde analyses en optimalisaties.
 
@@ -17,13 +18,13 @@ Dit document beschrijft de architectuur en de rol van de "Meta Workflows", de ho
 
 ## **Executive Summary**
 
-Dit document beschrijft de "Meta Workflows" van S1mpleTrader, een laag van hoog-niveau services die bovenop de kern-executielogica draaien om geavanceerde, kwantitatieve analyses mogelijk te maken. Deze services gebruiken de `Operations-service` als een "black box"-motor die herhaaldelijk en systematisch wordt aangeroepen om complexe vragen te beantwoorden.
+Dit document beschrijft de "Meta Workflows" van S1mpleTrader V3, een laag van hoog-niveau services die bovenop de kern-executielogica draaien om geavanceerde, kwantitatieve analyses mogelijk te maken. Deze services gebruiken de `Operations-service` als een "black box"-motor die herhaaldelijk en systematisch wordt aangeroepen om complexe vragen te beantwoorden.
 
 ### **🎯 Kerncomponenten**
 
 **1. De `OptimizationService` (Het Onderzoekslab)**
 -   **Doel**: Het systematisch doorzoeken van een grote, multidimensionale parameterruimte om de meest performante configuraties te vinden.
--   Optimaliseert niet alleen worker-parameters, maar ook architecturale keuzes zoals worker sub-types, operator-strategieën (`execution_strategy`), en event-chain configuraties.
+-   **V3-uitbreidingen**: Optimaliseert niet alleen worker-parameters, maar ook architecturale keuzes zoals worker sub-types, operator-strategieën (`execution_strategy`), en event-chain configuraties.
 
 **2. De `VariantTestService` (De Vergelijkings-Arena)**
 -   **Doel**: Het direct vergelijken van een klein aantal discrete strategie-varianten onder exact dezelfde marktomstandigheden om de robuustheid en impact van specifieke keuzes te valideren.
@@ -35,7 +36,7 @@ Dit document beschrijft de "Meta Workflows" van S1mpleTrader, een laag van hoog-
 ### **🔑 Design Principes**
 
 ✅ **Configuratie-gedreven Analyse** - Zowel optimalisaties als variant-testen worden volledig gedefinieerd in YAML-bestanden (`optimization.yaml`, `variant.yaml`).
-✅ **Multidimensionale Optimalisatie** - De architectuur maakt het mogelijk om niet alleen parameters te tunen, maar ook fundamentele strategische en architecturale keuzes te testen.
+✅ **Multidimensionale Optimalisatie** - De V3-architectuur maakt het mogelijk om niet alleen parameters te tunen, maar ook fundamentele strategische en architecturale keuzes te testen.
 ✅ **Causale Analyse in Resultaten** - De resultaten van meta-workflows bevatten causale data (bv. `opportunities_rejected`), waardoor diepgaandere inzichten mogelijk zijn dan alleen PnL.
 ✅ **Single Responsibility Principle (SRP)** - Elke service heeft één duidelijke verantwoordelijkheid: de `OptimizationService` definieert de "wat", de `ParallelRunService` regelt de "hoe".
 
@@ -45,15 +46,21 @@ Dit document beschrijft de "Meta Workflows" van S1mpleTrader, een laag van hoog-
 
 De Operations-service, aangestuurd via het [`run_operation.py`](../../run_operation.py) entrypoint, is de motor die in staat is om **één enkele, volledig gedefinieerde Operation** uit te voeren. Meta Workflows zijn services in de Service-laag die deze motor herhaaldelijk en systematisch aanroepen, met steeds een andere configuratie, om complexe, kwantitatieve vragen te beantwoorden.
 
-Ze fungeren als "onderzoekleiders" die de Operations-service als een "black box"-motor gebruiken. Ze leunen zwaar op een [`ParallelRunService`](../../services/parallel_run_service.py) om duizenden backtests efficiënt en parallel uit te voeren.
+Ze fungeren als "onderzoekleiders" die de Operations-service als een "black box"-motor gebruiken. Ze leunen zwaar op een [`ParallelRunService`](../../services/parallel_run_service.py) om duizenden backtests efficiënt en parallel uit te voeren. Waar optimalisatie in V1 een ad-hoc script was, wordt het in V3 een **"eerste klas burger"** van de architectuur.
 
-### **9.1.1. Het 5-Worker Model**
+### **9.1.1. De Evolutie: 4-Worker → 5-Worker Model**
 
-Het systeem gebruikt 5 gespecialiseerde categorieën:
+**V2 (Oud):** 4 worker categorieën
+-   [`ContextWorker`](../../backend/core/base_worker.py)
+-   [`AnalysisWorker`](../../backend/core/base_worker.py) (detectie + planning gecombineerd)
+-   [`MonitorWorker`](../../backend/core/base_worker.py)
+-   [`ExecutionWorker`](../../backend/core/base_worker.py)
+
+**V3 (Nieuw):** 5 gespecialiseerde categorieën
 -   [`ContextWorker`](../../backend/core/base_worker.py) - "De Cartograaf"
--   [`OpportunityWorker`](../../backend/core/base_worker.py) - "De Verkenner"
--   [`ThreatWorker`](../../backend/core/base_worker.py) - "De Waakhond"
--   [`PlanningWorker`](../../backend/core/base_worker.py) - "De Strateeg"
+-   [`OpportunityWorker`](../../backend/core/base_worker.py) - "De Verkenner" ✨
+-   [`ThreatWorker`](../../backend/core/base_worker.py) - "De Waakhond" (hernoemd)
+-   [`PlanningWorker`](../../backend/core/base_worker.py) - "De Strateeg" ✨
 -   [`ExecutionWorker`](../../backend/core/base_worker.py) - "De Uitvoerder"
 
 **→ Voor volledige taxonomie, zie: [`2_ARCHITECTURE.md`](2_ARCHITECTURE.md#24-het-worker-ecosysteem-5-gespecialiseerde-rollen)**
@@ -84,7 +91,7 @@ De service vereist:
     -   De OptimizationService genereert een volledige lijst van alle mogelijke parameter-combinaties
     -   Ondersteunt optimalisatie op verschillende niveaus:
         *   Worker parameters (traditioneel)
-        *   Worker sub-type selectie
+        *   Worker sub-type selectie (nieuw in V3)
         *   Operator configuratie (execution/aggregation strategies)
         *   Event chain configuratie
 
@@ -111,9 +118,9 @@ De service vereist:
     -   Causale IDs voor traceerbaarheid
 *   Deze data wordt naar de Web UI gestuurd voor presentatie in een interactieve, sorteerbare tabel
 
-### **9.2.3. Optimalisatie Dimensies**
+### **9.2.3. V3 Optimalisatie Dimensies**
 
-De OptimizationService ondersteunt optimalisatie op meerdere dimensies:
+De OptimizationService ondersteunt nu optimalisatie op meerdere dimensies:
 
 #### **1. Worker Parameter Optimization (Traditioneel)**
 
@@ -135,7 +142,7 @@ optimization_config:
           values: [true, false]
 ```
 
-#### **2. Worker Sub-Type Selection**
+#### **2. Worker Sub-Type Selection (Nieuw in V3)**
 
 ```yaml
 # config/optimizations/optimize_opportunity_types.yaml
@@ -154,7 +161,7 @@ optimization_config:
           plugins: ["oversold_detector", "rsi_reversal"]
 ```
 
-#### **3. Planning Phase Configuration**
+#### **3. Planning Phase Configuration (Nieuw in V3)**
 
 ```yaml
 # config/optimizations/optimize_planning_phases.yaml
@@ -184,7 +191,7 @@ optimization_config:
               step: 0.5
 ```
 
-#### **4. Operator Configuration Optimization**
+#### **4. Operator Configuration Optimization (Nieuw in V3)**
 
 Deze dimensie test de impact van verschillende orkestratiestrategieën door de configuratie in `operators.yaml` te variëren.
 
@@ -208,7 +215,7 @@ optimization_config:
         values: ["PARALLEL"] # Standaard is parallel
 ```
 
-#### **5. Event & Capability Optimization**
+#### **5. Event & Capability Optimization (Nieuw in V3)**
 
 Deze dimensie test de impact van het toevoegen van event-driven gedrag. Dit wordt gedaan door te variëren tussen een `StandardWorker` (impliciete pijplijn) en een `EventDrivenWorker` (expliciete events).
 
@@ -402,7 +409,7 @@ De service vereist:
 *   De VariantTestService verzamelt de [`BacktestResult`](../../backend/dtos/execution/) objecten
 *   Deze data wordt naar de Web UI gestuurd voor een directe, visuele vergelijking, bijvoorbeeld door de equity curves van alle varianten in één grafiek te plotten
 
-### **9.3.3. Variant Dimensies**
+### **9.3.3. V3 Variant Dimensies**
 
 #### **1. Worker Configuration Variants (Traditioneel)**
 
@@ -436,7 +443,7 @@ variant_config:
               require_structure_break: false
 ```
 
-#### **2. Worker Sub-Type Variants**
+#### **2. Worker Sub-Type Variants (Nieuw in V3)**
 
 ```yaml
 # config/variants/opportunity_type_variants.yaml
@@ -473,7 +480,7 @@ variant_config:
             subtype: "momentum_signal"
 ```
 
-#### **3. Planning Phase Variants**
+#### **3. Planning Phase Variants (Nieuw in V3)**
 
 ```yaml
 # config/variants/exit_strategy_variants.yaml
@@ -510,7 +517,7 @@ variant_config:
                 risk_reward_ratio: 3.0
 ```
 
-#### **4. Operator Configuration Variants**
+#### **4. Operator Configuration Variants (Nieuw in V3)**
 
 ```yaml
 # config/variants/operator_strategy_variants.yaml
@@ -544,7 +551,7 @@ variant_config:
             aggregation_strategy: "NONE"
 ```
 
-#### **5. Event Chain Variants**
+#### **5. Event Chain Variants (Nieuw in V3)**
 
 Deze varianten testen de impact van verschillende workflow-architecturen door te wisselen tussen `StandardWorker`-gebaseerde (impliciete) en `EventDrivenWorker`-gebaseerde (expliciete) implementaties.
 
@@ -793,9 +800,9 @@ Deze service is een cruciale, herbruikbare Backend-component. Zowel de [`Optimiz
 
 Zijn enige verantwoordelijkheid is het efficiënt managen van de multiprocessing-pool, het tonen van de voortgang en het netjes aggregeren van resultaten. Dit is een perfect voorbeeld van het **Single Responsibility Principle**.
 
-### **9.4.2. Capabilities**
+### **9.4.2. V3 Capabilities**
 
-**Nieuwe functionaliteit:**
+**Nieuwe functionaliteit in V3:**
 
 1.  **Causale ID Tracking** - Behoudt OpportunityIDs en ThreatIDs in aggregatie
 2.  **Event Chain Validatie** - Valideert event configuraties voor elke run
@@ -932,7 +939,18 @@ Voor diepere uitwerkingen van gerelateerde concepten:
 
 ## **9.8. Samenvatting: De Kracht van Meta Workflows**
 
-### **9.8.1. Belangrijkste Voordelen**
+### **9.8.1. Wat Maakt V3 Uniek?**
+
+| Aspect | V2 | V3 |
+|--------|----|----|
+| **Worker Model** | 4 categorieën | 5 gespecialiseerde categorieën |
+| **Optimalisatie** | Alleen worker parameters | Multi-dimensionaal (workers, operators, events) |
+| **Causale Tracking** | Geen | OpportunityID, ThreatID in results |
+| **Event Configuratie** | Niet mogelijk | Impliciete → Predefined → Custom |
+| **Operator Testing** | Niet mogelijk | Execution & aggregation strategies |
+| **Threat Analysis** | Niet mogelijk | Rejection patterns en threat impact |
+
+### **9.8.2. Belangrijkste Voordelen**
 
 1.  **Multidimensionale Optimalisatie** - Test niet alleen parameters, maar ook architecturale keuzes
 2.  **Causale Transparantie** - Begrijp waarom configuraties wel/niet werken via OpportunityIDs en ThreatIDs
@@ -956,6 +974,6 @@ Voor diepere uitwerkingen van gerelateerde concepten:
 
 ---
 
-**Einde Document**
+**Einde Document v3.0**
 
 *"Van simpele parameter sweeps naar intelligente multi-dimensionale exploratie - waar data, configuratie en causaliteit samenkomen om strategische inzichten te ontsluiten."*

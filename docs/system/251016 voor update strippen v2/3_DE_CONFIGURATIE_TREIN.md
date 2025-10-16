@@ -1,5 +1,6 @@
-# **3. De Configuratie Trein: Een Gids voor S1mpleTrader YAML-bestanden**
+# **3. De Configuratie Trein: Een Gids voor S1mpleTrader V2 YAML-bestanden**
 
+Versie: 2.0 (Configuratie-Gedreven Architectuur)
 Status: Definitief
 Dit document beschrijft de "configuratie trein": de logische hiërarchie en samenhang van de YAML-bestanden die een volledige, gevalideerde en uitvoerbare operatie definiëren.
 
@@ -21,7 +22,7 @@ Dit document beschrijft de "configuratie trein": de logische hiërarchie en same
 
 ## **Executive Summary**
 
-In de S1mpleTrader-architectuur is de configuratie de applicatie. De YAML-bestanden vormen het complete draaiboek dat de operatie van het trading-ecosysteem beschrijft, gebaseerd op het principe: **"Operators zijn dom, configuratie is slim"**. Dit document beschrijft de "configuratie trein", de logische hiërarchie van YAML-bestanden die samen een volledige operatie definiëren.
+In de S1mpleTrader V2 architectuur is de configuratie de applicatie. De YAML-bestanden vormen het complete draaiboek dat de operatie van het trading-ecosysteem beschrijft, gebaseerd op het principe: **"Operators zijn dom, configuratie is slim"**. Dit document beschrijft de "configuratie trein", de logische hiërarchie van YAML-bestanden die samen een volledige operatie definiëren.
 
 ### **🎯 Kernkenmerken**
 
@@ -50,13 +51,13 @@ In de S1mpleTrader-architectuur is de configuratie de applicatie. De YAML-bestan
 
 > **"Operators zijn dom, configuratie is slim"**
 
-In de S1mpleTrader-architectuur is de configuratie niet slechts een set instellingen - het **IS** de applicatie. De YAML-bestanden zijn het **draaiboek** dat de volledige operatie van het trading-ecosysteem beschrijft. Het platform zelf is een agnostische uitvoerder die tot leven komt op basis van deze bestanden.
+In de S1mpleTrader V2 architectuur is de configuratie niet slechts een set instellingen - het **IS** de applicatie. De YAML-bestanden zijn het **draaiboek** dat de volledige operatie van het trading-ecosysteem beschrijft. Het platform zelf is een agnostische uitvoerder die tot leven komt op basis van deze bestanden.
 
-**Van Hard-Coded naar Data-Driven**
+**SHIFT 2: Van Hard-Coded naar Data-Driven**
 
-De architectuur markeert een fundamentele paradigma-shift:
--   **Vorige aanpak**: Operator-logica was hard-coded in Python classes
--   **Huidige aanpak**: Operators zijn generieke executors, configuratie dicteert gedrag
+De evolutie van V1 naar V2 markeert een fundamentele paradigma-shift:
+-   **V1**: Operator-logica was hard-coded in Python classes
+-   **V2**: Operators zijn generieke executors, configuratie dicteert gedrag
 
 Dit document beschrijft de "configuratie trein": de logische hiërarchie en samenhang van de verschillende YAML-bestanden die samen een volledige, gevalideerde en uitvoerbare operatie definiëren. We volgen de stroom van de meest stabiele, platform-brede bestanden tot de meest specifieke, gedetailleerde plugin-parameters.
 
@@ -67,7 +68,7 @@ De configuratie is opgedeeld in een reeks van gespecialiseerde bestanden. Elk be
 **De Hiërarchie (van Stabiel naar Dynamisch):**
 
 1.  [`platform.yaml`](config/platform.yaml) - De fundering van het hele platform
-2.  [`operators.yaml`](config/operators.yaml) - Het gedrag van alle operators ⭐
+2.  [`operators.yaml`](config/operators.yaml) - **NIEUW**: Het gedrag van alle operators ⭐
 3.  [`connectors.yaml`](config/connectors.yaml) - De technische "stekkerdoos" voor **live** verbindingen
 4.  [`data_sources.yaml`](config/data_sources.yaml) - De catalogus van **lokale** historische datasets
 5.  [`environments.yaml`](config/environments.yaml) - De definitie van de abstracte "werelden"
@@ -112,7 +113,8 @@ Deze bestanden vormen de stabiele basis. Ze worden doorgaans één keer opgezet 
 *   **Doel**: Het **meest cruciale configuratiebestand** dat het gedrag van alle 5 operators definieert. Dit bestand maakt het mogelijk om orkestratie-strategieën te wijzigen zonder een regel code aan te passen.
 
 *   **Waarom Dit Cruciaal Is**:
-    -   **Huidige architectuur**: Eén [`BaseOperator`](backend/core/operators/base_operator.py) class, vijf configuraties
+    -   **Voor V2**: Elk operator type had eigen hard-coded logica
+    -   **In V2**: Eén [`BaseOperator`](backend/core/operators/base_operator.py) class, vijf configuraties
     -   **Resultaat**: Maximum flexibiliteit, geen code-wijzigingen nodig
 
 *   **Structuur**:
@@ -347,7 +349,7 @@ Deze bestanden beschrijven de **strategische en operationele intentie** van de q
 ### **3.4.2. strategy_blueprint.yaml - Het Gedetailleerde Recept** ⭐
 
 *   **Doel**: Bevat de **volledige configuratie van alle plugins** (workforce) voor één strategy_link.
-*   **Huidige structuur**: 5 worker categorieën met gestructureerde sub-categorieën
+*   **SHIFT V2**: Van 4 naar 5 worker categorieën met gestructureerde sub-categorieën
 
 #### **De 5-Worker Structuur**:
 
@@ -461,7 +463,7 @@ Elke worker categorie heeft zijn eigen sub-types (zie [`MIGRATION_MAP.md`](docs/
 
 ## **3.5. Event & Capability Configuratie** ⭐
 
-S1mpleTrader hanteert het "Manifest-Gedreven Capability Model". De configuratie van een worker is strikt gescheiden in zijn **ROL** (de basisklasse die de ontwikkelaar kiest) en zijn **CAPABILITIES** (de extra functies die in het manifest worden aangevraagd). De configuratie gebruikt een centrale `capabilities`-sectie in het `manifest.yaml`.
+S1mpleTrader V3 hanteert het "Manifest-Gedreven Capability Model". De configuratie van een worker is strikt gescheiden in zijn **ROL** (de basisklasse die de ontwikkelaar kiest) en zijn **CAPABILITIES** (de extra functies die in het manifest worden aangevraagd). De oude `triggers`- en `publishes`-sleutels op het hoogste niveau van de worker-configuratie zijn vervangen door een centrale `capabilities`-sectie in het `manifest.yaml`.
 
 ### **Niveau 1: Standaard Pijplijn (Geen Capability Nodig)**
 
@@ -845,7 +847,7 @@ Deze bestanden zijn onderdeel van de plugin zelf en maken hem vindbaar, valideer
 -   **`dependencies`**: Vereiste data-kolommen.
 -   **`capabilities`**: Een cruciale sectie die alle extra, opt-in functionaliteiten definieert die de worker nodig heeft.
 
-**Voorbeeld**:
+**Voorbeeld (Nieuwe V3 Formaat)**:
 Een `EventDrivenWorker` die ook `state` nodig heeft.
 
 ```yaml
@@ -970,6 +972,7 @@ except ConfigurationError as e:
 **Einde Document**
 
 Voor meer details over specifieke concepten, zie:
+-   [`MIGRATION_MAP.md`](docs/system/MIGRATION_MAP.md) - V2 → V3 mappings en migratie
 -   [`WORKER_TAXONOMIE_V3.md`](docs/development/251014%20Bijwerken%20documentatie/WORKER_TAXONOMIE_V3.md) - Volledige worker taxonomie uitwerking
 -   [`2_ARCHITECTURE.md`](docs/system/2_ARCHITECTURE.md) - Core architectuur principes
 -   [`4_DE_PLUGIN_ANATOMIE.md`](docs/system/4_DE_PLUGIN_ANATOMIE.md) - Plugin development guide

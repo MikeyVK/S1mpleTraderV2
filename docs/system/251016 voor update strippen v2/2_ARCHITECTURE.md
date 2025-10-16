@@ -1,7 +1,8 @@
 # **2. Architectuur & Componenten**
 
+**Versie:** 3.0 (V3 Architectuur - Finale Verfijningen)
 **Status:** Definitief
-Dit document beschrijft de architectuur van S1mpleTrader, die een robuuste, flexibele en conceptueel zuivere systeemarchitectuur biedt.
+Dit document beschrijft de V3-architectuur van S1mpleTrader, die zes fundamentele paradigma-shifts introduceert voor een robuuster, flexibeler en conceptueel zuiverder systeem.
 
 ## **Inhoudsopgave**
 
@@ -22,24 +23,24 @@ Dit document beschrijft de architectuur van S1mpleTrader, die een robuuste, flex
 
 ## **Executive Summary**
 
-De S1mpleTrader-architectuur is ontworpen om de conceptuele zuiverheid, flexibiliteit en analytische kracht van het platform te maximaliseren. Dit wordt bereikt door een doordachte systeemarchitectuur die de kern van het platform vormt.
+De S1mpleTrader V3-architectuur is een significante evolutie die is ontworpen om de conceptuele zuiverheid, flexibiliteit en analytische kracht van het platform te vergroten. Dit wordt bereikt door zes fundamentele paradigma-shifts die de kern van het systeem raken.
 
-### **🎯 Architectuur Kernprincipes**
+### **🎯 De Zes Paradigma-Shifts**
 
 **1. Gespecialiseerde Worker Taxonomie**
-- Vijf gespecialiseerde worker-categorieën (`Context`, `Opportunity`, `Threat`, `Planning`, `Execution`) voor een zuiverdere scheiding van verantwoordelijkheden.
+- Van 4 generieke naar 5 gespecialiseerde worker-categorieën (`Context`, `Opportunity`, `Threat`, `Planning`, `Execution`) voor een zuiverdere scheiding van verantwoordelijkheden.
 
 **2. Rijk Causaal ID Framework**
-- Getypeerde, causale IDs (`OpportunityID`, `ThreatID`, `TradeID`) die een volledige "waarom"-analyse van elke trade mogelijk maken.
+- Vervanging van de simpele `CorrelationID` door getypeerde, causale IDs (`OpportunityID`, `ThreatID`, `TradeID`) die een volledige "waarom"-analyse van elke trade mogelijk maken.
 
 **3. Gescheiden Ledger & Journal**
 - Splitsing van de state in een snelle, operationele `StrategyLedger` (huidige staat) en een rijke, analytische `StrategyJournal` (volledige, causale geschiedenis), wat zowel de performance als de analysemogelijkheden verbetert.
 
 **4. Data-Gedreven Operator**
-- Een enkele, data-gedreven `BaseOperator` wiens gedrag wordt gedicteerd door `operators.yaml`, wat het DRY-principe versterkt.
+- Consolidatie van 5 hard-gecodeerde operator-klassen naar één enkele, data-gedreven `BaseOperator` wiens gedrag wordt gedicteerd door `operators.yaml`, wat het DRY-principe versterkt.
 
 **5. Unified Persistence Suite**
-- Een formele, interface-gedreven architectuur voor data-persistentie (`IDataPersistor`, `IStatePersistor`, `IJournalPersistor`) voor consistentie en betrouwbaarheid.
+- Introductie van een formele, interface-gedreven architectuur voor data-persistentie (`IDataPersistor`, `IStatePersistor`, `IJournalPersistor`) voor consistentie en betrouwbaarheid.
 
 **6. Manifest-Gedreven Capabilities**
 - Een zuivere scheiding tussen de **ROL** van een worker (bepaald door de basisklasse) en zijn **CAPABILITIES** (aangevraagd in het `manifest.yaml`), wat zorgt voor een expliciet en valideerbaar contract.
@@ -53,26 +54,89 @@ De S1mpleTrader-architectuur is ontworpen om de conceptuele zuiverheid, flexibil
 
 ---
 
-## **2.1. Inleiding: Architectuur Principes**
+## **2.1. Inleiding: De Evolutie naar V3**
 
-De S1mpleTrader-architectuur is ontworpen om het **Single Responsibility Principle (SRP)** te maximaliseren, complexiteit effectief te moduleren, en een intuïtief model te bieden dat aansluit bij hoe een quant denkt over trading.
+De S1mpleTrader V3 architectuur vertegenwoordigt een significante evolutie ten opzichte van V2, voortkomend uit diepgaande analyses en praktijkervaring. Deze versie maximaliseert het **Single Responsibility Principle (SRP)**, moduleert complexiteit effectiever, en biedt een intuïtiever model dat dichter aansluit bij hoe een quant denkt over trading.
 
-### **2.1.1. De Fundamentele Architectuur Principes**
+### **2.1.1. De Zes Fundamentele Paradigma-Shifts**
 
-De architectuur is gebaseerd op zes kernprincipes die samen een robuuste, flexibele en conceptueel zuivere systeemarchitectuur creëren:
+De V3 architectuur introduceert zes kernwijzigingen die samen een robuuster, flexibeler en conceptueel zuiverder systeem creëren:
 
-| Principe | Huidige Implementatie | Voordeel |
-|----------|---------------------|----------|
-| 1. Worker Taxonomie | 5 gespecialiseerde categorieën | Zuiverdere scheiding van verantwoordelijkheden |
-| 2. Traceability | Rijk Causaal ID Framework | Volledige "waarom"-analyse mogelijk |
-| 3. State Management | Gescheiden Ledger + Journal | Performance & analytische kracht |
-| 4. Operator Model | 1 data-gedreven BaseOperator | Flexibiliteit & DRY-principe |
-| 5. Persistence | Unified Persistence Suite | Consistentie & betrouwbaarheid |
-| 6. Plugin Model | Manifest-Gedreven Capability Model | Zuivere scheiding ROL & CAPABILITIES |
+#
 
-### **2.1.2. Kernprincipes**
+Shift
 
-De fundamentele principes van het systeem zijn:
+Van (V2)
+
+Naar (V3)
+
+Impact
+
+1
+
+Worker Taxonomie
+
+4 categorieën
+
+5 gespecialiseerde categorieën
+
+Zuiverdere scheiding van verantwoordelijkheden
+
+2
+
+Traceability
+
+Simpele CorrelationID
+
+Rijk Causaal ID Framework
+
+Volledige "waarom"-analyse mogelijk
+
+3
+
+State Management
+
+Gecombineerd Ledger
+
+Gescheiden Ledger + Journal
+
+Performance & analytische kracht
+
+4
+
+Operator Model
+
+5 hard-coded klassen
+
+1 data-gedreven BaseOperator
+
+Flexibiliteit & DRY-principe
+
+5
+
+Persistence
+
+Ad-hoc, inconsistent
+
+Unified Persistence Suite
+
+Consistentie & betrouwbaarheid
+
+6
+
+Plugin Model
+
+Gemixte capabilities via overerving
+
+Manifest-Gedreven Capability Model
+
+Zuivere scheiding ROL & CAPABILITIES
+
+> **Migratie Referentie:** Voor gedetailleerde mappings tussen V2 en V3 concepten, zie [`MIGRATION_MAP.md`](MIGRATION_MAP.md)
+
+### **2.1.2. Kernprincipes Behouden**
+
+Ondanks de significante verfijningen blijven de fundamentele principes intact:
 
 ✅ **Plugin-First** - Alle businesslogica in plugins
 ✅ **Configuratie-gedreven** - YAML definieert gedrag
@@ -92,16 +156,16 @@ De S1mpleTrader V3 architectuur blijft fundamenteel **configuratie-gedreven**. Y
 ```
 config/
 ├── platform.yaml              # Globale platform settings
-├── operators.yaml             # Operator gedrag configuratie
-├── schedule.yaml              # Tijd-gebaseerde events
+├── operators.yaml             # ✨ NIEUW: Operator gedrag configuratie
+├── schedule.yaml              # ✨ NIEUW: Tijd-gebaseerde events
 ├── connectors.yaml            # Live exchange connecties
 ├── index.yaml                 # Centrale configuratie index
-├── operation.yaml             # Strategisch niveau
+├── operation.yaml             # Strategisch niveau (was: portfolio.yaml)
 └── runs/
-    └── strategy_blueprint.yaml # Strategie definitie
+    └── strategy_blueprint.yaml # Strategie definitie (was: run_blueprint.yaml)
 ```
 
-### **2.2.2. Configuratiebestanden**
+### **2.2.2. Nieuwe Configuratiebestanden in V3**
 
 #### [`operators.yaml`](../config/operators.yaml) - Operator Gedrag
 
@@ -197,19 +261,27 @@ De applicatie behoudt haar strikte drie-lagen architectuur met **eenrichtingsver
 
 ## **2.4. Het Worker Ecosysteem: 5 Gespecialiseerde Rollen**
 
-De architectuur biedt een verfijnd worker-model dat de workflow van een quant intuïtiever weerspiegelt door de verantwoordelijkheden strikter te scheiden.
+**PARADIGMA SHIFT #1: Van 4 naar 5 Worker Categorieën**
 
-### **2.4.1. De Vijf Worker Categorieën**
+De V3 architectuur introduceert een verfijnd worker-model dat de workflow van een quant intuïtiever weerspiegelt door de verantwoordelijkheden strikter te scheiden.
 
-| Vorige Indeling (4 Categorieën) | Huidige Architectuur (5 Categorieën) |
-|--------------------------------|-------------------------------------|
-| ContextWorker                  | ContextWorker ✓                     |
-| AnalysisWorker                 | OpportunityWorker (detectie)        |
-|                                | PlanningWorker (planning)           |
-| MonitorWorker                  | ThreatWorker (hernoemd)             |
-| ExecutionWorker                | ExecutionWorker ✓                   |
+### **2.4.1. De Evolutie: V2 → V3**
+
+```
+V2 (4 Categorieën)                V3 (5 Categorieën)
+═══════════════════               ════════════════════
+ContextWorker        →            ContextWorker ✓
+                                  
+AnalysisWorker       →            OpportunityWorker ✨ (detectie)
+                     ↘            PlanningWorker ✨ (planning)
+                     
+MonitorWorker        →            ThreatWorker 🔄 (hernoemd)
+
+ExecutionWorker      →            ExecutionWorker ✓
+```
 
 ### **2.4.2. De 5 Worker Categorieën**
+
 #### **1. ContextWorker - "De Cartograaf"**
 
 **Single Responsibility:** Het in kaart brengen en verrijken van ruwe marktdata met objectieve context.
@@ -428,11 +500,22 @@ process(self, plan: RoutedTradePlan) -> None:
 
 ## **2.5. Het Traceability Framework**
 
-De architectuur biedt een rijk framework van getypeerde, causale IDs die de volledige "waarom"-keten van elke beslissing vastleggen.
+**PARADIGMA SHIFT #2: Van CorrelationID naar Causaal ID Framework**
 
-### **2.5.1. Het Causale ID Framework**
+De V3 architectuur vervangt de simpele CorrelationID met een rijk framework van getypeerde, causale IDs die de volledige "waarom"-keten van elke beslissing vastleggen.
 
-Het systeem gebruikt vier getypeerde IDs die samen een complete causale keten vormen:
+### **2.5.1. Het Probleem met CorrelationID**
+
+V2 gebruikte één enkele UUID om een flow te tracken:
+```python
+# V2: Simpel maar beperkt
+correlation_id = uuid4()  # Track één flow, geen causale informatie
+```
+
+Dit was onvoldoende voor complexe analyses zoals:
+-   "Waarom werd deze trade geopend?"
+-   "Welke bedreiging forceerde deze exit?"
+-   "Welke afgewezen kansen zijn er geweest?"
 
 ### **2.5.2. Het Causale ID Framework**
 
@@ -512,11 +595,26 @@ Het [`StrategyJournal`](../backend/core/strategy_journal.py) legt deze causale l
 
 ## **2.6. De Ledger/Journal Scheiding**
 
-De architectuur scheidt de operationele staat van de analytische geschiedenis voor maximale performance en SRP.
+**PARADIGMA SHIFT #3: Van Gecombineerd naar Gescheiden State & Historie**
 
-### **2.6.1. De Gescheiden Componenten**
+V3 scheidt de operationele staat van de analytische geschiedenis voor maximale performance en SRP.
 
-Het systeem gebruikt twee complementaire componenten voor optimale performance en functionaliteit.
+### **2.6.1. Het Probleem in V2**
+
+V2 combineerde staat en geschiedenis in één component:
+```python
+# V2: StrategyLedger bevat alles
+class StrategyLedger:
+    positions: List[Position]       # ← Actuele staat
+    trade_history: List[Trade]      # ← Historie (kan groot zijn!)
+    performance_metrics: Dict       # ← Analytisch
+```
+
+**Problemen:**
+-   🐌 Traag: veel data in memory
+-   🔀 Gemengde verantwoordelijkheden
+-   ❌ Geen causale informatie
+-   ❌ Geen afgewezen kansen
 
 ### **2.6.2. De V3 Scheiding**
 
@@ -592,7 +690,9 @@ Plugin (ThreatWorker)
 
 ## **2.7. De Data-Gedreven Operator**
 
-De architectuur gebruikt een generieke `BaseOperator` die zijn gedrag laat dicteren door configuratie.
+**PARADIGMA SHIFT #4: Van Hard-Coded naar Configuratie-Gedreven Orchestratie**
+
+V3 vervangt vijf aparte Operator-klassen door één generieke `BaseOperator` die zijn gedrag laat dicteren door configuratie.
 
 ### **2.7.1. Het "Geprepareerde Workforce Model"**
 
@@ -659,7 +759,9 @@ class BaseOperator:
 
 ## **2.8. De Persistence Suite**
 
-De architectuur biedt een formele, geünificeerde architectuur voor alle data-persistentie via de [`PersistorFactory`](../backend/assembly/persistor_factory.py).
+**PARADIGMA SHIFT #5: Van Ad-hoc naar Unified Interface-Driven Persistence**
+
+V3 introduceert een formele, geünificeerde architectuur voor alle data-persistentie via de [`PersistorFactory`](../backend/assembly/persistor_factory.py).
 
 ### **2.8.1. De Drie Pijlers**
 
@@ -721,7 +823,9 @@ class JsonPersistor:
 
 ## **2.9. Het "Manifest-Gedreven Capability Model"**
 
-De architectuur biedt een zuivere, expliciete scheiding tussen de **ROL** van een worker en zijn **CAPABILITIES** via het manifest-gedreven model.
+**PARADIGMA SHIFT #6 (Geconsolideerd): Van Gemixte Basisklassen naar een Expliciet Contract**
+
+V3 vervangt het oude model van "capability" basisklassen (`BaseStatefulWorker`, `BaseEventAwareWorker`) door een zuivere, expliciete scheiding tussen de **ROL** van een worker en zijn **CAPABILITIES**.
 
 ### **2.9.1. De Twee Pijlers van de Plugin Architectuur**
 
@@ -804,7 +908,7 @@ Dit model zorgt voor maximale duidelijkheid, veiligheid en onderhoudbaarheid. De
 
 **Rol:** De "wereld" waarin een strategie draait (`Backtest`, `Paper`, of `Live`).
 
-**Huidige Implementatie:** Publiceert complete [`TradingContext`](../backend/dtos/state/trading_context.py) met alle relevante context informatie.
+**V3 Verandering:** Publiceert nu complete [`TradingContext`](../backend/dtos/state/trading_context.py) i.p.v. simpele MarketSnapshot.
 
 ```python
 class BacktestEnvironment(ExecutionEnvironment):
@@ -859,12 +963,12 @@ class StrategyJournal:
 
 **Rol:** Assembleert complete strategy-runs op basis van [`strategy_blueprint.yaml`](../config/runs/strategy_blueprint.yaml).
 
-**Functionaliteit:**
+**V3 Updates:**
 -   Gebruikt [`OperatorFactory`](../backend/assembly/operator_factory.py) voor operators
 -   Injecteert persistors in workers
 -   Configureert event routing
 
-#### **OperatorFactory**
+#### **OperatorFactory** ✨
 
 **Rol:** Creëert [`BaseOperator`](../backend/core/operators/base_operator.py) instanties op basis van [`operators.yaml`](../config/operators.yaml).
 
@@ -879,7 +983,7 @@ class OperatorFactory:
         )
 ```
 
-#### **PersistorFactory**
+#### **PersistorFactory** ✨
 
 **Rol:** Creëert gespecialiseerde persistors voor data, state en journaling.
 
@@ -896,8 +1000,8 @@ class PersistorFactory:
 
 **Rol:** Ontdekt en valideert alle plugins in [`plugins/`](../plugins/) directory.
 
-**Functionaliteit:**
--   Valideert `subtype` field in manifests
+**V3 Updates:**
+-   Valideert nieuwe `subtype` field in manifests
 -   Ondersteunt event-aware plugins
 
 #### **WorkerBuilder**
@@ -924,7 +1028,7 @@ De `WorkerBuilder` neemt nooit zelf beslissingen; het vertaalt en delegeert. Als
 
 ## **2.11. Dataflow & Orchestratie**
 
-### **2.11.1. Complete Dataflow**
+### **2.11.1. Complete V3 Dataflow**
 
 ```
 ┌────────────────────────────────────────────────────────────┐
@@ -1022,7 +1126,7 @@ ExecutionOperator
 
 ---
 
-## **2.12. Samenvatting: Architectuur Voordelen**
+## **2.12. Samenvatting: De V3 Verbeteringen**
 
 ### **2.12.1. Conceptuele Zuiverheid**
 
@@ -1066,4 +1170,4 @@ Voor diepere uitwerkingen van specifieke onderdelen:
 
 ---
 
-**Einde Architectuur Document**
+**Einde Architectuur Document V3.0**

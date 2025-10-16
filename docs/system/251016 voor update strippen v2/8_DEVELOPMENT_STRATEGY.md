@@ -1,15 +1,16 @@
 # **8. Ontwikkelstrategie & Tooling**
 
+**Versie:** 3.0 (V3 Architectuur - Event-Driven & Opt-in Complexiteit)
 **Status:** Definitief
-Dit document beschrijft de methodiek, de workflow en de tooling voor het ontwikkelen, testen en debuggen van het S1mpleTrader-ecosysteem.
+Dit document beschrijft de methodiek, de workflow en de tooling voor het ontwikkelen, testen en debuggen van het S1mpleTrader V3 ecosysteem.
 
 ## **Inhoudsopgave**
 
 1. [Executive Summary](#executive-summary)
 2. [Filosofie: Rapid, Lean & Progressive Complexity](#81-filosofie-rapid-lean--progressive-complexity)
 3. [De "Supercharged" Ontwikkelcyclus](#82-de-supercharged-ontwikkelcyclus)
-4. [Plugin Development Workflow](#83-plugin-development-workflow)
-5. [Event Debugging Tools](#84-event-debugging-tools)
+4. [Plugin Development Workflow (V3)](#83-plugin-development-workflow-v3)
+5. [Event Debugging Tools](#84-event-debugging-tools-nieuw)
 6. [De Tooling in Detail](#85-de-tooling-in-detail)
 7. [Development Workflow per Worker Type](#86-development-workflow-per-worker-type)
 8. [Testing Strategieën](#87-testing-strategieën)
@@ -19,7 +20,7 @@ Dit document beschrijft de methodiek, de workflow en de tooling voor het ontwikk
 
 ## **Executive Summary**
 
-Dit document beschrijft de ontwikkelstrategie voor S1mpleTrader, die is ontworpen om een snelle, efficiënte en data-gedreven ontwikkelomgeving te creëren. De filosofie is gebaseerd op **Rapid, Lean & Progressive Complexity**, waarbij de Web UI de centrale IDE is en de "Bouwen → Meten → Leren"-cyclus wordt geminimaliseerd.
+Dit document beschrijft de ontwikkelstrategie voor S1mpleTrader V3, die is ontworpen om een snelle, efficiënte en data-gedreven ontwikkelomgeving te creëren. De filosofie is gebaseerd op **Rapid, Lean & Progressive Complexity**, waarbij de Web UI de centrale IDE is en de "Bouwen → Meten → Leren"-cyclus wordt geminimaliseerd.
 
 ### **🎯 Kernkenmerken**
 
@@ -1054,7 +1055,7 @@ class TrailingStopManager(BaseStatefulWorker):
 
 ### **8.7.1. De Testfilosofie: Elk .py Bestand Heeft een Test**
 
-De "Testen als Voorwaarde"-filosofie wordt uitgebreid naar **alle** Python bestanden, inclusief de architecturale contracten zelf (Schema's, DTOs en Interfaces). Dit garandeert de robuustheid van de "Contract-Gedreven Architectuur" vanaf de basis.
+**NIEUW IN V3.1**: De "Testen als Voorwaarde"-filosofie wordt uitgebreid naar **alle** Python bestanden, inclusief de architecturale contracten zelf (Schema's, DTOs en Interfaces). Dit garandeert de robuustheid van de "Contract-Gedreven Architectuur" vanaf de basis.
 
 **Kernprincipe:** Geen enkel .py bestand is compleet zonder een corresponderend test bestand. Dit geldt voor:
 - Worker implementaties (`worker.py` → `tests/test_worker.py`)
@@ -1347,9 +1348,11 @@ Logging is een multi-inzetbare tool, geen eenheidsworst. We onderscheiden drie l
 *   **Doel:** De primaire interface voor **analyse en debugging**.
 *   **Implementatie:** Een tool in de frontend die het JSON-logbestand inleest en interactief presenteert, waardoor je kunt filteren op plugin_name of een Causale ID.
 
-### **8.8.2. Traceability met Causale IDs**
+### **8.8.2. Traceability met Causale IDs** ✨ **V3 UPGRADE**
 
-Vier getypeerde causale IDs voor complete "waarom"-analyse:
+**V2 (Oud):** Elk Signal DTO kreeg een simpele `correlation_id` (UUID).
+
+**V3 (Nieuw):** Vier getypeerde causale IDs voor complete "waarom"-analyse:
 
 ```python
 # 1. OpportunityID - Waarom werd deze trade geopend?
@@ -1480,18 +1483,18 @@ journal.trace_trade_lifecycle(trade_id="uuid-def-456")
 
 ## **8.9. Samenvatting: De V3 Verbeteringen**
 
-### **8.9.1. Architectuur Kenmerken**
+### **8.9.1. Wat is er Nieuw?**
 
-| Aspect | Huidige Implementatie |
-|--------|----------------------|
-| **Worker Taxonomie** | 5 categorieën + 27 sub-types |
-| **Plugin Capabilities** | Opt-in via base class hierarchy |
-| **Event System** | 3 abstractieniveaus (Implicit → Predefined → Custom) |
-| **Causale IDs** | 4 getypeerde IDs (Opportunity, Trade, Threat, Scheduled) |
-| **Event Debugging** | Validator, Topology Viewer, Timeline |
-| **Strategy Builder** | Met operator configuratie preview |
-| **Trade Explorer** | Met causale reconstructie |
-| **Plugin IDE** | Met capability selector & event wizard |
+| Aspect | V2 | V3 |
+|--------|----|----|
+| **Worker Taxonomie** | 4 categorieën | 5 categorieën + 27 sub-types |
+| **Plugin Capabilities** | Gemengd | Opt-in via base class hierarchy |
+| **Event System** | Geen | 3 abstractieniveaus (Implicit → Predefined → Custom) |
+| **Causale IDs** | Simpele correlation_id | 4 getypeerde IDs (Opportunity, Trade, Threat, Scheduled) |
+| **Event Debugging** | Geen | Validator, Topology Viewer, Timeline |
+| **Strategy Builder** | Basic | Met operator configuratie preview |
+| **Trade Explorer** | Simpel | Met causale reconstructie |
+| **Plugin IDE** | Template generator | Met capability selector & event wizard |
 
 ### **8.9.2. Kernvoordelen**
 
@@ -1516,6 +1519,6 @@ Voor diepere technische details:
 
 ---
 
-**Einde Document - 8_DEVELOPMENT_STRATEGY**
+**Einde Document - 8_DEVELOPMENT_STRATEGY v3.0**
 
 *"Van rigide templates naar intelligente begeleiding - waar ontwikkeling intuïtief wordt zonder complexiteit te verliezen."*

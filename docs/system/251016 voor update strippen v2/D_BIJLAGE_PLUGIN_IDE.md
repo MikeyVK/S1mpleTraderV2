@@ -2,7 +2,7 @@
 
 **Versie:** 3.0
 **Status:** Definitief
-Dit document beschrijft de architectuur en de gebruikerservaring (UX) voor de web-based Integrated Development Environment (IDE) voor plugins binnen S1mpleTrader.
+Dit document beschrijft de architectuur en de gebruikerservaring (UX) voor de web-based Integrated Development Environment (IDE) voor plugins binnen S1mpleTrader V3.
 
 ## **Inhoudsopgave**
 
@@ -21,7 +21,7 @@ Dit document beschrijft de architectuur en de gebruikerservaring (UX) voor de we
 
 ## **Executive Summary**
 
-Dit document schetst de visie voor de S1mpleTrader Plugin IDE, een web-based ontwikkelomgeving die is ontworpen om het creëren van plugins te transformeren van een technische taak naar een intuïtief, creatief proces. De kernfilosofie is de **"glijdende schaal van abstractie"**, die complexiteit volledig opt-in maakt.
+Dit document schetst de visie voor de S1mpleTrader V3 Plugin IDE, een web-based ontwikkelomgeving die is ontworpen om het creëren van plugins te transformeren van een technische taak naar een intuïtief, creatief proces. De kernfilosofie is de **"glijdende schaal van abstractie"**, die complexiteit volledig opt-in maakt.
 
 ### **🎯 Kernkenmerken**
 
@@ -50,9 +50,9 @@ Dit document schetst de visie voor de S1mpleTrader Plugin IDE, een web-based ont
 
 ## **D.1. Kernfilosofie: De Glijdende Schaal van Abstractie**
 
-### **D.1.1. Paradigma: Opt-in Complexiteit**
+### **D.1.1. V3 Paradigma: Opt-in Complexiteit**
 
-De fundamentele uitdaging van elk plugin-systeem is de balans tussen gebruiksgemak en de kracht van code. S1mpleTrader lost dit op met een **"glijdende schaal van abstractie"** - een modulair systeem waarbij complexiteit volledig opt-in is.
+De fundamentele uitdaging van elk plugin-systeem is de balans tussen gebruiksgemak en de kracht van code. S1mpleTrader V3 lost dit op met een **"glijdende schaal van abstractie"** - een modulair systeem waarbij complexiteit volledig opt-in is.
 
 **De Drie Dimensies van Complexiteit:**
 
@@ -86,9 +86,9 @@ De fundamentele uitdaging van elk plugin-systeem is de balans tussen gebruiksgem
 
 ## **D.2. De MVP: De "Intelligente Plugin Generator"**
 
-De eerste, meest cruciale stap is het bouwen van een Minimum Viable Product (MVP) dat het grootste pijnpunt voor de ontwikkelaar oplost: het handmatig aanmaken van de repetitieve boilerplate-code.
+De eerste, meest cruciale stap is het bouwen van een Minimum Viable Product (MVP) dat het grootste pijnpunt voor de ontwikkelaar oplost: het handmatig aanmaken van de repetitieve boilerplate-code. De V3 versie is aanzienlijk intelligenter dan V1.
 
-### **D.2.1. De "Nieuwe Plugin" Wizard**
+### **D.2.1. De "Nieuwe Plugin" Wizard - V3 Enhanced**
 
 Het hart van de MVP is een intelligent, multi-step formulier dat de ontwikkelaar door de creatie van een nieuwe plugin leidt.
 
@@ -146,7 +146,7 @@ OpportunityWorker ▼
 
 #### **Step 3: Rol & Capability Selector**
 
-Deze stap is cruciaal en reflecteert de kern van de architectuur. De gebruiker definieert eerst de ROL en voegt daarna optionele CAPABILITIES toe.
+Deze stap is cruciaal en reflecteert de kern van de nieuwe architectuur. De gebruiker definieert eerst de ROL en voegt daarna optionele CAPABILITIES toe.
 
 **UI Element:** Twee-delig interactief formulier.
 

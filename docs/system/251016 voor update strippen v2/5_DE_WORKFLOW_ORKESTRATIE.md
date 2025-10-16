@@ -1,7 +1,8 @@
-# **5. Het Worker Ecosysteem: Configureerbare Workflow Orkestratie**
+# **5. Het Worker Ecosysteem: Van Pijplijn naar Event-Driven Architectuur**
 
+Versie: 3.1 (Configureerbare Workflow Orkestratie)
 Status: Definitief
-Dit document beschrijft het flexibele, configureerbare workflow orkestratiesysteem van S1mpleTrader.
+Dit document beschrijft de transformatie van S1mpleTrader van een lineaire pijplijn naar een flexibel, configureerbaar workflow orkestratiesysteem.
 
 ## **Inhoudsopgave**
 
@@ -21,11 +22,11 @@ Dit document beschrijft het flexibele, configureerbare workflow orkestratiesyste
 
 ## **Executive Summary**
 
-Dit document beschrijft het flexibele, configureerbare workflow orkestratiesysteem van S1mpleTrader. De vier kernprincipes zijn:
+Dit document beschrijft de fundamentele transformatie van S1mpleTrader van een rigide lineaire pijplijn naar een flexibel, configureerbaar workflow orkestratiesysteem. De vier kernprincipes van V3:
 
 ### **1. Van Lineaire Pijplijn naar Parallel Event-Driven Ecosysteem**
 
-Het systeem biedt een 5-fase parallel systeem waar Opportunities en Threats simultaan worden gedetecteerd, waardoor snellere responstijden en betere risicobeheersing mogelijk zijn.
+V2 was een 9-fasen sequentiële pijplijn. V3 is een 5-fase parallel systeem waar Opportunities en Threats simultaan worden gedetecteerd, waardoor snellere responstijden en betere risicobeheersing mogelijk zijn.
 
 ### **2. Configureerbare Orkestratie (Niet Hard-Coded)**
 
@@ -57,7 +58,12 @@ Het systeem werkt op twee complementaire niveaus:
 
 ### **5.1.1. Van Lineaire Pijplijn naar Event-Driven Ecosysteem**
 
-**Huidige Architectuur:** Een flexibel, event-driven ecosysteem met configureerbare orkestratie en intelligente parallelle verwerking:
+**V2 (Oud):** Een rigide, 9-fasen lineaire pijplijn waar elke fase sequentieel werd doorlopen:
+```
+Data → Regime → Structure → Signal → Refine → Entry → Exit → Size → Route → Execute
+```
+
+**V3 (Nieuw):** Een flexibel, event-driven ecosysteem met configureerbare orkestratie en intelligente parallelle verwerking:
 
 ```mermaid
 graph TB
@@ -83,7 +89,7 @@ graph TB
     style Execution fill:#FFA500
 ```
 
-### **5.1.2. De Vier Kerncriteria**
+### **5.1.2. De Vier Kerncriteria van V3**
 
 Dit document beschrijft de volledige workflow van data tot handelsactie, gebaseerd op vier fundamentele principes:
 
@@ -107,7 +113,7 @@ De workflow is opgedeeld in vijf conceptueel verschillende fases, elk beheerd do
 | **4. Planning** | [`PlanningWorker`](backend/core/base_worker.py:BaseWorker) | "De Strateeg" - maakt plannen | [`RoutedTradePlan`](backend/dtos/pipeline/routed_trade_plan.py:RoutedTradePlan) DTO |
 | **5. Execution** | [`ExecutionWorker`](backend/core/base_worker.py:BaseWorker) | "De Uitvoerder" - voert uit | Directe acties |
 
-**Architectuur Principe:** "Opportunity" en "Planning" zijn gescheiden verantwoordelijkheden voor optimale conceptuele zuiverheid.
+**Cruciale Verschuiving:** In V2 waren "Opportunity" en "Planning" gecombineerd in één "AnalysisWorker". V3 scheidt deze verantwoordelijkheden expliciet.
 
 ---
 
@@ -194,7 +200,7 @@ De Opportunity Detection Phase herkent handelskansen op basis van patronen, theo
 
 ### **5.3.3. Parallelle Verwerking**
 
-Opportunity workers worden standaard **parallel** uitgevoerd volgens de ExecutionStrategy configuratie in [`operators.yaml`](config/operators.yaml). Alle opportunity workers ontvangen dezelfde [`TradingContext`](backend/dtos/state/trading_context.py:TradingContext) en genereren hun signalen onafhankelijk.
+**Cruciale Verschuiving:** Opportunity workers worden standaard **parallel** uitgevoerd volgens de ExecutionStrategy configuratie in [`operators.yaml`](config/operators.yaml). Alle opportunity workers ontvangen dezelfde [`TradingContext`](backend/dtos/state/trading_context.py:TradingContext) en genereren hun signalen onafhankelijk.
 
 ```mermaid
 graph LR
@@ -654,6 +660,8 @@ De quant analyseert [`StrategyJournal`](backend/core/strategy_journal.py) data e
 
 ### **5.9.3. Causale Traceerbaarheid Framework**
 
+**V3 Shift:** Van simpele `correlation_id` naar rijk causaal ID framework.
+
 **ID Types:**
 
 | ID Type | Gegenereerd Door | Doel |
@@ -707,18 +715,18 @@ De quant analyseert [`StrategyJournal`](backend/core/strategy_journal.py) data e
 
 ## **5.10. Samenvatting: De Paradigma Shift**
 
-### **5.10.1. Architectuur Kenmerken**
+### **5.10.1. Wat is er Veranderd?**
 
-| Aspect | Huidige Implementatie |
-|--------|----------------------|
-| **Structuur** | Event-driven 5-categorie ecosysteem |
-| **Verwerking** | Configureerbaar (SEQUENTIAL/PARALLEL/EVENT_DRIVEN) |
-| **Opportunity/Threat** | Parallel detectie met dualiteit |
-| **Analysis/Planning** | Gescheiden verantwoordelijkheden |
-| **Orkestratie** | Configureerbaar via operators.yaml |
-| **Event Model** | Drie abstractieniveaus + twee orkestratie niveaus |
-| **Traceability** | Rijk causaal ID framework |
-| **Flexibiliteit** | Opt-in complexiteit |
+| Aspect | V2 (Oud) | V3 (Nieuw) |
+|--------|----------|------------|
+| **Structuur** | Lineaire 9-fasen pijplijn | Event-driven 5-categorie ecosysteem |
+| **Verwerking** | Sequentieel | Configureerbaar (SEQUENTIAL/PARALLEL/EVENT_DRIVEN) |
+| **Opportunity/Threat** | Geen expliciete scheiding | Parallel detectie met dualiteit |
+| **Analysis/Planning** | Gecombineerd | Gescheiden verantwoordelijkheden |
+| **Orkestratie** | Hard-coded | Configureerbaar via operators.yaml |
+| **Event Model** | Geen | Drie abstractieniveaus + twee orkestratie niveaus |
+| **Traceability** | Simpele correlation_id | Rijk causaal ID framework |
+| **Flexibiliteit** | Rigide | Opt-in complexiteit |
 
 ### **5.10.2. Kernvoordelen**
 
@@ -730,17 +738,25 @@ De quant analyseert [`StrategyJournal`](backend/core/strategy_journal.py) data e
 6.  **Progressieve Complexiteit** - Van simpel naar complex zonder refactoring
 7.  **Methodologie Agnostisch** - Ondersteunt ICT, Wyckoff, ML, DCA, en meer
 
-### **5.10.3. Configuratie Format**
+### **5.10.3. Migratie Pad**
 
-Het systeem ondersteunt verschillende configuratie formaten voor maximale flexibiliteit:
+**Backwards Compatibility:** V2 blueprints blijven werken via automatische migratie:
 
 ```yaml
-# Huidig aanbevolen format
+# V2 Format (nog steeds ondersteund)
+workforce:
+  analysis_workers:  # Auto-migrated naar opportunity + planning
+    - plugin: "fvg_detector"
+      phase: "signal_generation"
+
+# V3 Format (aanbevolen)
 workforce:
   opportunity_workers:
     - plugin: "fvg_detector"
       subtype: "technical_pattern"
 ```
+
+**Migratie Tool:** Gebruik `tools/migrate_v2_to_v3.py` voor automatische conversie.
 
 ---
 
@@ -757,12 +773,13 @@ workforce:
 3.  Definieer het juiste `type` en `subtype` in je manifest
 
 **Voor Architecten:**
-1.  Lees [`2_ARCHITECTURE.md`](docs/system/2_ARCHITECTURE.md) voor architectonische context
-2.  Review event chain validatie logica in [`ComponentBuilder`](backend/assembly/component_builder.py)
-3.  Begrijp de twee niveaus van orkestratie (Operator Config vs Event Mapping)
+1.  Raadpleeg [`MIGRATION_MAP.md`](docs/system/MIGRATION_MAP.md) voor volledige V2→V3 mapping
+2.  Lees [`2_ARCHITECTURE.md`](docs/system/2_ARCHITECTURE.md) voor architectonische context
+3.  Review event chain validatie logica in [`ComponentBuilder`](backend/assembly/component_builder.py)
+4.  Begrijp de twee niveaus van orkestratie (Operator Config vs Event Mapping)
 
 ---
 
-**Einde Document**
+**Einde Document v3.1**
 
 *"Van lineaire pijplijn naar configureerbaar ecosysteem - waar operators en events harmonieus samenwerken in een hybride orkestratie model."*

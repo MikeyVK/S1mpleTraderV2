@@ -1,13 +1,14 @@
 # **7. Robuustheid & Operationele Betrouwbaarheid**
 
+Versie: 3.0 (Architectuur Blauwdruk v5)
 Status: Definitief
-Dit document beschrijft de strategieën en architectonische patronen die S1mpleTrader veerkrachtig maken tegen technische fouten.
+Dit document beschrijft de strategieën en architectonische patronen die S1mpleTrader V2 veerkrachtig maken tegen technische fouten.
 
 ## **Inhoudsopgave**
 
 1. [Executive Summary](#executive-summary)
-2. [De Persistence Suite Architectuur](#71-de-persistence-suite-architectuur)
-3. [Het Traceability Framework](#72-het-traceability-framework)
+2. [De Persistence Suite Architectuur (SHIFT 3)](#71-de-persistence-suite-architectuur-shift-3)
+3. [Het Traceability Framework (SHIFT 5)](#72-het-traceability-framework-shift-5)
 4. [Journaling Architectuur: Ledger vs Journal Scheiding](#73-journaling-architectuur-ledger-vs-journal-scheiding)
 5. [Integriteit van de Staat: Atomiciteit en Persistentie](#74-integriteit-van-de-staat-atomiciteit-en-persistentie)
 6. [Netwerkveerkracht en Staatssynchronisatie](#75-netwerkveerkracht-en-staatssynchronisatie)
@@ -18,7 +19,7 @@ Dit document beschrijft de strategieën en architectonische patronen die S1mpleT
 
 ## **Executive Summary**
 
-Dit document beschrijft de architectonische patronen die de robuustheid en operationele betrouwbaarheid van S1mpleTrader garanderen. De strategie is gebaseerd op drie fundamentele pijlers die samen een veerkrachtig systeem vormen dat bestand is tegen crashes, netwerkfouten en data-corruptie.
+Dit document beschrijft de architectonische patronen die de robuustheid en operationele betrouwbaarheid van S1mpleTrader V3 garanderen. De strategie is gebaseerd op drie fundamentele pijlers die samen een veerkrachtig systeem vormen dat bestand is tegen crashes, netwerkfouten en data-corruptie.
 
 ### **🎯 De Drie Pijlers van Robuustheid**
 
@@ -41,9 +42,9 @@ Dit document beschrijft de architectonische patronen die de robuustheid en opera
 
 ---
 
-## **7.1. De Persistence Suite Architectuur**
+## **7.1. De Persistence Suite Architectuur (SHIFT 3)**
 
-De architectuur biedt een uniforme, interface-gedreven model voor alle data-persistentie via een consistent systeem. Dit creëert een gelaagde, ontkoppelde architectuur gebaseerd op het **Dependency Inversion Principle**.
+Een fundamentele architectonische shift in V3 is de unificatie van alle data-persistentie via een consistent, interface-gedreven model. Dit elimineert de ad-hoc benaderingen van V2 en introduceert een gelaagde, ontkoppelde architectuur gebaseerd op het **Dependency Inversion Principle**.
 
 ### **7.1.1. Filosofie: Uniformiteit, Ontkoppeling en Specialisatie**
 
@@ -250,7 +251,7 @@ Deze aanpak ontkoppelt de businesslogica van de worker volledig van de implement
 
 ### **7.1.5. Rationale: Waarom Deze Architectuur?**
 
-Deze architectuur biedt een uniforme oplossing voor data-persistentie:
+Deze architectuur lost drie kritieke V2 problemen op:
 
 1.  **Inconsistentie Eliminatie:** V2 had verschillende benaderingen per data-type (direct Parquet, custom per plugin, via service-laag). V3 uniformeert via interfaces.
 
@@ -262,13 +263,25 @@ Deze architectuur biedt een uniforme oplossing voor data-persistentie:
 
 ---
 
-## **7.2. Het Traceability Framework**
+## **7.2. Het Traceability Framework (SHIFT 5)**
 
-De architectuur biedt een rijk framework van **getypeerde, semantische IDs** die de volledige causale keten van elke trade-beslissing vastleggen.
+V3 introduceert een fundamentele shift van simpele tracking naar **causale analyse**. Waar V2 een enkele `CorrelationID` gebruikte voor flow-tracking, implementeert V3 een rijk framework van **getypeerde, semantische IDs** die de volledige causale keten van elke trade-beslissing vastleggen.
 
-### **7.2.1. Causale Reconstructie**
+### **7.2.1. Van Tracking naar Causale Reconstructie**
 
-**Het huidige systeem biedt:**
+**Het Probleem met V2:**
+```python
+# V2: Simpel maar beperkt
+class Signal:
+    correlation_id: UUID  # Wat betekent dit? Welke relatie?
+```
+
+Deze benadering kon flows tracken ("deze events horen bij elkaar"), maar kon niet beantwoorden:
+-   **Waarom** werd deze trade geopend?
+-   **Waarom** werd deze trade gesloten?
+-   Welke opportunity werd afgewezen en door welke threat?
+
+**De V3 Oplossing:**
 ```python
 # V3: Causale ID Framework
 class TradeEntry:
@@ -649,7 +662,7 @@ Alle causale IDs worden persistent gemaakt in het [`StrategyJournal`](backend/co
 
 ## **7.3. Journaling Architectuur: Ledger vs Journal Scheiding**
 
-De architectuur biedt een strikte conceptuele en architectonische scheiding tussen **operationele staat** en **historische log**.
+V3 introduceert een strikte conceptuele en architectonische scheiding tussen **operationele staat** en **historische log**.
 
 ### **7.3.1. StrategyLedger: Operationele Staat (Snel & Minimaal)**
 
@@ -718,7 +731,7 @@ class StrategyJournal:
 
 ### **7.3.3. Journaling via de 'journaling' Capability**
 
-Plugins krijgen directe, maar ontkoppelde, toegang tot het `StrategyJournal` door de `journaling` capability aan te vragen in hun `manifest.yaml`.
+Plugins krijgen directe, maar ontkoppelde, toegang tot het `StrategyJournal` door de `journaling` capability aan te vragen in hun `manifest.yaml`. Dit vervangt de oude `BaseJournalingWorker`.
 
 **De Rol van de WorkerBuilder:**
 
@@ -968,7 +981,7 @@ Een live-systeem is afhankelijk van een stabiele verbinding en moet kunnen omgaa
 
 ## **7.7. Samenvatting: De Drie Pijlers van Robuustheid**
 
-De robuustheid van S1mpleTrader rust op drie fundamentele architectonische pijlers:
+De robuustheid van S1mpleTrader V2 rust op drie fundamentele architectonische pijlers:
 
 1.  **Persistence Suite (SHIFT 3):** Uniform, interface-gedreven model voor alle data-opslag met scheiding van verantwoordelijkheden (marktdata, state, journal) en dependency injection voor testbaarheid.
 
@@ -976,6 +989,6 @@ De robuustheid van S1mpleTrader rust op drie fundamentele architectonische pijle
 
 3.  **Ledger/Journal Scheiding:** Strikte scheiding tussen operationele staat (StrategyLedger: snel, minimaal) en historische log (StrategyJournal: compleet, inclusief afgewezen kansen) met directe journaling via BaseJournalingWorker.
 
-Deze drie pijlers creëren een systeem dat niet alleen betrouwbaar is tijdens normale operaties, maar ook robuust herstelt van crashes, netwerkfouten en andere onverwachte omstandigheden.
+Deze drie pijlers, gecombineerd met de beproefde technieken uit V2 (atomische writes, state reconciliation, circuit breakers), creëren een systeem dat niet alleen betrouwbaar is tijdens normale operaties, maar ook robuust herstelt van crashes, netwerkfouten en andere onverwachte omstandigheden.
 
 **Kernprincipe:** In een trading-systeem is data-integriteit niet optioneel—het is de basis. Elke regel code die met persistentie te maken heeft, moet geschreven zijn met de aanname dat "het volgende moment kan alles crashen".
