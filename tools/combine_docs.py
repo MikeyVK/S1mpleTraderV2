@@ -11,7 +11,7 @@ def merge_markdown_files(input_folder, output_file):
                     outfile.write("\n\n---\n\n")  # scheiding tussen bestanden
 
 if __name__ == "__main__":
-    input_folder = "./docs/system"       # vervang door jouw map
-    output_file = "docs123.md" # naam van het resultaat
+    input_folder = "./docs/system/herzien"       # vervang door jouw map
+    output_file = "./docs/system/herzien/Combined.md" # naam van het resultaat
     merge_markdown_files(input_folder, output_file)
     print(f"Alle bestanden samengevoegd in: {output_file}")

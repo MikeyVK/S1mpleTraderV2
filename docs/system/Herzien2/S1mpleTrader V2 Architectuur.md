@@ -1797,10 +1797,10 @@ De [`event_map.yaml`](config/event_map.yaml) definieert alle toegestane events e
 | Event Naam | Payload (DTO Contract) | Mogelijke Publisher(s) | Mogelijke Subscriber(s) |
 |:-----------|:-----------------------|:-----------------------|:------------------------|
 | **Operation Lifecycle** | | | |
-| `OperationStarted` | [`OperationParameters`](backend/dtos/state/operation_parameters.py) | Operations | EventAdapter (voor ContextOperator), ContextBootstrapper |
+| `OperationStarted` | [`OperationParameters`](backend/dtos/state/operation_parameters.py) | OperationService | EventAdapter (voor ContextOperator), ContextBootstrapper |
 | `BootstrapComplete` | [`BootstrapResult`](backend/dtos/state/bootstrap_result.py) | ContextBootstrapper | ExecutionEnvironment |
-| `ShutdownRequested` | [`ShutdownSignal`](backend/dtos/execution/shutdown_signal.py) | UI, EventAdapter (van ThreatWorker) | Operations |
-| `OperationFinished` | [`OperationSummary`](backend/dtos/state/operation_summary.py) | Operations | ResultLogger, UI |
+| `ShutdownRequested` | [`ShutdownSignal`](backend/dtos/execution/shutdown_signal.py) | UI, EventAdapter (van ThreatWorker) | OperationService |
+| `OperationFinished` | [`OperationSummary`](backend/dtos/state/operation_summary.py) | OperationService | ResultLogger, UI |
 | --- | --- | --- | --- |
 | **Tick Lifecycle (5 Operators)** | | | |
 | `ContextReady` | [`TradingContext`](backend/dtos/state/trading_context.py) | ExecutionEnvironment, EventAdapter (van ContextOperator) | EventAdapter (voor OpportunityOperator, ThreatOperator) |
@@ -1814,7 +1814,7 @@ De [`event_map.yaml`](config/event_map.yaml) definieert alle toegestane events e
 | `AggregatePortfolioUpdated` | [`AggregateMetrics`](backend/dtos/state/aggregate_metrics.py) | EventAdapter (van ThreatWorker) | UI, EventAdapter (voor ExecutionWorker) |
 | --- | --- | --- | --- |
 | **Analyse Lifecycle** | | | |
-| `BacktestCompleted` | [`BacktestResult`](backend/dtos/state/backtest_result.py) | Operations | ResultLogger, UI |
+| `BacktestCompleted` | [`BacktestResult`](backend/dtos/state/backtest_result.py) | OperationService | ResultLogger, UI |
 | --- | --- | --- | --- |
 | **Scheduler Events** | | | |
 | `DAILY_MARKET_OPEN_TICK` | [`ScheduledTick`](backend/dtos/state/scheduled_tick.py) | Scheduler | EventAdapter (voor ExecutionWorker) |
@@ -4039,38 +4039,38 @@ De oude `event_config`-sectie is hiermee volledig vervangen door de `capabilitie
 
 ## **3.8. De Onderlinge Samenhang - De "Configuratie Trein" in Actie**
 
-De magie van het systeem zit in hoe Operations deze bestanden aan elkaar koppelt tijdens de bootstrap-fase.
+De magie van het systeem zit in hoe OperationService deze bestanden aan elkaar koppelt tijdens de bootstrap-fase.
 
 **Voorbeeld Flow**:
 
 1.  **Startpunt**: De gebruiker start de applicatie met de opdracht: `run ict_smc_operation`
 
-2.  **Operations leest [`operation.yaml`](config/operation.yaml)**:
+2.  **OperationService leest [`operation.yaml`](config/operation.yaml)**:
     -   Hij vindt de strategy_link voor `ict_smc_strategy`
 
 3.  **Analyse van de Link**:
-    -   Operations kijkt naar de `execution_environment_id`: `live_kraken_main`
+    -   OperationService kijkt naar de `execution_environment_id`: `live_kraken_main`
     -   Hij zoekt in [`environments.yaml`](config/environments.yaml) en vindt `live_kraken_main`
     -   Hij ziet dat dit een live-omgeving is die `connector_id: kraken_live_eur_account` vereist
     -   Hij zoekt nu in [`connectors.yaml`](config/connectors.yaml) en vindt de connector details
     
-    -   Vervolgens kijkt Operations naar de `strategy_blueprint_id`: `ict_smc_strategy`
+    -   Vervolgens kijkt OperationService naar de `strategy_blueprint_id`: `ict_smc_strategy`
     -   Hij laadt [`strategy_blueprints/ict_smc_strategy.yaml`](config/runs/strategy_blueprint.yaml)
     -   Voor elke plugin in de workforce, gebruikt het Assembly Team de [`manifest.yaml`](plugins/*/plugin_manifest.yaml) van die plugin om de code te vinden en de params te valideren
 
 4.  **Operator Configuratie**:
-    -   Operations laadt [`operators.yaml`](config/operators.yaml)
+    -   OperationService laadt [`operators.yaml`](config/operators.yaml)
     -   Hij bouwt 5 operator instances op basis van de configuratie
     -   Elke operator krijgt zijn execution_strategy en aggregation_strategy
 
 5.  **Event Chain Setup**:
-    -   Operations analyseert de event configuratie in de blueprints
+    -   OperationService analyseert de event configuratie in de blueprints
     -   Hij genereert automatisch impliciete chains waar nodig
     -   Hij valideert dat alle custom events correct zijn gekoppeld
     -   Hij laadt [`wiring_map.yaml`](config/wiring_map.yaml) om de EventBus te configureren
 
 6.  **Scheduler Setup**:
-    -   Als er scheduled events zijn, laadt Operations [`schedule.yaml`](config/schedule.yaml)
+    -   Als er scheduled events zijn, laadt OperationService [`schedule.yaml`](config/schedule.yaml)
     -   Hij configureert de Scheduler om de juiste events te publiceren
 
 Het resultaat is een volledig geassembleerd, gevalideerd en onderling verbonden ecosysteem van plugins en operators, klaar om van start te gaan, **puur en alleen op basis van de declaratieve YAML-bestanden**.
@@ -11389,7 +11389,7 @@ Voor diepere technische details:
 
 ---
 
-# COMPLETE_SYSTEM_DESIGN.md
+# 11. COMPLETE_SYSTEM_DESIGN.md
 
 
 # **S1mpleTrader: Complete System Design**
@@ -11404,7 +11404,7 @@ Voor diepere technische details:
 ## **Inhoudsopgave**
 
 1. [Executive Summary](#1-executive-summary)
-2. [Volledige Map- & Bestandstructuur](#2-volledige-map--bestandstructuur)
+2. [Volledige Map- & Bestandstructuur](#2-volledige-map--en-bestandstructuur)
 3. [Configuratie Schema's (Pydantic)](#3-configuratie-schemas-pydantic)
 4. [Data Contracten (DTOs)](#4-data-contracten-dtos)
 5. [Interface Contracten](#5-interface-contracten)
@@ -11443,7 +11443,7 @@ Dit document beschrijft het complete systeemontwerp voor S1mpleTrader, een confi
 
 ---
 
-## **2. Volledige Map- & Bestandstructuur**
+## **2. Volledige Map- en Bestandstructuur**
 
 ```
 S1mpleTraderV2/
